@@ -61,7 +61,7 @@ This is a hobby project I started to re-learn fundamental CS concepts in the ope
 **Context Switching:**
 - `context_switch_to_user()` - enter userspace, returns when sys_exit called
 - `context_return_to_kernel()` - return from userspace to kernel
-- Clean separation of assembly (context_asm.S) and C code
+- Clean separation of assembly (context_switch.S) and C code
 
 **Shell:**
 - Interactive commands: help, meminfo, alloc, free, crash, divzero, clear
@@ -86,10 +86,10 @@ This is a hobby project I started to re-learn fundamental CS concepts in the ope
 ├── fb.h/c          # Framebuffer driver + font
 ├── console.h/c     # Unified serial+FB output
 ├── gdt.h/c         # Global descriptor table
-├── gdt_asm.S       # GDT/TSS loading (asm)
+├── gdt_load.S      # GDT/TSS loading (asm)
 ├── syscall.h/c     # System call handler
 ├── context.h       # Context switching API
-├── context_asm.S   # Context switching (asm)
+├── context_switch.S # Context switching (asm)
 ├── user_program.h/c # Hardcoded user binary
 └── user.S          # User program source (assembled separately)
 ```

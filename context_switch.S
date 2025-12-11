@@ -1,5 +1,5 @@
 /*
- * context_asm.S - Low-level context switching assembly
+ * context_switch.S - Low-level context switching assembly
  */
 
 .section .note.GNU-stack, "", @progbits

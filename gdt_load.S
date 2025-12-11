@@ -1,5 +1,5 @@
 /*
- * gdt_asm.S - Assembly routines for GDT and TSS loading
+ * gdt_load.S - Assembly routines for GDT and TSS loading
  *
  * Loading a new GDT requires:
  * 1. lgdt instruction to point CPU at new GDT

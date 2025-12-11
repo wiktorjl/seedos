@@ -24,7 +24,7 @@ LDFLAGS = -nostdlib           \
 
 # Source files
 C_SOURCES = kernel.c pmm.c idt.c pic.c keyboard.c shell.c fb.c gdt.c console.c vmm.c syscall.c user_program.c
-ASM_SOURCES = boot.S isr.S gdt_asm.S context_asm.S
+ASM_SOURCES = boot.S isr.S gdt_load.S context_switch.S
 
 # Object files
 C_OBJECTS = $(C_SOURCES:.c=.o)
