@@ -1,4 +1,0 @@
-[submodule "os/limine"]
-	path = os/limine
-	url = https://github.com/limine-bootloader/limine.git
-	branch = v8.x-binary
