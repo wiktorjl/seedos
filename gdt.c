@@ -1,11 +1,35 @@
 /*
  * gdt.c - Global Descriptor Table and Task State Segment
  *
- * In 64-bit long mode, segmentation is mostly disabled. The CPU ignores
- * base and limit for code/data segments. However, we still need:
- *   - Proper DPL (privilege level) in segment descriptors
- *   - TSS for RSP0 (kernel stack when entering from ring 3)
- *   - Separate selectors for kernel (ring 0) and user (ring 3)
+ * This file sets up the GDT and TSS required for privilege level separation.
+ *
+ * GDT Descriptor Format (8 bytes for code/data):
+ *
+ *   63       56 55   52 51  48 47       40 39       32
+ *   ┌─────────┬───────┬──────┬───────────┬───────────┐
+ *   │Base High│ Flags │Limit │  Access   │ Base Mid  │
+ *   │ (8 bits)│(4 bit)│ High │  (8 bits) │ (8 bits)  │
+ *   └─────────┴───────┴──────┴───────────┴───────────┘
+ *   31                     16 15                      0
+ *   ┌────────────────────────┬────────────────────────┐
+ *   │      Base Low          │      Limit Low         │
+ *   │      (16 bits)         │      (16 bits)         │
+ *   └────────────────────────┴────────────────────────┘
+ *
+ * In 64-bit long mode:
+ *   - Base and Limit are IGNORED for code/data segments (flat model)
+ *   - Access byte still matters (DPL, present bit, type)
+ *   - L bit (long mode) must be set for 64-bit code segments
+ *
+ * TSS in 64-bit Mode:
+ *
+ *   The TSS is simpler than in 32-bit mode. It mainly provides:
+ *   - RSP0: Kernel stack for ring 0 (used on privilege escalation)
+ *   - RSP1/RSP2: Unused (rings 1 and 2 not used)
+ *   - IST1-IST7: Interrupt Stack Table for special handlers
+ *
+ *   The TSS descriptor in the GDT is 16 bytes (double-width) to hold
+ *   the 64-bit base address.
  */
 
 #include "gdt.h"
@@ -111,44 +135,88 @@ static struct gdt_entry gdt[GDT_ENTRIES];
 static struct tss tss;
 static struct gdtr gdtr;
 
+/* =============================================================================
+ * Internal Helper Functions
+ * =============================================================================
+ */
+
 /*
- * Set a GDT entry (for code/data segments)
+ * gdt_set_entry - Configure a code/data segment descriptor.
+ *
+ * @index:  GDT entry index (0-based)
+ * @access: Access byte (present, DPL, type bits)
+ * @flags:  Flags (long mode, granularity)
+ *
+ * In 64-bit mode, base and limit are ignored for code/data segments.
+ * We set them to 0/max for consistency.
  */
 static void gdt_set_entry(int index, uint8_t access, uint8_t flags) {
-    gdt[index].limit_low   = 0xFFFF;    /* Limit (ignored in 64-bit) */
-    gdt[index].base_low    = 0;
-    gdt[index].base_mid    = 0;
-    gdt[index].access      = access;
-    gdt[index].flags_limit = flags | 0x0F;  /* Flags + limit high nibble */
-    gdt[index].base_high   = 0;
+    gdt[index].limit_low   = 0xFFFF;    /* Limit low (ignored in 64-bit) */
+    gdt[index].base_low    = 0;         /* Base low (ignored in 64-bit) */
+    gdt[index].base_mid    = 0;         /* Base middle (ignored in 64-bit) */
+    gdt[index].access      = access;    /* Access byte: P, DPL, S, Type */
+    gdt[index].flags_limit = flags | 0x0F;  /* Flags (high nibble) + limit high */
+    gdt[index].base_high   = 0;         /* Base high (ignored in 64-bit) */
 }
 
 /*
- * Set the TSS descriptor (spans 2 GDT slots)
+ * gdt_set_tss - Configure the TSS descriptor (16 bytes, spans 2 GDT slots).
+ *
+ * @index: GDT entry index where TSS descriptor starts
+ * @base:  Physical address of the TSS structure
+ * @limit: Size of TSS minus 1
+ *
+ * The TSS descriptor is special in 64-bit mode:
+ *   - It's 16 bytes instead of 8 (needs full 64-bit base address)
+ *   - It's a "system" segment (S bit = 0)
+ *   - Type = 0x9 (64-bit TSS available)
  */
 static void gdt_set_tss(int index, uint64_t base, uint32_t limit) {
     struct tss_descriptor *desc = (struct tss_descriptor *)&gdt[index];
-    
+
+    /* Lower 32 bits of base split across three fields */
     desc->limit_low   = limit & 0xFFFF;
     desc->base_low    = base & 0xFFFF;
     desc->base_mid    = (base >> 16) & 0xFF;
     desc->access      = ACCESS_PRESENT | ACCESS_SYSTEM | ACCESS_TSS64;
     desc->flags_limit = (limit >> 16) & 0x0F;
     desc->base_high   = (base >> 24) & 0xFF;
+
+    /* Upper 32 bits of base (64-bit extension) */
     desc->base_upper  = (base >> 32) & 0xFFFFFFFF;
     desc->reserved    = 0;
 }
 
-/*
- * Assembly helpers to load GDT and segment registers
+/* =============================================================================
+ * Assembly Helpers (defined in gdt_asm.S)
+ *
+ * These are implemented in assembly because:
+ *   - LGDT instruction requires specific operand format
+ *   - Segment register reload requires far jump for CS
+ * =============================================================================
  */
 extern void gdt_load(struct gdtr *gdtr, uint16_t code_sel, uint16_t data_sel);
 extern void tss_load(uint16_t tss_sel);
 
+/* =============================================================================
+ * GDT/TSS Public API
+ * =============================================================================
+ */
+
+/*
+ * gdt_init - Set up the GDT and TSS, then load them into the CPU.
+ *
+ * This function:
+ *   1. Creates descriptors for kernel/user code/data segments
+ *   2. Creates the TSS descriptor
+ *   3. Loads the GDT via LGDT
+ *   4. Reloads segment registers with new selectors
+ *   5. Loads the TSS via LTR
+ */
 void gdt_init(void) {
     puts("Setting up GDT...\n");
 
-    /* Entry 0: Null descriptor (required) */
+    /* Entry 0: Null descriptor (required by x86 architecture) */
     gdt[0] = (struct gdt_entry){0};
 
     /* Entry 1: Kernel code segment (selector 0x08) */
@@ -202,6 +270,15 @@ void gdt_init(void) {
     puts("GDT setup complete!\n\n");
 }
 
+/*
+ * tss_set_kernel_stack - Update RSP0 in the TSS.
+ *
+ * @stack: New kernel stack pointer value.
+ *
+ * RSP0 is loaded by the CPU when transitioning from ring 3 to ring 0.
+ * Each process should have its own kernel stack, and this function
+ * should be called during context switch to set the correct stack.
+ */
 void tss_set_kernel_stack(uint64_t stack) {
     tss.rsp0 = stack;
 }

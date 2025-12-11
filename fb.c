@@ -1,27 +1,87 @@
 /*
- * fb.c - Framebuffer driver
+ * fb.c - Framebuffer Graphics Driver
+ *
+ * This file implements both raw framebuffer access and a text console layer.
+ *
+ * Implementation Overview:
+ *
+ *   1. Framebuffer Initialization:
+ *      - Receives framebuffer info from Limine bootloader
+ *      - Stores address, dimensions, pitch, and color depth
+ *      - Only 32bpp is currently supported
+ *
+ *   2. Pixel Drawing:
+ *      - fb_putpixel() calculates memory offset from x,y coordinates
+ *      - Uses pitch (not width) for correct row addressing
+ *
+ *   3. Text Console:
+ *      - Built on top of pixel drawing using an 8x16 bitmap font
+ *      - Tracks cursor position in character coordinates
+ *      - Handles scrolling by copying framebuffer rows up
+ *
+ * Memory Layout:
+ *
+ *   The framebuffer is a linear array of pixels, row by row:
+ *
+ *   fb_addr ──► ┌────────────────────────────────────┐
+ *               │ Row 0: pixel[0,0], pixel[1,0], ... │
+ *               ├────────────────────────────────────┤
+ *               │ Row 1: pixel[0,1], pixel[1,1], ... │
+ *               ├────────────────────────────────────┤
+ *               │ ...                                │
+ *               └────────────────────────────────────┘
+ *
+ *   To access pixel (x,y):
+ *     address = fb_addr + y * pitch + x * (bpp/8)
  */
 
 #include "fb.h"
 #include "limine.h"
 #include <stddef.h>
 
-/* Framebuffer state */
-static uint32_t *fb_addr;
-static uint32_t fb_width;
-static uint32_t fb_height;
-static uint32_t fb_pitch;  /* Bytes per row */
-static uint8_t fb_bpp;     /* Bits per pixel */
+/* =============================================================================
+ * Framebuffer Hardware State
+ *
+ * These store the framebuffer configuration from the bootloader.
+ * =============================================================================
+ */
+static uint32_t *framebuffer_address;    /* Base address of framebuffer memory */
+static uint32_t framebuffer_width;       /* Width in pixels */
+static uint32_t framebuffer_height;      /* Height in pixels */
+static uint32_t framebuffer_pitch;       /* Bytes per row (may include padding) */
+static uint8_t framebuffer_bpp;          /* Bits per pixel (we require 32) */
 
-/* Console state */
-#define FONT_WIDTH  8
-#define FONT_HEIGHT 16
-static uint32_t console_cols;
-static uint32_t console_rows;
-static uint32_t cursor_x;
-static uint32_t cursor_y;
-static uint32_t console_fg = FB_WHITE;
-static uint32_t console_bg = FB_BLACK;
+/* Bytes per pixel (derived from bpp) */
+#define BYTES_PER_PIXEL 4  /* 32bpp = 4 bytes per pixel */
+
+/* =============================================================================
+ * Bitmap Font Configuration
+ *
+ * We use a simple 8x16 pixel bitmap font for text rendering.
+ * Each character is 16 bytes (16 rows × 8 bits per row).
+ * =============================================================================
+ */
+#define FONT_WIDTH  8       /* Character width in pixels */
+#define FONT_HEIGHT 16      /* Character height in pixels */
+#define FONT_FIRST_CHAR 32  /* First printable ASCII (space) */
+#define FONT_LAST_CHAR  126 /* Last printable ASCII (tilde) */
+
+/* =============================================================================
+ * Text Console State
+ *
+ * The console layer tracks cursor position and dimensions.
+ * Coordinates are in character units (not pixels).
+ * =============================================================================
+ */
+static uint32_t console_columns;      /* Characters per row */
+static uint32_t console_rows;         /* Number of text rows */
+static uint32_t cursor_column;        /* Current column (0-based) */
+static uint32_t cursor_row;           /* Current row (0-based) */
+static uint32_t console_fg_color = FB_WHITE;  /* Text foreground color */
+static uint32_t console_bg_color = FB_BLACK;  /* Text background color */
+
+/* Tab stop spacing (in characters) */
+#define TAB_WIDTH 8
 
 /*
  * 8x16 bitmap font - ASCII 32-126
@@ -220,139 +280,215 @@ static const uint8_t font_8x16[95][16] = {
     {0x00,0x00,0x76,0xdc,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00},
 };
 
+/* =============================================================================
+ * Framebuffer Initialization
+ * =============================================================================
+ */
+
+/*
+ * fb_init - Initialize framebuffer from Limine response.
+ */
 int fb_init(void *fb_response_ptr) {
-    struct limine_framebuffer_response *fb_response = fb_response_ptr;
-    
-    if (fb_response == NULL || fb_response->framebuffer_count < 1) {
+    struct limine_framebuffer_response *response = fb_response_ptr;
+
+    /* Validate response */
+    if (response == NULL || response->framebuffer_count < 1) {
         return -1;
     }
-    
-    struct limine_framebuffer *fb = fb_response->framebuffers[0];
-    
-    fb_addr = (uint32_t *)fb->address;
-    fb_width = fb->width;
-    fb_height = fb->height;
-    fb_pitch = fb->pitch;
-    fb_bpp = fb->bpp;
-    
-    /* We only support 32-bit color for now */
-    if (fb_bpp != 32) {
+
+    /* Get the first framebuffer (we only support one display) */
+    struct limine_framebuffer *fb = response->framebuffers[0];
+
+    /* Store framebuffer parameters */
+    framebuffer_address = (uint32_t *)fb->address;
+    framebuffer_width = fb->width;
+    framebuffer_height = fb->height;
+    framebuffer_pitch = fb->pitch;
+    framebuffer_bpp = fb->bpp;
+
+    /* We only support 32-bit color (simplest to work with) */
+    if (framebuffer_bpp != 32) {
         return -1;
     }
-    
+
     return 0;
 }
 
+/* =============================================================================
+ * Raw Framebuffer Access
+ * =============================================================================
+ */
+
 uint32_t fb_get_width(void) {
-    return fb_width;
+    return framebuffer_width;
 }
 
 uint32_t fb_get_height(void) {
-    return fb_height;
+    return framebuffer_height;
 }
 
+/*
+ * fb_clear - Fill entire screen with one color.
+ */
 void fb_clear(uint32_t color) {
-    for (uint32_t y = 0; y < fb_height; y++) {
-        for (uint32_t x = 0; x < fb_width; x++) {
+    for (uint32_t y = 0; y < framebuffer_height; y++) {
+        for (uint32_t x = 0; x < framebuffer_width; x++) {
             fb_putpixel(x, y, color);
         }
     }
 }
 
+/*
+ * fb_putpixel - Write a single pixel to the framebuffer.
+ *
+ * The address calculation uses pitch (bytes per row) not width,
+ * because rows may be padded for alignment.
+ */
 void fb_putpixel(uint32_t x, uint32_t y, uint32_t color) {
-    if (x >= fb_width || y >= fb_height) {
+    /* Bounds check - silently ignore out-of-bounds coordinates */
+    if (x >= framebuffer_width || y >= framebuffer_height) {
         return;
     }
-    
-    /* Calculate position: pitch is in bytes, we're writing uint32_t */
-    uint32_t *pixel = (uint32_t *)((uint8_t *)fb_addr + y * fb_pitch + x * 4);
+
+    /* Calculate pixel address: base + row_offset + column_offset */
+    uint32_t *pixel = (uint32_t *)((uint8_t *)framebuffer_address +
+                                   y * framebuffer_pitch +
+                                   x * BYTES_PER_PIXEL);
     *pixel = color;
 }
 
+/*
+ * fb_putchar_at - Draw a character using the bitmap font.
+ *
+ * Each row of the glyph is a byte where bits represent pixels.
+ * Bit 7 is the leftmost pixel, bit 0 is the rightmost.
+ */
 void fb_putchar_at(char c, uint32_t x, uint32_t y, uint32_t fg, uint32_t bg) {
-    /* Only printable ASCII */
-    if (c < 32 || c > 126) {
+    /* Clamp to printable ASCII range */
+    if (c < FONT_FIRST_CHAR || c > FONT_LAST_CHAR) {
         c = '?';
     }
-    
-    const uint8_t *glyph = font_8x16[c - 32];
-    
+
+    /* Get pointer to character's glyph data */
+    const uint8_t *glyph = font_8x16[c - FONT_FIRST_CHAR];
+
+    /* Draw each row of the character */
     for (int row = 0; row < FONT_HEIGHT; row++) {
-        uint8_t bits = glyph[row];
+        uint8_t row_bits = glyph[row];
+
+        /* Draw each pixel in the row */
         for (int col = 0; col < FONT_WIDTH; col++) {
-            uint32_t color = (bits & (0x80 >> col)) ? fg : bg;
-            fb_putpixel(x + col, y + row, color);
+            /* Test bit from left to right (bit 7 = leftmost) */
+            uint32_t pixel_color = (row_bits & (0x80 >> col)) ? fg : bg;
+            fb_putpixel(x + col, y + row, pixel_color);
         }
     }
 }
 
+/* =============================================================================
+ * Text Console Layer
+ * =============================================================================
+ */
+
+/*
+ * fb_console_init - Set up the text console layer.
+ */
 void fb_console_init(void) {
-    console_cols = fb_width / FONT_WIDTH;
-    console_rows = fb_height / FONT_HEIGHT;
-    cursor_x = 0;
-    cursor_y = 0;
-    fb_clear(console_bg);
+    /* Calculate console dimensions in characters */
+    console_columns = framebuffer_width / FONT_WIDTH;
+    console_rows = framebuffer_height / FONT_HEIGHT;
+
+    /* Position cursor at top-left */
+    cursor_column = 0;
+    cursor_row = 0;
+
+    /* Clear screen with background color */
+    fb_clear(console_bg_color);
 }
 
-static void scroll(void) {
-    /* Move all rows up by one */
-    uint8_t *dst = (uint8_t *)fb_addr;
-    uint8_t *src = (uint8_t *)fb_addr + FONT_HEIGHT * fb_pitch;
-    uint32_t bytes_to_copy = (fb_height - FONT_HEIGHT) * fb_pitch;
-    
-    /* Simple byte copy */
+/*
+ * console_scroll - Scroll the console up by one line.
+ *
+ * Copies all rows up by one font-height, then clears the bottom row.
+ */
+static void console_scroll(void) {
+    /* Calculate source and destination for the copy */
+    uint8_t *dst = (uint8_t *)framebuffer_address;
+    uint8_t *src = (uint8_t *)framebuffer_address + FONT_HEIGHT * framebuffer_pitch;
+    uint32_t bytes_to_copy = (framebuffer_height - FONT_HEIGHT) * framebuffer_pitch;
+
+    /* Copy all rows up (simple byte-by-byte copy) */
     for (uint32_t i = 0; i < bytes_to_copy; i++) {
         dst[i] = src[i];
     }
-    
-    /* Clear the last row */
-    for (uint32_t y = fb_height - FONT_HEIGHT; y < fb_height; y++) {
-        for (uint32_t x = 0; x < fb_width; x++) {
-            fb_putpixel(x, y, console_bg);
+
+    /* Clear the last row (fill with background color) */
+    for (uint32_t y = framebuffer_height - FONT_HEIGHT; y < framebuffer_height; y++) {
+        for (uint32_t x = 0; x < framebuffer_width; x++) {
+            fb_putpixel(x, y, console_bg_color);
         }
     }
 }
 
+/*
+ * fb_console_putc - Output one character to the console.
+ */
 void fb_console_putc(char c) {
     if (c == '\n') {
-        cursor_x = 0;
-        cursor_y++;
+        /* Newline: move to start of next line */
+        cursor_column = 0;
+        cursor_row++;
     } else if (c == '\r') {
-        cursor_x = 0;
+        /* Carriage return: move to start of current line */
+        cursor_column = 0;
     } else if (c == '\b') {
-        if (cursor_x > 0) {
-            cursor_x--;
-            /* Overwrite with space */
-            fb_putchar_at(' ', cursor_x * FONT_WIDTH, cursor_y * FONT_HEIGHT, console_fg, console_bg);
+        /* Backspace: move back and erase character */
+        if (cursor_column > 0) {
+            cursor_column--;
+            fb_putchar_at(' ',
+                         cursor_column * FONT_WIDTH,
+                         cursor_row * FONT_HEIGHT,
+                         console_fg_color, console_bg_color);
         }
     } else if (c == '\t') {
-        cursor_x = (cursor_x + 8) & ~7;
+        /* Tab: advance to next tab stop (8-column intervals) */
+        cursor_column = (cursor_column + TAB_WIDTH) & ~(TAB_WIDTH - 1);
     } else {
-        fb_putchar_at(c, cursor_x * FONT_WIDTH, cursor_y * FONT_HEIGHT, console_fg, console_bg);
-        cursor_x++;
+        /* Regular character: draw and advance cursor */
+        fb_putchar_at(c,
+                     cursor_column * FONT_WIDTH,
+                     cursor_row * FONT_HEIGHT,
+                     console_fg_color, console_bg_color);
+        cursor_column++;
     }
-    
-    /* Wrap at end of line */
-    if (cursor_x >= console_cols) {
-        cursor_x = 0;
-        cursor_y++;
+
+    /* Handle line wrap */
+    if (cursor_column >= console_columns) {
+        cursor_column = 0;
+        cursor_row++;
     }
-    
-    /* Scroll if needed */
-    if (cursor_y >= console_rows) {
-        scroll();
-        cursor_y = console_rows - 1;
+
+    /* Handle scroll if we've gone past the bottom */
+    if (cursor_row >= console_rows) {
+        console_scroll();
+        cursor_row = console_rows - 1;
     }
 }
 
+/*
+ * fb_console_puts - Output a string to the console.
+ */
 void fb_console_puts(const char *s) {
     while (*s) {
         fb_console_putc(*s++);
     }
 }
 
+/*
+ * fb_console_clear - Clear screen and reset cursor.
+ */
 void fb_console_clear(void) {
-    fb_clear(console_bg);
-    cursor_x = 0;
-    cursor_y = 0;
+    fb_clear(console_bg_color);
+    cursor_column = 0;
+    cursor_row = 0;
 }

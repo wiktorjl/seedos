@@ -1,5 +1,17 @@
 /*
  * idt.c - Interrupt Descriptor Table setup and handling
+ *
+ * This file sets up the IDT and provides the main interrupt handler.
+ *
+ * Interrupt handling flow:
+ *   1. Interrupt occurs (exception, IRQ, or software INT)
+ *   2. CPU looks up handler in IDT and jumps to it
+ *   3. Our assembly stub (isr.S) saves registers and calls interrupt_handler()
+ *   4. interrupt_handler() determines the type and handles it
+ *   5. Assembly stub restores registers and returns via IRETQ
+ *
+ * For hardware IRQs, we must send EOI (End of Interrupt) to the PIC,
+ * otherwise no more IRQs of that type will be delivered.
  */
 
 #include "idt.h"
@@ -10,14 +22,34 @@
 #include <stddef.h>
 #include "syscall.h"
 
+/* Number of IDT entries (256 possible interrupt vectors) */
+#define IDT_ENTRIES 256
 
-/* The IDT - 256 entries */
-static struct idt_entry idt[256];
+/* Syscall interrupt number (Linux-compatible) */
+#define SYSCALL_VECTOR 128
 
-/* The IDTR value to load */
+/* =============================================================================
+ * IDT Global State
+ * =============================================================================
+ */
+
+/* The IDT array - 256 entries, one for each possible interrupt vector */
+static struct idt_entry idt[IDT_ENTRIES];
+
+/* The IDTR value - pointer and limit loaded into CPU via LIDT */
 static struct idtr idtr;
 
-/* External references to assembly stubs */
+/* =============================================================================
+ * Assembly Stub References
+ *
+ * Each interrupt vector has an assembly stub in isr.S that:
+ *   1. Pushes a dummy error code (if CPU didn't push one)
+ *   2. Pushes the interrupt number
+ *   3. Saves all general-purpose registers
+ *   4. Calls interrupt_handler()
+ *   5. Restores registers and does IRETQ
+ * =============================================================================
+ */
 extern void isr_0(void);
 extern void isr_1(void);
 extern void isr_2(void);
@@ -66,10 +98,13 @@ extern void isr_44(void);
 extern void isr_45(void);
 extern void isr_46(void);
 extern void isr_47(void);
-extern void isr_128(void);
+extern void isr_128(void);  /* Syscall handler */
 
-/* Array of handler addresses for convenience */
-static void (*isr_stubs[48])(void) = {
+/* Number of exception/IRQ handlers (0-31 exceptions + 32-47 IRQs) */
+#define NUM_ISR_STUBS 48
+
+/* Array of handler addresses for easy iteration during setup */
+static void (*isr_stubs[NUM_ISR_STUBS])(void) = {
     isr_0,  isr_1,  isr_2,  isr_3,  isr_4,  isr_5,  isr_6,  isr_7,
     isr_8,  isr_9,  isr_10, isr_11, isr_12, isr_13, isr_14, isr_15,
     isr_16, isr_17, isr_18, isr_19, isr_20, isr_21, isr_22, isr_23,
@@ -78,34 +113,48 @@ static void (*isr_stubs[48])(void) = {
     isr_40, isr_41, isr_42, isr_43, isr_44, isr_45, isr_46, isr_47,
 };
 
-/* Exception names for pretty printing */
+/* Human-readable names for CPU exceptions (for panic messages) */
 static const char *exception_names[] = {
-    "Divide Error",
-    "Debug",
-    "NMI",
-    "Breakpoint",
-    "Overflow",
-    "Bound Range Exceeded",
-    "Invalid Opcode",
-    "Device Not Available",
-    "Double Fault",
-    "Coprocessor Segment Overrun",
-    "Invalid TSS",
-    "Segment Not Present",
-    "Stack-Segment Fault",
-    "General Protection Fault",
-    "Page Fault",
-    "Reserved",
-    "x87 FP Exception",
-    "Alignment Check",
-    "Machine Check",
-    "SIMD FP Exception",
-    "Virtualization Exception",
-    "Control Protection Exception",
+    "Divide Error",                /* 0 */
+    "Debug",                       /* 1 */
+    "NMI",                         /* 2 */
+    "Breakpoint",                  /* 3 */
+    "Overflow",                    /* 4 */
+    "Bound Range Exceeded",        /* 5 */
+    "Invalid Opcode",              /* 6 */
+    "Device Not Available",        /* 7 */
+    "Double Fault",                /* 8 */
+    "Coprocessor Segment Overrun", /* 9 */
+    "Invalid TSS",                 /* 10 */
+    "Segment Not Present",         /* 11 */
+    "Stack-Segment Fault",         /* 12 */
+    "General Protection Fault",    /* 13 */
+    "Page Fault",                  /* 14 */
+    "Reserved",                    /* 15 */
+    "x87 FP Exception",            /* 16 */
+    "Alignment Check",             /* 17 */
+    "Machine Check",               /* 18 */
+    "SIMD FP Exception",           /* 19 */
+    "Virtualization Exception",    /* 20 */
+    "Control Protection Exception",/* 21 */
 };
+#define NUM_EXCEPTION_NAMES (sizeof(exception_names) / sizeof(exception_names[0]))
+
+/* =============================================================================
+ * IDT Setup Functions
+ * =============================================================================
+ */
 
 /*
- * Set an IDT entry
+ * idt_set_entry - Configure a single IDT entry.
+ *
+ * @n:         Interrupt vector number (0-255)
+ * @handler:   Address of the assembly stub to call
+ * @type_attr: Gate type and attributes (see IDT_GATE_* constants)
+ *
+ * The 64-bit handler address is split across three fields because
+ * the IDT entry format was designed for backward compatibility with
+ * 32-bit protected mode.
  */
 static void idt_set_entry(int n, void (*handler)(void), uint8_t type_attr) {
     uint64_t addr = (uint64_t)handler;
@@ -120,39 +169,61 @@ static void idt_set_entry(int n, void (*handler)(void), uint8_t type_attr) {
 }
 
 /*
- * Initialize and load the IDT
+ * idt_init - Initialize and load the IDT.
+ *
+ * Sets up all interrupt handlers and loads the IDT into the CPU.
+ * After this, the CPU will use our handlers for all interrupts.
  */
 void idt_init(void) {
     /* Set up exception handlers (0-31) and IRQ handlers (32-47) */
-    for (int i = 0; i < 48; i++) {
+    for (int i = 0; i < NUM_ISR_STUBS; i++) {
         idt_set_entry(i, isr_stubs[i], IDT_GATE_INTERRUPT);
     }
-    idt_set_entry(128, isr_128, IDT_GATE_USER);  /* Syscall gate */
 
-    /* Set up IDTR */
+    /* Set up syscall handler at INT 0x80 (Linux-compatible) */
+    /* DPL=3 so userspace can trigger it with INT 0x80 instruction */
+    idt_set_entry(SYSCALL_VECTOR, isr_128, IDT_GATE_USER);
+
+    /* Set up IDTR with address and size of our IDT */
     idtr.limit = sizeof(idt) - 1;
     idtr.base  = (uint64_t)&idt;
 
-    /* Load IDT */
+    /* Load IDT into CPU via LIDT instruction */
     asm volatile ("lidt %0" : : "m"(idtr));
 }
 
+/* =============================================================================
+ * Main Interrupt Handler
+ *
+ * This is the C entry point for all interrupts. The assembly stub saves
+ * registers and calls this function with a pointer to the interrupt frame.
+ * =============================================================================
+ */
+
 /*
- * Common interrupt handler - called from assembly stub
+ * interrupt_handler - Handle all interrupts (exceptions, IRQs, syscalls).
+ *
+ * @frame: Pointer to saved CPU state on the stack
+ *
+ * This function dispatches based on interrupt number:
+ *   0-31:  CPU exceptions (fault, trap, abort)
+ *   32-47: Hardware IRQs
+ *   128:   Syscall (handled in isr.S, not here)
  */
 void interrupt_handler(struct interrupt_frame *frame) {
-    
-    if (frame->int_no == 3) {
-        /* Breakpoint - just continue */
+
+    /* Breakpoint exception (INT3) - just continue for debugging */
+    if (frame->int_no == EXCEPTION_BREAKPOINT) {
         return;
     }
-    
+
+    /* CPU Exception (vectors 0-31) */
     if (frame->int_no < 32) {
-        /* Exception */
+        /* Fatal exception - print diagnostic info and halt */
         puts("\n");
         puts("========================================\n");
         puts("  KERNEL PANIC: ");
-        if (frame->int_no < 22) {
+        if (frame->int_no < NUM_EXCEPTION_NAMES) {
             puts(exception_names[frame->int_no]);
         } else {
             puts("Unknown Exception");
@@ -202,37 +273,44 @@ void interrupt_handler(struct interrupt_frame *frame) {
         put_hex(frame->rdi);
         puts("\n");
 
-        /* For page faults, CR2 contains the faulting address */
-        if (frame->int_no == 14) {
-            uint64_t cr2;
-            asm volatile ("movq %%cr2, %0" : "=r"(cr2));
+        /*
+         * For page faults, CR2 contains the virtual address that caused
+         * the fault. This is essential for implementing demand paging.
+         */
+        if (frame->int_no == EXCEPTION_PAGE_FAULT) {
+            uint64_t faulting_address;
+            asm volatile ("movq %%cr2, %0" : "=r"(faulting_address));
             puts("\n  Fault address (CR2): ");
-            put_hex(cr2);
+            put_hex(faulting_address);
             puts("\n");
         }
 
-        /* Halt after exception */
+        /* Halt the system - unrecoverable error */
         puts("\n========================================\n");
         puts("  System halted. Please reboot.\n");
         puts("========================================\n");
         while (1) {
-            asm volatile ("cli; hlt");
+            asm volatile ("cli; hlt");  /* Disable interrupts and halt */
         }
-    } else if (frame->int_no >= 32 && frame->int_no < 48) {
-        /* Hardware IRQ */
-        uint8_t irq = frame->int_no - 32;
-        
-        if (irq == 1) {
-            /* Keyboard interrupt */
-            keyboard_handler();
-        }
-        
-        /* Send End-of-Interrupt to PIC */
-        pic_send_eoi(irq);
-    } else {
-        /* Other interrupt */
-        puts("Interrupt ");
-        put_dec(frame->int_no);
-        puts("\n");
     }
+
+    /* Hardware IRQ (vectors 32-47) */
+    if (frame->int_no >= IRQ_BASE && frame->int_no < IRQ_BASE + 16) {
+        uint8_t irq_number = frame->int_no - IRQ_BASE;
+
+        /* Dispatch to specific IRQ handler */
+        if (irq_number == 1) {
+            keyboard_handler();  /* IRQ1 = PS/2 keyboard */
+        }
+
+        /* Acknowledge the interrupt to the PIC */
+        /* This MUST be done, or no more IRQs of this type will arrive */
+        pic_send_eoi(irq_number);
+        return;
+    }
+
+    /* Unknown/unhandled interrupt */
+    puts("Unhandled interrupt: ");
+    put_dec(frame->int_no);
+    puts("\n");
 }
