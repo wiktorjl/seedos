@@ -101,3 +101,23 @@ $(BUILD_DIR)/%.o: $(TEST_DIR)/%.c | $(BUILD_DIR)
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+# IDE setup - generates .clangd config and compile_commands.json for VS Code/clangd
+.PHONY: ide-setup
+ide-setup:
+	@echo "Setting up IDE support..."
+	@if ! command -v bear >/dev/null 2>&1; then \
+		echo "Error: 'bear' is not installed."; \
+		echo "Install it with: sudo apt install bear"; \
+		exit 1; \
+	fi
+	@echo "Creating .clangd config..."
+	@echo 'CompileFlags:' > .clangd
+	@echo '  Add:' >> .clangd
+	@echo '    - -Wno-unused-parameter' >> .clangd
+	@echo '  Remove:' >> .clangd
+	@echo '    - -mno-red-zone  # clangd does not need this' >> .clangd
+	@echo "Generating compile_commands.json..."
+	@$(MAKE) clean
+	@bear -- $(MAKE)
+	@echo "IDE setup complete. Install the clangd extension in VS Code."

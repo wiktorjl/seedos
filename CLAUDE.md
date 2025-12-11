@@ -116,6 +116,20 @@ qemu-system-x86_64 -cdrom seed.iso -serial stdio
 QEMU window: keyboard input, graphics output
 Terminal: serial output (debugging)
 
+## IDE Setup (VS Code)
+
+For code navigation (Go to Definition, Find References, etc.), run:
+
+```bash
+make ide-setup
+```
+
+This requires `bear` (`sudo apt install bear`) and generates:
+- `.clangd` - clangd configuration for freestanding kernel code
+- `compile_commands.json` - compilation database for clangd
+
+Then install the **clangd** extension in VS Code.
+
 ## Architecture Notes
 
 ### Memory Layout
