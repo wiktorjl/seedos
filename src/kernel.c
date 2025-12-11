@@ -36,7 +36,8 @@
 #include "gdt.h"
 #include "console.h"
 #include "vmm.h"
-#include "tests.h"
+#include "test_framework.h"
+#include "test_all.h"
 
 /*
  * Limine bootloader requests.
@@ -265,7 +266,12 @@ void kernel_main(void) {
     keyboard_init();
     puts("[ok] keyboard\n");
 
-    tests_init(memmap, hhdm_offset);
+    /* Initialize test framework and register all tests */
+    test_framework_init(memmap, hhdm_offset);
+    test_register_all();
+    puts("[ok] tests: ");
+    put_dec(MAX_TESTS);
+    puts(" slots\n");
 
     asm volatile ("sti");
 

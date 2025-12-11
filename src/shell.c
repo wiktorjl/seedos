@@ -21,7 +21,7 @@
 #include "shell.h"
 #include "pmm.h"
 #include "console.h"
-#include "tests.h"
+#include "test_framework.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -82,6 +82,19 @@ static int string_starts_with(const char *str, const char *prefix) {
 }
 
 /*
+ * find_char - Find first occurrence of character in string.
+ *
+ * Returns pointer to character, or NULL if not found.
+ */
+static const char *find_char(const char *str, char c) {
+    while (*str) {
+        if (*str == c) return str;
+        str++;
+    }
+    return NULL;
+}
+
+/*
  * parse_hex_string - Parse a hexadecimal number from a string.
  *
  * Accepts with or without "0x" prefix.
@@ -138,9 +151,10 @@ static void cmd_help(void) {
     puts("  free <addr>   - Free a physical page (hex address)\n");
     puts("  clear         - Clear screen\n");
     puts("\nTests:\n");
-    puts("  test memmap   - Display memory map from bootloader\n");
-    puts("  test vmm      - Run VMM test suite\n");
-    puts("  test user     - Run userspace program\n");
+    puts("  test              - List all available tests\n");
+    puts("  test all          - Run all tests\n");
+    puts("  test <component>  - Run all tests for component\n");
+    puts("  test <comp>.<name> - Run specific test\n");
     puts("\nDebugging:\n");
     puts("  crash         - Trigger a page fault\n");
     puts("  divzero       - Trigger divide by zero\n");
@@ -266,30 +280,67 @@ static void cmd_clear(void) {
 }
 
 /*
- * cmd_test - Run a test suite by name.
+ * cmd_test - Run tests with the new framework.
  *
- * @arg: The test name (after "test ").
+ * @arg: The test specification (after "test ").
+ *
+ * Supported formats:
+ *   test              - List all tests
+ *   test all          - Run all tests
+ *   test <component>  - Run all tests for component
+ *   test <comp>.<name> - Run specific test
  */
 static void cmd_test(const char *arg) {
     /* Skip leading whitespace */
     while (*arg == CHAR_SPACE) arg++;
 
+    /* No argument - list all tests */
     if (*arg == '\0') {
-        puts("\nUsage: test <name>\n");
-        puts("Available tests: memmap, vmm, user\n\n");
+        test_list_all();
         return;
     }
 
-    if (strings_equal(arg, "memmap")) {
-        test_memmap();
-    } else if (strings_equal(arg, "vmm")) {
-        test_vmm();
-    } else if (strings_equal(arg, "user")) {
-        test_user();
+    /* "all" - run all tests */
+    if (strings_equal(arg, "all")) {
+        test_run_all();
+        return;
+    }
+
+    /* Check for component.name format */
+    const char *dot = find_char(arg, '.');
+    if (dot != NULL) {
+        /* Extract component and name */
+        static char component[32];
+        static char name[32];
+
+        /* Copy component (before dot) */
+        int i = 0;
+        const char *p = arg;
+        while (p < dot && i < 31) {
+            component[i++] = *p++;
+        }
+        component[i] = '\0';
+
+        /* Copy name (after dot) */
+        i = 0;
+        p = dot + 1;
+        while (*p && *p != ' ' && i < 31) {
+            name[i++] = *p++;
+        }
+        name[i] = '\0';
+
+        test_run_single(component, name);
     } else {
-        puts("\nUnknown test: ");
-        puts(arg);
-        puts("\nAvailable tests: memmap, vmm, user\n\n");
+        /* Just component name - run all tests for that component */
+        /* Extract just the component (stop at space) */
+        static char component[32];
+        int i = 0;
+        while (*arg && *arg != ' ' && i < 31) {
+            component[i++] = *arg++;
+        }
+        component[i] = '\0';
+
+        test_run_component(component);
     }
 }
 
@@ -333,7 +384,7 @@ static void execute_command(void) {
     } else if (string_starts_with(command_buffer, "test ")) {
         cmd_test(command_buffer + 5);  /* Skip "test " prefix */
     } else if (strings_equal(command_buffer, "test")) {
-        cmd_test("");  /* No argument - will show usage */
+        cmd_test("");  /* No argument - will list tests */
     } else {
         puts("\nUnknown command: ");
         puts(command_buffer);

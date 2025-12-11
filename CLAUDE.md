@@ -154,6 +154,21 @@ Terminal: serial output (debugging)
 - `GDT_USER_CODE` (0x18), `GDT_USER_DATA` (0x20)
 - `GDT_TSS` (0x28)
 
+## Documentation
+
+Educational deep-dives on OS internals are available in the `docs/` directory:
+
+| Document | Description |
+|----------|-------------|
+| [EXPLORING_SEEDOS.md](docs/EXPLORING_SEEDOS.md) | Getting started guide and system overview |
+| [BOOT.md](docs/BOOT.md) | Boot process from power-on to kernel_main |
+| [MEMORY_LAYOUT.md](docs/MEMORY_LAYOUT.md) | Virtual/physical memory organization |
+| [PMM.md](docs/PMM.md) | Physical Memory Manager (bitmap allocator) |
+| [VMM.md](docs/VMM.md) | Virtual Memory Manager (4-level paging) |
+| [IRQ.md](docs/IRQ.md) | Interrupts, IDT, and the PIC |
+| [SYSCALLS.md](docs/SYSCALLS.md) | System call implementation |
+| [SERIAL.md](docs/SERIAL.md) | Serial port (COM1) driver |
+
 ## Future Ideas
 
 - Process scheduler (round-robin, multiple processes)
