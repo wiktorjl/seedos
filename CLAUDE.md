@@ -2,6 +2,24 @@
 
 A minimal x86-64 operating system built from scratch. Successfully runs "Hello World" from userspace!
 
+## About This Project
+
+This is a hobby project I started to re-learn fundamental CS concepts in the operating systems domain.
+
+**Goals:**
+1. **Readability** - Code should be clear and well-documented
+2. **Modifiability** - Easy to extend and experiment with
+3. **Educational value** - Useful for anyone learning OS development
+
+**Non-goals:**
+- Performance optimization
+- Completeness
+- Feature richness
+
+**Vision:** Eventually this OS will have multitasking, a networking stack, proper userspace, and a filesystem.
+
+**Development approach:** This project relies heavily on AI-generated code. Operating systems are large projects, and to cover significant ground learning about various subsystems, AI assistance saves time on debugging and boilerplate. There is value in writing everything from scratch and fighting through every bug, but that is not the focus here. This OS is meant to be a playground for ideas, so the priority is getting basic facilities implemented and working.
+
 ## Current State (Userspace Working)
 
 ### Completed Components
