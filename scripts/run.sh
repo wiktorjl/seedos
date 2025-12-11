@@ -24,12 +24,13 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
-# Build directory
+# Directories
 BUILD_DIR="build"
+LOG_DIR="log"
 
 # Default options
 GUI_MODE=true
-LOG_FILE="output.log"
+LOG_FILE="$LOG_DIR/output.log"
 DO_LOG=true
 
 # Parse command line arguments
@@ -100,6 +101,7 @@ else
 fi
 
 if [[ "$DO_LOG" == true ]]; then
+    mkdir -p "$LOG_DIR"
     echo "Logging to: $LOG_FILE"
     QEMU_CMD="$QEMU_CMD 2>&1 | tee $LOG_FILE"
 else
