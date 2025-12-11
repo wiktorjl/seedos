@@ -71,7 +71,7 @@ This is a hobby project I started to re-learn fundamental CS concepts in the ope
 ```
 ~/os/
 ├── boot.S          # Entry point, stack setup
-├── kernel.c        # Main, serial I/O, userspace demo
+├── kernel.c        # Main, serial I/O, initialization
 ├── linker.ld       # Linker script (higher-half)
 ├── limine.h        # Boot protocol structures
 ├── limine.conf     # Bootloader config
@@ -91,6 +91,7 @@ This is a hobby project I started to re-learn fundamental CS concepts in the ope
 ├── context.h       # Context switching API
 ├── context_switch.S # Context switching (asm)
 ├── user_program.h/c # Hardcoded user binary
+├── tests.h/c       # Kernel test suite (shell commands)
 └── user.S          # User program source (assembled separately)
 ```
 

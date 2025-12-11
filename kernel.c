@@ -36,16 +36,7 @@
 #include "gdt.h"
 #include "console.h"
 #include "vmm.h"
-#include "user_program.h"
-#include "context.h"
-
-/*
- * User program binary (assembled from user.S).
- * This is a simple "Hello World" program that runs in ring 3.
- * See user_program.c for the actual bytes.
- */
-extern unsigned char user_bin[];
-extern unsigned int user_bin_len;
+#include "tests.h"
 
 /*
  * Limine bootloader requests.
@@ -210,29 +201,6 @@ void serial_put_dec(uint64_t value) {
     }
 }
 
-/*
- * memmap_type_to_string - Convert Limine memory map type to human-readable string.
- *
- * The memory map from the bootloader describes regions of physical memory:
- *   - Usable: Free RAM we can allocate
- *   - Reserved: Used by hardware or firmware
- *   - ACPI Reclaimable: Can be reused after parsing ACPI tables
- *   - Kernel/Modules: Where our kernel code is loaded
- *   - Framebuffer: Video memory for graphics output
- */
-static const char *memmap_type_to_string(uint64_t type) {
-    switch (type) {
-        case LIMINE_MEMMAP_USABLE:                 return "Usable";
-        case LIMINE_MEMMAP_RESERVED:               return "Reserved";
-        case LIMINE_MEMMAP_ACPI_RECLAIMABLE:       return "ACPI Reclaimable";
-        case LIMINE_MEMMAP_ACPI_NVS:               return "ACPI NVS";
-        case LIMINE_MEMMAP_BAD_MEMORY:             return "Bad Memory";
-        case LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE: return "Bootloader Reclaimable";
-        case LIMINE_MEMMAP_KERNEL_AND_MODULES:     return "Kernel/Modules";
-        case LIMINE_MEMMAP_FRAMEBUFFER:            return "Framebuffer";
-        default:                                   return "Unknown";
-    }
-}
 
 
 /* =============================================================================
@@ -243,219 +211,83 @@ static const char *memmap_type_to_string(uint64_t type) {
  *   - Mapped the kernel to higher half
  *   - Set up a stack for us
  *
- * From here we initialize all kernel subsystems and eventually enter userspace.
+ * From here we initialize all kernel subsystems and start the shell.
  * =============================================================================
  */
 void kernel_main(void) {
+    /* Initialize serial port for early debug output */
     serial_init();
-    serial_puts("Hello from the kernel!\n\n");
 
-    /*
-     * Initialize framebuffer and console for dual output
-     */
+    /* Initialize framebuffer and console for dual output */
     if (fb_init((void *)fb_request.response) == 0) {
         fb_console_init();
-        console_init();  /* Now puts() will go to both serial and FB */
-        puts("Hello from the kernel!\n\n");
+        console_init();
     }
 
-    /* Check HHDM response */
+    /* Verify bootloader provided required information */
     if (hhdm_request.response == NULL) {
-        puts("ERROR: No HHDM from bootloader!\n");
+        puts("[FAIL] No HHDM from bootloader\n");
         goto halt;
     }
-    
-    puts("HHDM offset: ");
-    put_hex(hhdm_request.response->offset);
-    puts("\n\n");
 
-    /* Check if Limine gave us a memory map */
     if (memmap_request.response == NULL) {
-        puts("ERROR: No memory map from bootloader!\n");
+        puts("[FAIL] No memory map from bootloader\n");
         goto halt;
     }
 
     struct limine_memmap_response *memmap = memmap_request.response;
-    
-    puts("Memory Map (");
-    put_dec(memmap->entry_count);
-    puts(" entries):\n");
-    puts("----------------------------------------\n");
+    uint64_t hhdm_offset = hhdm_request.response->offset;
 
-    uint64_t total_usable = 0;
+    /* Display boot banner */
+    puts("\n");
+    puts("  ╔═══════════════════════════════════════╗\n");
+    puts("  ║            S E E D   O S              ║\n");
+    puts("  ║         x86-64 Hobby Kernel           ║\n");
+    puts("  ╚═══════════════════════════════════════╝\n");
+    puts("\n");
 
-    for (uint64_t i = 0; i < memmap->entry_count; i++) {
-        struct limine_memmap_entry *entry = memmap->entries[i];
-        
-        puts("  ");
-        put_hex(entry->base);
-        puts(" - ");
-        put_hex(entry->base + entry->length);
-        puts(" (");
-        put_dec(entry->length / 1024);
-        puts(" KB) ");
-        puts(memmap_type_to_string(entry->type));
-        puts("\n");
+    /* Initialize kernel subsystems */
+    puts("  Initializing kernel subsystems...\n\n");
 
-        if (entry->type == LIMINE_MEMMAP_USABLE) {
-            total_usable += entry->length;
-        }
-    }
-
-    puts("----------------------------------------\n");
-    puts("Total usable memory: ");
-    put_dec(total_usable / 1024 / 1024);
-    puts(" MB\n\n");
-
-    /*
-     * Initialize the physical memory manager
-     */
-    puts("Initializing PMM...\n");
-    pmm_init(memmap, hhdm_request.response->offset);
-    
-    puts("PMM initialized:\n");
-    puts("  Total pages: ");
-    put_dec(pmm_get_total_pages());
-    puts("\n  Free pages:  ");
-    put_dec(pmm_get_free_pages());
-    puts(" (");
+    /* Physical memory manager */
+    puts("    [....] PMM");
+    pmm_init(memmap, hhdm_offset);
+    puts("\r    [ OK ] PMM: ");
     put_dec(pmm_get_free_pages() * 4 / 1024);
-    puts(" MB)\n\n");
+    puts(" MB free\n");
 
-    /*
-     * Set up our own GDT with kernel and user segments
-     */
+    /* GDT with kernel and user segments */
+    puts("    [....] GDT");
     gdt_init();
+    puts("\r    [ OK ] GDT: kernel/user segments + TSS\n");
 
-    /*
-     * Initialize virtual memory manager
-     */
-    vmm_init(hhdm_request.response->offset);
+    /* Virtual memory manager */
+    puts("    [....] VMM");
+    vmm_init(hhdm_offset);
+    puts("\r    [ OK ] VMM: 4-level paging ready\n");
 
-    /*
-     * VMM Demo: Create a new address space and map some pages
-     */
-    puts("\nVMM Demo:\n");
-    puts("----------------------------------------\n");
-
-    /* Step 1: Create a new address space (for a future user process) */
-    puts("  Creating new address space...\n");
-    uint64_t user_pml4 = vmm_create_address_space();
-    if (user_pml4 == 0) {
-        puts("  ERROR: Failed to create address space!\n");
-        goto halt;
-    }
-    puts("    New PML4 at physical: ");
-    put_hex(user_pml4);
-    puts("\n");
-
-    /* Step 2: Allocate physical pages for user code and stack */
-    puts("  Allocating physical pages...\n");
-    uint64_t code_phys = pmm_alloc();
-    uint64_t stack_phys = pmm_alloc();
-    if (code_phys == 0 || stack_phys == 0) {
-        puts("  ERROR: Failed to allocate pages!\n");
-        goto halt;
-    }
-    puts("    Code page (physical):  ");
-    put_hex(code_phys);
-    puts("\n");
-    puts("    Stack page (physical): ");
-    put_hex(stack_phys);
-    puts("\n");
-
-    /* Step 3: Map user code at 0x400000 */
-    puts("  Mapping user code: ");
-    put_hex(USER_CODE_BASE);
-    puts(" -> ");
-    put_hex(code_phys);
-    puts("\n");
-    if (vmm_map_page(user_pml4, USER_CODE_BASE, code_phys,
-                     PTE_PRESENT | PTE_USER) != 0) {
-        puts("  ERROR: Failed to map code page!\n");
-        goto halt;
-    }
-
-    /* Step 4: Map user stack at 0x7FFFFF000 (writable) */
-    puts("  Mapping user stack: ");
-    put_hex(USER_STACK_BASE);
-    puts(" -> ");
-    put_hex(stack_phys);
-    puts("\n");
-    if (vmm_map_page(user_pml4, USER_STACK_BASE, stack_phys,
-                     PTE_PRESENT | PTE_WRITABLE | PTE_USER) != 0) {
-        puts("  ERROR: Failed to map stack page!\n");
-        goto halt;
-    }
-
-    /* Step 5: Write test data to the physical pages via HHDM */
-    puts("  Writing test pattern to code page via HHDM...\n");
-    uint8_t *code_ptr = (uint8_t *)(code_phys + hhdm_request.response->offset);
-    code_ptr[0] = 0xEB;  /* x86: JMP short (infinite loop) */
-    code_ptr[1] = 0xFE;  /* offset -2 (jump to self) */
-    puts("    Wrote 0xEB 0xFE (infinite loop) at code_ptr[0..1]\n");
-
-    puts("  Writing test pattern to stack page via HHDM...\n");
-    uint64_t *stack_ptr = (uint64_t *)(stack_phys + hhdm_request.response->offset);
-    stack_ptr[0] = 0xDEADBEEFCAFEBABE;
-    puts("    Wrote 0xDEADBEEFCAFEBABE at stack base\n");
-
-    /* Step 6: Switch to new address space and verify kernel still works */
-    puts("  Switching to new address space...\n");
-    vmm_switch_address_space(user_pml4);
-    puts("    SUCCESS! Kernel still accessible (upper half mapped)\n");
-
-    /* Step 7: Switch back to kernel's original address space */
-    puts("  Switching back to kernel address space...\n");
-    vmm_switch_address_space(vmm_get_kernel_pml4());
-    puts("    Back to kernel PML4\n");
-
-    puts("----------------------------------------\n");
-    puts("VMM Demo complete! Address space ready for userspace.\n");
-    puts("  User code entry: ");
-    put_hex(USER_CODE_BASE);
-    puts("\n");
-    puts("  User stack top:  ");
-    put_hex(USER_STACK_BASE + 0x1000);
-    puts("\n\n");
-
-    /*
-     * Initialize interrupt handling
-     */
-    puts("Initializing IDT...\n");
+    /* Interrupt descriptor table */
+    puts("    [....] IDT");
     idt_init();
-    
-    puts("Initializing PIC...\n");
+    puts("\r    [ OK ] IDT: 48 handlers + syscall\n");
+
+    /* Programmable interrupt controller */
+    puts("    [....] PIC");
     pic_init();
-    
-    puts("Initializing keyboard...\n");
+    puts("\r    [ OK ] PIC: remapped to IRQ 32-47\n");
+
+    /* PS/2 keyboard driver */
+    puts("    [....] Keyboard");
     keyboard_init();
-    
-    /* Enable interrupts! */
-    puts("Enabling interrupts...\n");
+    puts("\r    [ OK ] Keyboard: PS/2 driver ready\n");
+
+    /* Initialize test subsystem with bootloader info */
+    tests_init(memmap, hhdm_offset);
+
+    /* Enable interrupts */
     asm volatile ("sti");
-    
-    /* Copy user program to code page */
-    uint8_t *code_dest = (uint8_t *)(code_phys + hhdm_request.response->offset);
-    for (size_t i = 0; i < user_bin_len; i++) {
-        code_dest[i] = user_bin[i];
-    }
 
-    /*
-     * Enter userspace!
-     * When user calls sys_exit, we return here.
-     */
-    struct user_context ctx = {
-        .pml4  = user_pml4,
-        .entry = USER_CODE_BASE,
-        .stack = USER_STACK_BASE + 0x1000
-    };
-
-    context_switch_to_user(&ctx);
-
-    puts("\n========================================\n");
-    puts("  Back from userspace!\n");
-    puts("========================================\n\n");
+    puts("\n  System ready.\n");
 
     /* Start the shell */
     shell_init();
@@ -466,13 +298,12 @@ void kernel_main(void) {
             char c = keyboard_get_char();
             shell_input(c);
         }
-        
-        /* Halt until next interrupt */
+
+        /* Halt until next interrupt (saves power) */
         asm volatile ("hlt");
     }
 
 halt:
-    /* Halt - we have nothing else to do yet */
     while (1) {
         asm volatile ("hlt");
     }

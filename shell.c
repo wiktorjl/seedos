@@ -21,6 +21,7 @@
 #include "shell.h"
 #include "pmm.h"
 #include "console.h"
+#include "tests.h"
 #include <stdint.h>
 #include <stddef.h>
 
@@ -135,9 +136,14 @@ static void cmd_help(void) {
     puts("  meminfo       - Show memory statistics\n");
     puts("  alloc         - Allocate a physical page\n");
     puts("  free <addr>   - Free a physical page (hex address)\n");
+    puts("  clear         - Clear screen\n");
+    puts("\nTests:\n");
+    puts("  test memmap   - Display memory map from bootloader\n");
+    puts("  test vmm      - Run VMM test suite\n");
+    puts("  test user     - Run userspace program\n");
+    puts("\nDebugging:\n");
     puts("  crash         - Trigger a page fault\n");
     puts("  divzero       - Trigger divide by zero\n");
-    puts("  clear         - Clear screen\n");
     puts("\n");
 }
 
@@ -259,6 +265,34 @@ static void cmd_clear(void) {
     puts("\033[2J\033[H");
 }
 
+/*
+ * cmd_test - Run a test suite by name.
+ *
+ * @arg: The test name (after "test ").
+ */
+static void cmd_test(const char *arg) {
+    /* Skip leading whitespace */
+    while (*arg == CHAR_SPACE) arg++;
+
+    if (*arg == '\0') {
+        puts("\nUsage: test <name>\n");
+        puts("Available tests: memmap, vmm, user\n\n");
+        return;
+    }
+
+    if (strings_equal(arg, "memmap")) {
+        test_memmap();
+    } else if (strings_equal(arg, "vmm")) {
+        test_vmm();
+    } else if (strings_equal(arg, "user")) {
+        test_user();
+    } else {
+        puts("\nUnknown test: ");
+        puts(arg);
+        puts("\nAvailable tests: memmap, vmm, user\n\n");
+    }
+}
+
 /* =============================================================================
  * Command Dispatcher
  * =============================================================================
@@ -296,6 +330,10 @@ static void execute_command(void) {
         cmd_divzero();
     } else if (strings_equal(command_buffer, "clear")) {
         cmd_clear();
+    } else if (string_starts_with(command_buffer, "test ")) {
+        cmd_test(command_buffer + 5);  /* Skip "test " prefix */
+    } else if (strings_equal(command_buffer, "test")) {
+        cmd_test("");  /* No argument - will show usage */
     } else {
         puts("\nUnknown command: ");
         puts(command_buffer);
