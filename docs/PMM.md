@@ -1,6 +1,6 @@
 # Physical Memory Management
 
-This document explains how operating systems manage physical RAM, surveys approaches used by major operating systems, and provides a detailed walkthrough of MyOS's bitmap-based physical memory manager.
+This document explains how operating systems manage physical RAM, surveys approaches used by major operating systems, and provides a detailed walkthrough of Seed OS's bitmap-based physical memory manager.
 
 ## Table of Contents
 
@@ -314,13 +314,13 @@ Page transitions:
 | Linux | Buddy | SLUB slab | Per-CPU caches, memory cgroups |
 | macOS | Zone | Zone allocator | Garbage collection, compaction |
 | Windows | PFN Database | Pool allocator | Page lists, pre-zeroing thread |
-| **MyOS** | **Bitmap** | N/A (not yet) | Simple, educational |
+| **Seed OS** | **Bitmap** | N/A (not yet) | Simple, educational |
 
 ---
 
 ## Our Design Decisions
 
-For MyOS, we chose a **bitmap allocator** for these reasons:
+For Seed OS, we chose a **bitmap allocator** for these reasons:
 
 ### Why Bitmap?
 

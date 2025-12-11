@@ -1,6 +1,6 @@
 # Virtual Memory Management - Deep Dive
 
-This document provides a comprehensive look at virtual memory management: the general concepts, how production operating systems implement it, and a detailed walkthrough of MyOS's implementation.
+This document provides a comprehensive look at virtual memory management: the general concepts, how production operating systems implement it, and a detailed walkthrough of Seed OS's implementation.
 
 ## Table of Contents
 
@@ -8,7 +8,7 @@ This document provides a comprehensive look at virtual memory management: the ge
 2. [Why Virtual Memory Matters](#why-virtual-memory-matters)
 3. [Core Concepts](#core-concepts)
 4. [How Major Operating Systems Do It](#how-major-operating-systems-do-it)
-5. [MyOS Design Decisions](#myos-design-decisions)
+5. [Seed OS Design Decisions](#seed-os-design-decisions)
 6. [Implementation Walkthrough](#implementation-walkthrough)
 7. [Code Deep Dive](#code-deep-dive)
 
@@ -291,9 +291,9 @@ Windows aggressively manages which pages are "resident" (mapped in page tables):
 
 ---
 
-## MyOS Design Decisions
+## Seed OS Design Decisions
 
-MyOS takes a minimalist approach, implementing the core VMM functionality needed to run userspace programs.
+Seed OS takes a minimalist approach, implementing the core VMM functionality needed to run userspace programs.
 
 ### Design Goals
 
@@ -305,7 +305,7 @@ MyOS takes a minimalist approach, implementing the core VMM functionality needed
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│                     MyOS VMM Features                      │
+│                   Seed OS VMM Features                     │
 ├────────────────────────────────────────────────────────────┤
 │ ✓ 4-level page tables (PML4 → PDPT → PD → PT)             │
 │ ✓ Per-process address spaces                               │
@@ -991,7 +991,7 @@ Virtual memory management is one of the most important subsystems in any operati
 - **Memory protection** through permission flags
 - **Efficient memory use** through demand paging and sharing
 
-MyOS implements the essential VMM functionality:
+Seed OS implements the essential VMM functionality:
 
 | Component | What it does |
 |-----------|--------------|

@@ -1,4 +1,4 @@
-# MyOS Project
+# Seed OS
 
 A minimal x86-64 operating system built from scratch. Successfully runs "Hello World" from userspace!
 
@@ -109,7 +109,7 @@ This is a hobby project I started to re-learn fundamental CS concepts in the ope
 cd ~/os
 make
 ./build-iso.sh
-qemu-system-x86_64 -cdrom myos.iso -serial stdio
+qemu-system-x86_64 -cdrom seed.iso -serial stdio
 ```
 
 QEMU window: keyboard input, graphics output

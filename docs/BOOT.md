@@ -1,6 +1,6 @@
-# How MyOS Boots: The Journey from Power-On to Kernel
+# How Seed OS Boots: The Journey from Power-On to Kernel
 
-This document explains the complete boot process of MyOS, from the moment power is applied to the machine until our kernel code begins executing. Understanding this process is fundamental to OS development.
+This document explains the complete boot process of Seed OS, from the moment power is applied to the machine until our kernel code begins executing. Understanding this process is fundamental to OS development.
 
 ## Table of Contents
 
@@ -159,7 +159,7 @@ For this project, the bootloader is a means to an end. The end is a functioning 
 
 ## The Boot Sequence
 
-Here's what happens when you boot MyOS:
+Here's what happens when you boot Seed OS:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -488,7 +488,7 @@ The `limine.conf` tells Limine where to find our kernel:
 ```
 timeout: 0
 
-/MyOS
+/Seed OS
     protocol: limine
     path: boot():/boot/kernel.elf
 ```

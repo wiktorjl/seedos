@@ -1,6 +1,6 @@
-# Memory Layout - MyOS x86-64
+# Memory Layout - Seed OS x86-64
 
-This document explains how memory is organized in MyOS, from physical RAM to virtual address spaces, and how everything comes together during boot.
+This document explains how memory is organized in Seed OS, from physical RAM to virtual address spaces, and how everything comes together during boot.
 
 ## Table of Contents
 
