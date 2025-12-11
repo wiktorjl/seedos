@@ -35,6 +35,7 @@
 #include "fb.h"
 #include "gdt.h"
 #include "console.h"
+#include "pit.h"
 #include "vmm.h"
 #include "test_framework.h"
 #include "test_all.h"
@@ -266,6 +267,9 @@ void kernel_main(void) {
     keyboard_init();
     puts("[ok] keyboard\n");
 
+    pit_init();
+    puts("[ok] pit\n");
+    
     /* Initialize test framework and register all tests */
     test_framework_init(memmap, hhdm_offset);
     test_register_all();

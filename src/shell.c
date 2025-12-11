@@ -19,6 +19,7 @@
  */
 
 #include "shell.h"
+#include "pit.h"
 #include "pmm.h"
 #include "console.h"
 #include "test_framework.h"
@@ -145,6 +146,7 @@ static uint64_t parse_hex_string(const char *s) {
  */
 static void cmd_help(void) {
     puts("\nAvailable commands:\n");
+    puts("  uptime        - Show system uptime in ms\n");
     puts("  help          - Show this help\n");
     puts("  meminfo       - Show memory statistics\n");
     puts("  alloc         - Allocate a physical page\n");
@@ -192,6 +194,12 @@ static void cmd_meminfo(void) {
     puts(" MB)\n");
 
     puts("\n");
+}
+
+static void cmd_uptime(void) {
+    puts("\nUptime: \n");
+    put_dec(pit_get_ticks() * 10);
+    puts(" ms\n\n");
 }
 
 /*
@@ -385,6 +393,8 @@ static void execute_command(void) {
         cmd_test(command_buffer + 5);  /* Skip "test " prefix */
     } else if (strings_equal(command_buffer, "test")) {
         cmd_test("");  /* No argument - will list tests */
+    } else if (strings_equal(command_buffer, "uptime")) {
+        cmd_uptime();
     } else {
         puts("\nUnknown command: ");
         puts(command_buffer);

@@ -20,7 +20,7 @@
 #include "gdt.h"
 #include "console.h"
 #include <stddef.h>
-#include "syscall.h"
+#include "pit.h"
 
 /* Number of IDT entries (256 possible interrupt vectors) */
 #define IDT_ENTRIES 256
@@ -298,6 +298,11 @@ void interrupt_handler(struct interrupt_frame *frame) {
     if (frame->int_no >= IRQ_BASE && frame->int_no < IRQ_BASE + 16) {
         uint8_t irq_number = frame->int_no - IRQ_BASE;
 
+        if(irq_number == 0) {
+            pit_handler();
+            pic_send_eoi(0);
+            return;
+        }
         /* Dispatch to specific IRQ handler */
         if (irq_number == 1) {
             keyboard_handler();  /* IRQ1 = PS/2 keyboard */
