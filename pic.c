@@ -3,6 +3,7 @@
  */
 
 #include "pic.h"
+#include "io.h"
 
 /* PIC ports */
 #define PIC1_COMMAND 0x20
@@ -16,21 +17,7 @@
 #define ICW4_8086    0x01  /* 8086/88 mode */
 #define PIC_EOI      0x20  /* End of interrupt */
 
-/* I/O helpers - same as in kernel.c */
-static inline void outb(uint16_t port, uint8_t value) {
-    asm volatile ("outb %0, %1" : : "a"(value), "d"(port));
-}
-
-static inline uint8_t inb(uint16_t port) {
-    uint8_t value;
-    asm volatile ("inb %1, %0" : "=a"(value) : "d"(port));
-    return value;
-}
-
-/* Small delay for PIC to catch up */
-static inline void io_wait(void) {
-    outb(0x80, 0);  /* Port 0x80 is used for POST codes, safe for delay */
-}
+/* I/O helpers provided by io.h */
 
 void pic_init(void) {
     /* Save current masks */

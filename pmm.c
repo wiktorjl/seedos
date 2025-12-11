@@ -5,23 +5,16 @@
  */
 
 #include "pmm.h"
+#include "memory.h"
+
+/* Global HHDM offset - shared via memory.h */
+uint64_t g_hhdm_offset;
 
 /* Global state */
 static uint8_t *bitmap;           /* Pointer to bitmap (virtual address) */
 static uint64_t bitmap_size;      /* Size of bitmap in bytes */
 static uint64_t total_pages;      /* Total number of pages being tracked */
 static uint64_t free_pages;       /* Number of free pages */
-static uint64_t hhdm;             /* HHDM offset for phys->virt conversion */
-
-/* Convert physical address to virtual address using HHDM */
-static inline void *phys_to_virt(uint64_t phys) {
-    return (void *)(phys + hhdm);
-}
-
-/* Convert virtual address to physical address */
-static inline uint64_t virt_to_phys(void *virt) {
-    return (uint64_t)virt - hhdm;
-}
 
 /* Set a bit in the bitmap (mark page as used) */
 static inline void bitmap_set(uint64_t page_index) {
@@ -39,7 +32,7 @@ static inline int bitmap_test(uint64_t page_index) {
 }
 
 void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
-    hhdm = hhdm_offset;
+    g_hhdm_offset = hhdm_offset;
 
     /*
      * Step 1: Find the highest physical address to determine

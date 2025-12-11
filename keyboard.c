@@ -4,17 +4,11 @@
 
 #include "keyboard.h"
 #include "pic.h"
+#include "io.h"
 
 /* Keyboard ports */
 #define KBD_DATA_PORT   0x60
 #define KBD_STATUS_PORT 0x64
-
-/* I/O helpers */
-static inline uint8_t inb(uint16_t port) {
-    uint8_t value;
-    asm volatile ("inb %1, %0" : "=a"(value) : "d"(port));
-    return value;
-}
 
 /* Simple circular buffer for typed characters */
 #define KBD_BUFFER_SIZE 64

@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "limine.h"
+#include "io.h"
 #include "pmm.h"
 #include "idt.h"
 #include "pic.h"
@@ -26,29 +27,7 @@ LIMINE_HHDM_REQUEST;
 LIMINE_MEMMAP_REQUEST;
 LIMINE_FRAMEBUFFER_REQUEST;
 
-/*
- * I/O port access
- *
- * x86 has a separate I/O address space (not memory-mapped).
- * The 'out' and 'in' instructions access it.
- */
-static inline void outb(uint16_t port, uint8_t value) {
-    asm volatile (
-        "outb %0, %1"
-        :                        /* no outputs */
-        : "a"(value), "d"(port)  /* value in AL, port in DX */
-    );
-}
-
-static inline uint8_t inb(uint16_t port) {
-    uint8_t value;
-    asm volatile (
-        "inb %1, %0"
-        : "=a"(value)   /* output in AL */
-        : "d"(port)     /* port in DX */
-    );
-    return value;
-}
+/* I/O port access is provided by io.h */
 
 /*
  * Serial port (UART 16550) on COM1
@@ -62,14 +41,21 @@ static inline uint8_t inb(uint16_t port) {
 #define SERIAL_MODEM_CTRL    (SERIAL_PORT + 4)  /* Modem control */
 #define SERIAL_LINE_STATUS   (SERIAL_PORT + 5)  /* Line status */
 
+/* Serial port configuration values */
+#define SERIAL_DLAB_ENABLE   0x80     /* Enable divisor latch access bit */
+#define SERIAL_8N1           0x03     /* 8 data bits, no parity, 1 stop bit */
+#define SERIAL_FIFO_ENABLE   0xC7     /* Enable FIFO, clear buffers, 14-byte threshold */
+#define SERIAL_RTS_DSR       0x03     /* RTS/DSR set */
+#define BAUD_38400_DIVISOR   0x03     /* Divisor for 38400 baud (115200 / 38400 = 3) */
+
 static void serial_init(void) {
-    outb(SERIAL_INTR_ENABLE, 0x00);   /* Disable interrupts */
-    outb(SERIAL_LINE_CTRL,   0x80);   /* Enable DLAB (divisor latch access) */
-    outb(SERIAL_DATA,        0x03);   /* Divisor low byte: 38400 baud */
-    outb(SERIAL_INTR_ENABLE, 0x00);   /* Divisor high byte */
-    outb(SERIAL_LINE_CTRL,   0x03);   /* 8 bits, no parity, one stop bit */
-    outb(SERIAL_FIFO_CTRL,   0xC7);   /* Enable FIFO, clear, 14-byte threshold */
-    outb(SERIAL_MODEM_CTRL,  0x03);   /* RTS/DSR set */
+    outb(SERIAL_INTR_ENABLE, 0x00);              /* Disable interrupts */
+    outb(SERIAL_LINE_CTRL,   SERIAL_DLAB_ENABLE);/* Enable DLAB (divisor latch access) */
+    outb(SERIAL_DATA,        BAUD_38400_DIVISOR);/* Divisor low byte: 38400 baud */
+    outb(SERIAL_INTR_ENABLE, 0x00);              /* Divisor high byte */
+    outb(SERIAL_LINE_CTRL,   SERIAL_8N1);        /* 8 bits, no parity, one stop bit */
+    outb(SERIAL_FIFO_CTRL,   SERIAL_FIFO_ENABLE);/* Enable FIFO, clear, 14-byte threshold */
+    outb(SERIAL_MODEM_CTRL,  SERIAL_RTS_DSR);    /* RTS/DSR set */
 }
 
 static int serial_transmit_ready(void) {
@@ -92,11 +78,18 @@ void serial_puts(const char *s) {
     }
 }
 
-/* Simple hex printing for addresses */
+/*
+ * Simple hex printing for addresses.
+ * Prints all 16 hex digits of a 64-bit value.
+ * HEX64_TOP_NIBBLE_SHIFT = 60 = (16 nibbles - 1) * 4 bits per nibble
+ */
+#define HEX64_TOP_NIBBLE_SHIFT 60
+#define BITS_PER_NIBBLE        4
+
 void serial_put_hex(uint64_t value) {
     const char *hex = "0123456789abcdef";
     serial_puts("0x");
-    for (int i = 60; i >= 0; i -= 4) {
+    for (int i = HEX64_TOP_NIBBLE_SHIFT; i >= 0; i -= BITS_PER_NIBBLE) {
         serial_putc(hex[(value >> i) & 0xF]);
     }
 }
