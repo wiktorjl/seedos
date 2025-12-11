@@ -3,9 +3,12 @@
 CC = gcc
 AS = as
 LD = ld
+OBJCOPY = objcopy
 
-# Build directory for all artifacts
+# Directories
+SRC_DIR = src
 BUILD_DIR = build
+USER_DIR = $(SRC_DIR)/userspace
 
 # C compiler flags
 CFLAGS = -ffreestanding       \
@@ -18,21 +21,32 @@ CFLAGS = -ffreestanding       \
          -Wall                \
          -Wextra              \
          -O2                  \
-         -g
+         -g                   \
+         -I$(SRC_DIR)         \
+         -I$(USER_DIR)
 
 # Linker flags
 LDFLAGS = -nostdlib           \
           -static             \
-          -T linker.ld
+          -T $(SRC_DIR)/linker.ld
 
-# Source files
-C_SOURCES = kernel.c pmm.c idt.c pic.c keyboard.c shell.c fb.c gdt.c console.c vmm.c syscall.c user_program.c tests.c
+# Kernel source files
+C_SOURCES = kernel.c pmm.c idt.c pic.c keyboard.c shell.c fb.c gdt.c console.c vmm.c syscall.c tests.c
 ASM_SOURCES = boot.S isr.S gdt_load.S context_switch.S
 
 # Object files (in build directory)
 C_OBJECTS = $(addprefix $(BUILD_DIR)/,$(C_SOURCES:.c=.o))
 ASM_OBJECTS = $(addprefix $(BUILD_DIR)/,$(ASM_SOURCES:.S=.o))
-OBJECTS = $(ASM_OBJECTS) $(C_OBJECTS)
+
+# User program artifacts
+USER_PROG_SRC = $(USER_DIR)/user_program.s
+USER_PROG_OBJ = $(BUILD_DIR)/user_prog.o
+USER_PROG_BIN = $(BUILD_DIR)/user.bin
+USER_PROG_C = $(USER_DIR)/user_program.c
+USER_PROG_KERNEL_OBJ = $(BUILD_DIR)/user_program.o
+
+# All objects
+OBJECTS = $(ASM_OBJECTS) $(C_OBJECTS) $(USER_PROG_KERNEL_OBJ)
 
 # Output
 KERNEL = $(BUILD_DIR)/kernel.elf
@@ -45,13 +59,33 @@ all: $(KERNEL)
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(KERNEL): $(OBJECTS) linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(OBJECTS)
+# Build user program: assemble .s -> .o -> .bin -> .c
+$(USER_PROG_OBJ): $(USER_PROG_SRC) | $(BUILD_DIR)
+	$(CC) -c -o $@ $<
 
-$(BUILD_DIR)/%.o: %.c | $(BUILD_DIR)
+$(USER_PROG_BIN): $(USER_PROG_OBJ)
+	$(OBJCOPY) -O binary $< $@
+
+$(USER_PROG_C): $(USER_PROG_BIN)
+	@echo "Generating $@ from $<"
+	@echo '#include "user_program.h"' > $@
+	@echo '' >> $@
+	@echo 'unsigned char user_bin[] = {' >> $@
+	@xxd -i < $< >> $@
+	@echo '};' >> $@
+	@echo "unsigned int user_bin_len = $$(wc -c < $<);" >> $@
+
+# Compile generated user_program.c
+$(USER_PROG_KERNEL_OBJ): $(USER_PROG_C) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BUILD_DIR)/%.o: %.S | $(BUILD_DIR)
+$(KERNEL): $(OBJECTS) $(SRC_DIR)/linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(OBJECTS)
+
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.S | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:

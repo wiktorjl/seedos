@@ -33,7 +33,7 @@ mkdir -p "$BUILD_DIR/iso_root/EFI/BOOT"
 # Step 3: Copy kernel and config
 echo "Copying kernel and bootloader config..."
 cp "$BUILD_DIR/kernel.elf" "$BUILD_DIR/iso_root/boot/"
-cp limine.conf "$BUILD_DIR/iso_root/boot/limine/"
+cp config/limine.conf "$BUILD_DIR/iso_root/boot/limine/"
 
 # Step 4: Copy Limine bootloader files
 echo "Copying Limine bootloader files..."
