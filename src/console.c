@@ -6,8 +6,7 @@
  *
  * Implementation Notes:
  *
- *   The serial output functions are defined in kernel.c (they're available
- *   from early boot before the framebuffer is initialized).
+ *   Serial output (serial.c) is always available from early boot.
  *
  *   Framebuffer output is only enabled after console_init() is called,
  *   which should happen after the framebuffer is set up.
@@ -17,18 +16,8 @@
  */
 
 #include "console.h"
+#include "serial.h"
 #include "fb.h"
-
-/* =============================================================================
- * External Serial Functions (defined in kernel.c)
- *
- * These are always available and work from the earliest point in boot.
- * =============================================================================
- */
-extern void serial_puts(const char *s);
-extern void serial_putc(char c);
-extern void serial_put_hex(uint64_t value);
-extern void serial_put_dec(uint64_t value);
 
 /* =============================================================================
  * Console State
