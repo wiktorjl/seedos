@@ -240,54 +240,36 @@ void kernel_main(void) {
 
     /* Display boot banner */
     puts("\n");
-    puts("  ╔═══════════════════════════════════════╗\n");
-    puts("  ║            S E E D   O S              ║\n");
-    puts("  ║         x86-64 Hobby Kernel           ║\n");
-    puts("  ╚═══════════════════════════════════════╝\n");
+    puts("SEED OS\n");
+    puts("x86-64 Kernel\n");
     puts("\n");
 
     /* Initialize kernel subsystems */
-    puts("  Initializing kernel subsystems...\n\n");
-
-    /* Physical memory manager */
-    puts("    [....] PMM");
     pmm_init(memmap, hhdm_offset);
-    puts("\r    [ OK ] PMM: ");
+    puts("[ok] pmm: ");
     put_dec(pmm_get_free_pages() * 4 / 1024);
     puts(" MB free\n");
 
-    /* GDT with kernel and user segments */
-    puts("    [....] GDT");
     gdt_init();
-    puts("\r    [ OK ] GDT: kernel/user segments + TSS\n");
+    puts("[ok] gdt\n");
 
-    /* Virtual memory manager */
-    puts("    [....] VMM");
     vmm_init(hhdm_offset);
-    puts("\r    [ OK ] VMM: 4-level paging ready\n");
+    puts("[ok] vmm\n");
 
-    /* Interrupt descriptor table */
-    puts("    [....] IDT");
     idt_init();
-    puts("\r    [ OK ] IDT: 48 handlers + syscall\n");
+    puts("[ok] idt\n");
 
-    /* Programmable interrupt controller */
-    puts("    [....] PIC");
     pic_init();
-    puts("\r    [ OK ] PIC: remapped to IRQ 32-47\n");
+    puts("[ok] pic\n");
 
-    /* PS/2 keyboard driver */
-    puts("    [....] Keyboard");
     keyboard_init();
-    puts("\r    [ OK ] Keyboard: PS/2 driver ready\n");
+    puts("[ok] keyboard\n");
 
-    /* Initialize test subsystem with bootloader info */
     tests_init(memmap, hhdm_offset);
 
-    /* Enable interrupts */
     asm volatile ("sti");
 
-    puts("\n  System ready.\n");
+    puts("\n");
 
     /* Start the shell */
     shell_init();

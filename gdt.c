@@ -33,7 +33,6 @@
  */
 
 #include "gdt.h"
-#include "console.h"
 #include <stddef.h>
 
 /*
@@ -214,8 +213,6 @@ extern void tss_load(uint16_t tss_sel);
  *   5. Loads the TSS via LTR
  */
 void gdt_init(void) {
-    puts("Setting up GDT...\n");
-
     /* Entry 0: Null descriptor (required by x86 architecture) */
     gdt[0] = (struct gdt_entry){0};
 
@@ -252,22 +249,11 @@ void gdt_init(void) {
     gdtr.limit = sizeof(gdt) - 1;
     gdtr.base = (uint64_t)&gdt;
 
-    puts("  GDTR base: ");
-    put_hex(gdtr.base);
-    puts("\n  GDTR limit: ");
-    put_hex(gdtr.limit);
-    puts("\n");
-
     /* Load GDT and reload segment registers */
     gdt_load(&gdtr, GDT_KERNEL_CODE, GDT_KERNEL_DATA);
 
-    puts("  GDT loaded, reloaded segment registers\n");
-
     /* Load TSS */
     tss_load(GDT_TSS);
-
-    puts("  TSS loaded\n");
-    puts("GDT setup complete!\n\n");
 }
 
 /*

@@ -22,7 +22,6 @@ extern unsigned int user_bin_len;
  * =============================================================================
  */
 
-/* Saved references from kernel initialization */
 static struct limine_memmap_response *saved_memmap = NULL;
 static uint64_t saved_hhdm_offset = 0;
 
@@ -62,35 +61,25 @@ void tests_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
 
 void test_memmap(void) {
     if (saved_memmap == NULL) {
-        puts("\n  Error: Memory map not available\n\n");
+        puts("\nerror: memory map not available\n\n");
         return;
     }
 
-    puts("\n");
-    puts("  Memory Map (");
+    puts("\nmemory map (");
     put_dec(saved_memmap->entry_count);
-    puts(" entries)\n");
-    puts("  ──────────────────────────────────────────────────────────────\n");
+    puts(" entries):\n");
 
     uint64_t total_usable = 0;
 
     for (uint64_t i = 0; i < saved_memmap->entry_count; i++) {
         struct limine_memmap_entry *entry = saved_memmap->entries[i];
 
-        puts("  ");
         put_hex(entry->base);
         puts(" - ");
         put_hex(entry->base + entry->length);
-        puts(" ");
-
-        /* Right-align size */
-        uint64_t size_kb = entry->length / 1024;
-        if (size_kb < 10) puts("    ");
-        else if (size_kb < 100) puts("   ");
-        else if (size_kb < 1000) puts("  ");
-        else if (size_kb < 10000) puts(" ");
-        put_dec(size_kb);
-        puts(" KB  ");
+        puts(" (");
+        put_dec(entry->length / 1024);
+        puts(" KB) ");
         puts(memmap_type_name(entry->type));
         puts("\n");
 
@@ -99,8 +88,7 @@ void test_memmap(void) {
         }
     }
 
-    puts("  ──────────────────────────────────────────────────────────────\n");
-    puts("  Total usable: ");
+    puts("total usable: ");
     put_dec(total_usable / 1024 / 1024);
     puts(" MB\n\n");
 }
@@ -111,87 +99,66 @@ void test_memmap(void) {
  */
 
 void test_vmm(void) {
-    puts("\n");
-    puts("  VMM Test Suite\n");
-    puts("  ──────────────────────────────────────────────────────────────\n");
+    puts("\nvmm test:\n");
 
     /* Step 1: Create a new address space */
-    puts("  [1] Creating new address space... ");
+    puts("creating address space... ");
     uint64_t test_pml4 = vmm_create_address_space();
     if (test_pml4 == 0) {
-        puts("FAILED\n\n");
+        puts("FAIL\n\n");
         return;
     }
-    puts("OK\n");
-    puts("      PML4 physical: ");
+    puts("ok (pml4=");
     put_hex(test_pml4);
-    puts("\n");
+    puts(")\n");
 
     /* Step 2: Allocate physical pages */
-    puts("  [2] Allocating test pages... ");
+    puts("allocating pages... ");
     uint64_t page1_phys = pmm_alloc();
     uint64_t page2_phys = pmm_alloc();
     if (page1_phys == 0 || page2_phys == 0) {
-        puts("FAILED\n\n");
+        puts("FAIL\n\n");
         return;
     }
-    puts("OK\n");
-    puts("      Page 1: ");
-    put_hex(page1_phys);
-    puts("\n");
-    puts("      Page 2: ");
-    put_hex(page2_phys);
-    puts("\n");
+    puts("ok\n");
 
     /* Step 3: Map pages into the test address space */
-    puts("  [3] Mapping pages... ");
+    puts("mapping pages... ");
     int r1 = vmm_map_page(test_pml4, USER_CODE_BASE, page1_phys, PTE_PRESENT | PTE_USER);
     int r2 = vmm_map_page(test_pml4, USER_STACK_BASE, page2_phys, PTE_PRESENT | PTE_WRITABLE | PTE_USER);
     if (r1 != 0 || r2 != 0) {
-        puts("FAILED\n\n");
+        puts("FAIL\n\n");
         return;
     }
-    puts("OK\n");
-    puts("      ");
-    put_hex(USER_CODE_BASE);
-    puts(" -> ");
-    put_hex(page1_phys);
-    puts(" (code)\n");
-    puts("      ");
-    put_hex(USER_STACK_BASE);
-    puts(" -> ");
-    put_hex(page2_phys);
-    puts(" (stack)\n");
+    puts("ok\n");
 
     /* Step 4: Write test patterns via HHDM */
-    puts("  [4] Writing test patterns via HHDM... ");
+    puts("writing test patterns... ");
     uint64_t *ptr1 = (uint64_t *)(page1_phys + saved_hhdm_offset);
     uint64_t *ptr2 = (uint64_t *)(page2_phys + saved_hhdm_offset);
     ptr1[0] = 0xCAFEBABEDEADBEEF;
     ptr2[0] = 0x1234567890ABCDEF;
-    puts("OK\n");
+    puts("ok\n");
 
     /* Step 5: Switch to test address space and back */
-    puts("  [5] Switching address spaces... ");
+    puts("switching address spaces... ");
     vmm_switch_address_space(test_pml4);
-    /* If we get here, kernel is still accessible (mapped in upper half) */
     vmm_switch_address_space(vmm_get_kernel_pml4());
-    puts("OK\n");
+    puts("ok\n");
 
     /* Step 6: Verify patterns are intact */
-    puts("  [6] Verifying test patterns... ");
+    puts("verifying patterns... ");
     if (ptr1[0] == 0xCAFEBABEDEADBEEF && ptr2[0] == 0x1234567890ABCDEF) {
-        puts("OK\n");
+        puts("ok\n");
     } else {
-        puts("FAILED\n");
+        puts("FAIL\n");
     }
 
-    /* Cleanup: free pages (in a real system we'd also free page tables) */
+    /* Cleanup */
     pmm_free(page1_phys);
     pmm_free(page2_phys);
 
-    puts("  ──────────────────────────────────────────────────────────────\n");
-    puts("  All VMM tests passed\n\n");
+    puts("all tests passed\n\n");
 }
 
 /* =============================================================================
@@ -200,50 +167,47 @@ void test_vmm(void) {
  */
 
 void test_user(void) {
-    puts("\n");
-    puts("  Userspace Test\n");
-    puts("  ──────────────────────────────────────────────────────────────\n");
+    puts("\nuserspace test:\n");
 
     /* Create address space */
-    puts("  Creating user address space... ");
+    puts("creating address space... ");
     uint64_t user_pml4 = vmm_create_address_space();
     if (user_pml4 == 0) {
-        puts("FAILED\n\n");
+        puts("FAIL\n\n");
         return;
     }
-    puts("OK\n");
+    puts("ok\n");
 
     /* Allocate pages for code and stack */
-    puts("  Allocating code and stack pages... ");
+    puts("allocating pages... ");
     uint64_t code_phys = pmm_alloc();
     uint64_t stack_phys = pmm_alloc();
     if (code_phys == 0 || stack_phys == 0) {
-        puts("FAILED\n\n");
+        puts("FAIL\n\n");
         return;
     }
-    puts("OK\n");
+    puts("ok\n");
 
     /* Map pages */
-    puts("  Mapping user memory... ");
+    puts("mapping user memory... ");
     if (vmm_map_page(user_pml4, USER_CODE_BASE, code_phys, PTE_PRESENT | PTE_USER) != 0 ||
         vmm_map_page(user_pml4, USER_STACK_BASE, stack_phys, PTE_PRESENT | PTE_WRITABLE | PTE_USER) != 0) {
-        puts("FAILED\n\n");
+        puts("FAIL\n\n");
         return;
     }
-    puts("OK\n");
+    puts("ok\n");
 
     /* Copy user program to code page */
-    puts("  Loading user binary (");
+    puts("loading binary (");
     put_dec(user_bin_len);
     puts(" bytes)... ");
     uint8_t *code_ptr = (uint8_t *)(code_phys + saved_hhdm_offset);
     for (size_t i = 0; i < user_bin_len; i++) {
         code_ptr[i] = user_bin[i];
     }
-    puts("OK\n");
+    puts("ok\n");
 
-    puts("  ──────────────────────────────────────────────────────────────\n");
-    puts("  Entering userspace (ring 3)...\n\n");
+    puts("entering ring 3...\n\n");
 
     /* Enter userspace */
     struct user_context ctx = {
@@ -254,6 +218,5 @@ void test_user(void) {
 
     context_switch_to_user(&ctx);
 
-    puts("\n  ──────────────────────────────────────────────────────────────\n");
-    puts("  Returned from userspace\n\n");
+    puts("\nreturned from userspace\n\n");
 }

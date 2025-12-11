@@ -80,14 +80,6 @@ void vmm_init(uint64_t hhdm_offset) {
     uint64_t cr3;
     asm volatile ("movq %%cr3, %0" : "=r"(cr3));
     kernel_pml4_phys = cr3 & PTE_ADDR_MASK;
-
-    puts("VMM initialized\n");
-    puts("  HHDM offset: ");
-    put_hex(g_hhdm_offset);
-    puts("\n");
-    puts("  Kernel PML4: ");
-    put_hex(kernel_pml4_phys);
-    puts("\n");
 }
 
 uint64_t vmm_create_address_space(void) {
