@@ -50,10 +50,10 @@ xorriso -as mkisofs -R -r -J \
     -hfsplus -apm-block-size 2048 \
     --efi-boot boot/limine/limine-uefi-cd.bin \
     -efi-boot-part --efi-boot-image --protective-msdos-label \
-    iso_root -o myos.iso 2>/dev/null
+    iso_root -o seed.iso 2>/dev/null
 
 # Step 6: Install Limine for legacy BIOS boot
 echo "Installing Limine BIOS stages..."
-./limine/limine bios-install myos.iso 2>/dev/null
+./limine/limine bios-install seed.iso 2>/dev/null
 
-print_success "Build complete: myos.iso"
+print_success "Build complete: seed.iso"

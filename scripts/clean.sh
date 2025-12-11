@@ -23,7 +23,7 @@ make clean
 # Clean ISO artifacts
 echo "Removing ISO build artifacts..."
 rm -rf iso_root
-rm -f myos.iso
+rm -f seed.iso
 
 # Clean log files
 echo "Removing log files..."

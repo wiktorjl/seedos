@@ -317,7 +317,7 @@ static void execute_command(void) {
 void shell_init(void) {
     puts("\n");
     puts("========================================\n");
-    puts("       MyOS Shell v0.1\n");
+    puts("       Seed OS Shell v0.1\n");
     puts("  Type 'help' for available commands\n");
     puts("========================================\n");
     shell_prompt();
@@ -327,7 +327,7 @@ void shell_init(void) {
  * shell_prompt - Display the command prompt.
  */
 void shell_prompt(void) {
-    puts("myos> ");
+    puts("seed> ");
 }
 
 /*

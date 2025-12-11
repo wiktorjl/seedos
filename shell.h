@@ -65,7 +65,7 @@ void shell_init(void);
 /*
  * shell_prompt - Display the shell prompt.
  *
- * Prints "myos> " to indicate the shell is ready for input.
+ * Prints "seed> " to indicate the shell is ready for input.
  * Called internally after command execution; not typically called directly.
  */
 void shell_prompt(void);

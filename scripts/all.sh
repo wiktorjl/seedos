@@ -47,7 +47,7 @@ cd_to_root
 
 echo ""
 echo "========================================"
-echo "  MyOS Build Pipeline"
+echo "  Seed OS Build Pipeline"
 echo "========================================"
 echo ""
 echo "Steps: clean -> build -> run"

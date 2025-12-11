@@ -75,8 +75,8 @@ done
 cd_to_root
 
 # Check that ISO exists
-if [[ ! -f "myos.iso" ]]; then
-    print_error "myos.iso not found. Run build.sh first."
+if [[ ! -f "seed.iso" ]]; then
+    print_error "seed.iso not found. Run build.sh first."
     exit 1
 fi
 
@@ -86,7 +86,7 @@ print_header "RUN"
 TERM_SIZE=$(stty size 2>/dev/null || echo "")
 
 # Build QEMU command
-QEMU_CMD="qemu-system-x86_64 -cdrom myos.iso"
+QEMU_CMD="qemu-system-x86_64 -cdrom seed.iso"
 
 if [[ "$GUI_MODE" == true ]]; then
     echo "Mode: GUI (graphical window)"
