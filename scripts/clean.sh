@@ -16,16 +16,11 @@ cd_to_root
 
 print_header "CLEAN"
 
-# Clean compiled objects and kernel
-echo "Removing object files and kernel..."
+# Clean everything via Makefile (removes build/ directory)
+echo "Removing build directory..."
 make clean
 
-# Clean ISO artifacts
-echo "Removing ISO build artifacts..."
-rm -rf iso_root
-rm -f seed.iso
-
-# Clean log files
+# Clean any stray log files in root
 echo "Removing log files..."
 rm -f *.log
 

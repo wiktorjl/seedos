@@ -24,6 +24,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
+# Build directory
+BUILD_DIR="build"
+
 # Default options
 GUI_MODE=true
 LOG_FILE="output.log"
@@ -75,8 +78,8 @@ done
 cd_to_root
 
 # Check that ISO exists
-if [[ ! -f "seed.iso" ]]; then
-    print_error "seed.iso not found. Run build.sh first."
+if [[ ! -f "$BUILD_DIR/seed.iso" ]]; then
+    print_error "$BUILD_DIR/seed.iso not found. Run build.sh first."
     exit 1
 fi
 
@@ -86,7 +89,7 @@ print_header "RUN"
 TERM_SIZE=$(stty size 2>/dev/null || echo "")
 
 # Build QEMU command
-QEMU_CMD="qemu-system-x86_64 -cdrom seed.iso"
+QEMU_CMD="qemu-system-x86_64 -cdrom $BUILD_DIR/seed.iso"
 
 if [[ "$GUI_MODE" == true ]]; then
     echo "Mode: GUI (graphical window)"
