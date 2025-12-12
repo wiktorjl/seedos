@@ -1,12 +1,8 @@
 #include <stddef.h>
-#include <stdint.h>
 #include "programs.h"
-#include "context.h"
-#include "memory.h"
-#include "pmm.h"
+#include "process.h"
 #include "user_program.h"
 #include "string.h"
-#include "vmm.h"
 
 static struct user_program programs[MAX_PROGRAMS];
 static int program_count = 0;
@@ -54,32 +50,22 @@ struct user_program *programs_find(const char *name) {
 
 int programs_run(const char *name) {
     struct user_program *prog = programs_find(name);
-    
-    if(prog != NULL) {
-        // Set up address space for the user program
-        uint64_t memory = vmm_create_address_space();
-        uint64_t code_page_phys = pmm_alloc();
-        uint64_t stack_page_phys = pmm_alloc();
-
-        if(memory != 0 && code_page_phys != 0 && stack_page_phys != 0) {
-            struct user_context ctx;
-            ctx.pml4 = memory;
-            ctx.entry = USER_CODE_BASE;
-            ctx.stack = USER_STACK_BASE + USER_STACK_SIZE;
-
-            vmm_map_page(memory, USER_CODE_BASE, code_page_phys, PTE_PRESENT | PTE_USER | PTE_WRITABLE);
-            vmm_map_page(memory, USER_STACK_BASE, stack_page_phys, PTE_PRESENT | PTE_USER | PTE_WRITABLE);
-            
-            void * code_page_virt = phys_to_virt(code_page_phys);
-            memcpy(code_page_virt, prog->code, prog->code_len);
-
-            context_switch_to_user(&ctx);
-
-            pmm_free(code_page_phys);
-            pmm_free(stack_page_phys);
-            return 0;
-        }
+    if (prog == NULL) {
+        return -1;
     }
-    return -1;
+
+    struct process *p = process_create();
+    if (p == NULL) {
+        return -1;
+    }
+
+    if (process_load(p, prog->code, prog->code_len) != 0) {
+        process_destroy(p);
+        return -1;
+    }
+
+    int exit_code = process_run(p);
+    process_destroy(p);
+    return exit_code;
 }
 
