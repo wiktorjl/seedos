@@ -95,7 +95,7 @@
  */
 #define USER_CODE_BASE   0x400000ULL       /* Where user code is loaded */
 #define USER_STACK_BASE  0x7FFFFF000ULL    /* Base of user stack page */
-
+#define USER_HEAP_BASE   0x500000ULL       /* Where user heap starts */
 /* =============================================================================
  * VMM API Functions
  * =============================================================================

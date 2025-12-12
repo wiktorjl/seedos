@@ -24,6 +24,8 @@
 #include "process.h"
 #include "vmm.h"
 #include "context.h"
+#include "pit.h"
+#include <stdint.h>
 
 /* File descriptor for standard output (stdout) */
 #define FD_STDOUT 1
@@ -100,6 +102,18 @@ static uint64_t sys_write(uint64_t fd, uint64_t buffer, uint64_t count) {
     return count;  /* All bytes written successfully */
 }
 
+static uint64_t sys_getpid(void) {
+    return process_get_pid();
+}
+
+static uint64_t sys_getuptime(void) {
+    return pit_get_ticks() * 1000;  /* Convert ticks to milliseconds */
+}
+
+static uint64_t sys_brk(uint64_t increment) {
+    return (uint64_t)process_sbrk((intptr_t)increment);
+}   
+
 /* =============================================================================
  * Syscall Dispatcher
  * =============================================================================
@@ -132,6 +146,18 @@ void syscall_handler(struct syscall_registers *regs) {
 
         case SYS_WRITE:
             regs->rax = sys_write(regs->rdi, regs->rsi, regs->rdx);
+            break;
+        
+        case SYS_GETPID:
+            regs->rax = sys_getpid();
+            break;
+        
+        case SYS_UPTIME:
+            regs->rax = sys_getuptime();
+            break;
+
+        case SYS_SBRK:
+            regs->rax = sys_brk(regs->rdi);
             break;
 
         default:
