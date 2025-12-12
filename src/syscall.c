@@ -84,7 +84,7 @@ static void sys_exit(uint64_t exit_code) {
 static uint64_t sys_write(uint64_t fd, uint64_t buffer, uint64_t count) {
     const char *buf = (const char *)buffer;
 
-    if (buffer >= 0x0000800000000000ULL || buffer + count >= 0x0000800000000000ULL) {
+    if (!vmm_validate_user_range((const void *)buffer, count)) {
         puts("Error: Invalid user buffer address\n");
         return 0;
     }

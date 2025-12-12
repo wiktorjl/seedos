@@ -64,6 +64,15 @@ static uint64_t alloc_page_table(void) {
     return phys;
 }
 
+bool vmm_validate_user_range(const void *ptr, size_t len) {
+    uint64_t addr = (uint64_t)ptr;
+    // Check pointer is in user space
+    if (addr >= USER_SPACE_TOP) return false;
+    // Check end doesn't overflow
+    if (len > USER_SPACE_TOP - addr) return false;
+    return true;
+}
+
 /* =============================================================================
  * VMM Public API Implementation
  * =============================================================================

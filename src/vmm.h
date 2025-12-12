@@ -40,6 +40,8 @@
 #define VMM_H
 
 #include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
 
 /* Page size - must match PAGE_SIZE in pmm.h */
 #define VMM_PAGE_SIZE 4096
@@ -100,6 +102,10 @@
  * VMM API Functions
  * =============================================================================
  */
+
+
+bool vmm_validate_user_range(const void *ptr, size_t len);
+
 
 /*
  * vmm_init - Initialize the Virtual Memory Manager.
