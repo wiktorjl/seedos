@@ -45,9 +45,15 @@ struct process {
     uint64_t code_page;     /* Physical address of code page */
     uint64_t stack_page;    /* Physical address of stack page */
     uint64_t entry;         /* Entry point virtual address */
+    uint64_t brk;           /* Current break address for sbrk() */
     uint64_t stack;         /* Initial stack pointer */
     int exit_code;          /* Exit code after process terminates */
+    int pid;                /* Process ID */
 };
+
+void *process_sbrk(int64_t increment);
+
+int process_get_pid(void);
 
 int process_get_exit_code();
 
@@ -70,7 +76,7 @@ void process_set_exit_code(int code);
 struct process *process_create(void);
 
 /*
- * process_load - Load binary code into the process address space.
+ * process_load - Load raw binary code into the process address space.
  *
  * @p:    Process to load into (must have been created with process_create)
  * @code: Pointer to the binary code
@@ -80,8 +86,25 @@ struct process *process_create(void);
  * be visible at USER_CODE_BASE when the process runs.
  *
  * Returns: 0 on success, -1 on failure.
+ *
+ * Note: Prefer process_load_elf() for loading ELF executables.
  */
 int process_load(struct process *p, const void *code, uint32_t len);
+
+/*
+ * process_load_elf - Load an ELF executable into the process address space.
+ *
+ * @p:    Process to load into (must have been created with process_create)
+ * @data: Pointer to the ELF file data
+ * @size: Size of the ELF data in bytes
+ *
+ * Parses the ELF header and loads all PT_LOAD segments at their
+ * specified virtual addresses. Sets the process entry point from
+ * the ELF header.
+ *
+ * Returns: 0 on success, -1 on failure.
+ */
+int process_load_elf(struct process *p, const void *data, uint64_t size);
 
 /*
  * process_run - Execute the process until it exits.

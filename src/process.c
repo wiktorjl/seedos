@@ -11,6 +11,7 @@
 #include "memory.h"
 #include "context.h"
 #include "string.h"
+#include "elf.h"
 #include <stddef.h>
 
 /* Page size for stack allocation */
@@ -26,6 +27,9 @@
  * TODO: Support multiple processes with proper allocation.
  */
 static struct process current_process;
+
+static int next_pid = 1;
+
 static int process_in_use = 0;
 
 static int last_exit_code = 0;
@@ -36,6 +40,13 @@ int process_get_exit_code() {
 
 void process_set_exit_code(int code) {
     last_exit_code = code;
+}
+
+int process_get_pid(void) {
+    if (!process_in_use) {
+        return -1;
+    }
+    return current_process.pid;
 }
 
 struct process *process_create(void) {
@@ -53,6 +64,8 @@ struct process *process_create(void) {
     p->entry = USER_CODE_BASE;
     p->stack = USER_STACK_BASE + PROCESS_STACK_SIZE;
     p->exit_code = 0;
+    p->pid = next_pid++; 
+    p->brk = USER_HEAP_BASE;
 
     /* Create new address space (PML4 with kernel mappings) */
     p->pml4 = vmm_create_address_space();
@@ -114,6 +127,24 @@ int process_load(struct process *p, const void *code, uint32_t len) {
     return 0;
 }
 
+int process_load_elf(struct process *p, const void *data, uint64_t size) {
+    if (p == NULL || data == NULL) {
+        return -1;
+    }
+
+    uint64_t entry;
+
+    /* Use ELF loader to load segments into process address space */
+    if (elf_load(data, size, p->pml4, &entry) != 0) {
+        return -1;
+    }
+
+    /* Set entry point from ELF header */
+    p->entry = entry;
+
+    return 0;
+}
+
 int process_run(struct process *p) {
     if (p == NULL) {
         return -1;
@@ -155,4 +186,44 @@ void process_destroy(struct process *p) {
 
     /* Mark as available */
     process_in_use = 0;
+}
+
+
+void * process_sbrk(intptr_t increment) {
+    if (!process_in_use) {
+        return (void *)-1;
+    }
+
+    struct process *p = &current_process;
+    uint64_t old_brk = p->brk;
+    uint64_t new_brk = old_brk + increment;
+
+    /* Don't allow shrinking below heap base */
+    if (new_brk < USER_HEAP_BASE) {
+        return (void *)-1;
+    }
+
+    /* Allocate new pages if growing */
+    if (new_brk > old_brk) {
+        /* Calculate which pages need to be mapped */
+        uint64_t old_page = (old_brk - 1) / VMM_PAGE_SIZE;
+        uint64_t new_page = (new_brk - 1) / VMM_PAGE_SIZE;
+
+        for (uint64_t page = old_page + 1; page <= new_page; page++) {
+            uint64_t virt = page * VMM_PAGE_SIZE;
+            uint64_t phys = pmm_alloc();
+            if (phys == 0) {
+                return (void *)-1;
+            }
+            if (vmm_map_page(p->pml4, virt, phys, PTE_PRESENT | PTE_USER | PTE_WRITABLE) != 0) {
+                pmm_free(phys);
+                return (void *)-1;
+            }
+            void *page_virt = phys_to_virt(phys);
+            memset(page_virt, 0, VMM_PAGE_SIZE);
+        }
+    }
+
+    p->brk = new_brk;
+    return (void *)old_brk;
 }
