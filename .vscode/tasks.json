@@ -21,13 +21,7 @@
         {
             "label": "Start QEMU Debug Server",
             "type": "shell",
-            "command": "qemu-system-x86_64",
-            "args": [
-                "-cdrom", "seed.iso",
-                "-serial", "stdio",
-                "-s",
-                "-S"
-            ],
+            "command": "./scripts/run.sh --debug --no-log",
             "dependsOn": "Build ISO",
             "isBackground": true,
             "problemMatcher": {
@@ -44,11 +38,7 @@
         {
             "label": "Run QEMU",
             "type": "shell",
-            "command": "qemu-system-x86_64",
-            "args": [
-                "-cdrom", "seed.iso",
-                "-serial", "stdio"
-            ],
+            "command": "./scripts/run.sh",
             "dependsOn": "Build ISO",
             "problemMatcher": []
         },
