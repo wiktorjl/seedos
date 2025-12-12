@@ -19,8 +19,14 @@
 #include "keyboard.h"
 #include "gdt.h"
 #include "console.h"
+#include "context.h"
+#include "vmm.h"
 #include <stddef.h>
 #include "pit.h"
+
+/* RPL (Requested Privilege Level) mask - lower 2 bits of segment selector */
+#define RPL_MASK 0x03
+#define RPL_USER 0x03
 
 /* Number of IDT entries (256 possible interrupt vectors) */
 #define IDT_ENTRIES 256
@@ -219,7 +225,47 @@ void interrupt_handler(struct interrupt_frame *frame) {
 
     /* CPU Exception (vectors 0-31) */
     if (frame->int_no < 32) {
-        /* Fatal exception - print diagnostic info and halt */
+        /*
+         * Check if the exception occurred in userspace (ring 3).
+         * The CS register's lower 2 bits contain the RPL (privilege level).
+         * If RPL == 3, the fault happened in user code.
+         */
+        int from_userspace = ((frame->cs & RPL_MASK) == RPL_USER);
+
+        if (from_userspace) {
+            /* Userspace fault - terminate process gracefully */
+            puts("\n");
+            puts("========================================\n");
+            puts("  PROCESS TERMINATED: ");
+            if (frame->int_no < NUM_EXCEPTION_NAMES) {
+                puts(exception_names[frame->int_no]);
+            } else {
+                puts("Unknown Exception");
+            }
+            puts("\n");
+            puts("========================================\n\n");
+
+            puts("  RIP: ");
+            put_hex(frame->rip);
+            puts("\n");
+
+            if (frame->int_no == EXCEPTION_PAGE_FAULT) {
+                uint64_t faulting_address;
+                asm volatile ("movq %%cr2, %0" : "=r"(faulting_address));
+                puts("  Fault address (CR2): ");
+                put_hex(faulting_address);
+                puts("\n");
+            }
+
+            puts("\n========================================\n");
+
+            /* Switch back to kernel address space and return */
+            vmm_switch_address_space(vmm_get_kernel_pml4());
+            context_return_to_kernel();
+            /* Never reached */
+        }
+
+        /* Kernel fault - fatal, print diagnostic info and halt */
         puts("\n");
         puts("========================================\n");
         puts("  KERNEL PANIC: ");

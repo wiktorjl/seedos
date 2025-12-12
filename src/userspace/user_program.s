@@ -7,12 +7,12 @@
       int $0x80              
                                     
       # sys_exit(0)                                                      
-      mov $0, %rax          # SYS_EXIT                                   
-      mov $0, %rdi          # exit code = 0                              
-      int $0x80                     
+      #mov $0, %rax          # SYS_EXIT                                   
+      #mov $0, %rdi          # exit code = 0                              
+      #int $0x80                     
                                     
       # Should never reach here     
-      jmp .                                                              
+      #jmp .                                                              
                                                                          
   message:                                                               
       .ascii "Hello from USERSPACE!\n" 
