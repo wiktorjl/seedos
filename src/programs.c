@@ -22,6 +22,10 @@ static void register_program(const char *name, const char *desc,
 }
 
 void programs_init(void) {
+    register_program("info", "Prints information about the system",
+                     info_bin, info_bin_len);
+    register_program("heap", "Tests heap allocation", 
+                    heap_bin, heap_bin_len);
     register_program("hello", "Prints hello and exits",
                      hello_bin, hello_bin_len);
     register_program("count", "Prints digits 0-9",
@@ -69,7 +73,8 @@ int programs_run(const char *name) {
         return -1;
     }
 
-    if (process_load(p, prog->code, prog->code_len) != 0) {
+    /* Load ELF executable into process address space */
+    if (process_load_elf(p, prog->code, prog->code_len) != 0) {
         process_destroy(p);
         return -1;
     }

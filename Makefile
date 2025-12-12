@@ -33,7 +33,7 @@ LDFLAGS = -nostdlib           \
           -T $(SRC_DIR)/linker.ld
 
 # Kernel source files (in src/)
-C_SOURCES = kernel.c pmm.c idt.c pic.c keyboard.c programs.c process.c shell.c fb.c gdt.c console.c vmm.c syscall.c pit.c serial.c string.c
+C_SOURCES = kernel.c pmm.c idt.c pic.c keyboard.c programs.c process.c shell.c fb.c gdt.c console.c vmm.c syscall.c pit.c serial.c string.c elf.c
 ASM_SOURCES = boot.S isr.S gdt_load.S context_switch.S
 
 # Test source files (in test/)
@@ -50,7 +50,7 @@ TEST_OBJECTS = $(addprefix $(BUILD_DIR)/,$(TEST_SOURCES:.c=.o))
 # Each .s file in src/userspace/ becomes an embedded binary:
 #   hello.s -> hello.o -> hello.bin -> hello_bin.c -> hello_bin.o
 # =============================================================================
-USER_PROGRAMS = hello loop crash count alpha stars
+USER_PROGRAMS = info heap hello loop crash count alpha stars
 USER_PROG_OBJS = $(addprefix $(BUILD_DIR)/,$(addsuffix _bin.o,$(USER_PROGRAMS)))
 
 # All objects
@@ -70,23 +70,26 @@ $(BUILD_DIR):
 # =============================================================================
 # User Program Build Rules
 #
-# Pattern rules to build any user program:
+# Pattern rules to build any user program as ELF:
 #   1. Assemble .s to .o
-#   2. Extract raw binary with objcopy
+#   2. Link to ELF executable
 #   3. Generate C file with xxd
 #   4. Compile C file to kernel object
 # =============================================================================
+
+# User program linker script
+USER_LDSCRIPT = $(USER_DIR)/user.ld
 
 # Step 1: Assemble .s -> .o
 $(BUILD_DIR)/%_user.o: $(USER_DIR)/%.s | $(BUILD_DIR)
 	$(CC) -c -o $@ $<
 
-# Step 2: Extract binary .o -> .bin
-$(BUILD_DIR)/%.bin: $(BUILD_DIR)/%_user.o
-	$(OBJCOPY) -O binary $< $@
+# Step 2: Link to ELF executable .o -> .elf
+$(BUILD_DIR)/%.elf: $(BUILD_DIR)/%_user.o $(USER_LDSCRIPT)
+	$(LD) -nostdlib -static -T $(USER_LDSCRIPT) -o $@ $<
 
-# Step 3: Generate C file .bin -> _bin.c
-$(USER_DIR)/%_bin.c: $(BUILD_DIR)/%.bin
+# Step 3: Generate C file .elf -> _bin.c
+$(USER_DIR)/%_bin.c: $(BUILD_DIR)/%.elf
 	@echo "Generating $@ from $<"
 	@echo '#include "user_programs.h"' > $@
 	@echo '' >> $@
