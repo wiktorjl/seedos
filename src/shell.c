@@ -23,8 +23,11 @@
 #include "pmm.h"
 #include "console.h"
 #include "test_framework.h"
-#include <stdint.h>
+#include "string.h"
 #include <stddef.h>
+#include "user_program.h"
+#include "programs.h"
+
 
 /* =============================================================================
  * Command Buffer
@@ -52,85 +55,6 @@ static int command_length = 0;
 #define CHAR_PRINTABLE_MAX 126
 
 /* =============================================================================
- * String Helper Functions
- *
- * Simple string operations. We can't use libc, so we implement our own.
- * =============================================================================
- */
-
-/*
- * strings_equal - Check if two null-terminated strings are identical.
- */
-static int strings_equal(const char *a, const char *b) {
-    while (*a && *b) {
-        if (*a != *b) return 0;
-        a++;
-        b++;
-    }
-    return *a == *b;
-}
-
-/*
- * string_starts_with - Check if string begins with the given prefix.
- */
-static int string_starts_with(const char *str, const char *prefix) {
-    while (*prefix) {
-        if (*str != *prefix) return 0;
-        str++;
-        prefix++;
-    }
-    return 1;
-}
-
-/*
- * find_char - Find first occurrence of character in string.
- *
- * Returns pointer to character, or NULL if not found.
- */
-static const char *find_char(const char *str, char c) {
-    while (*str) {
-        if (*str == c) return str;
-        str++;
-    }
-    return NULL;
-}
-
-/*
- * parse_hex_string - Parse a hexadecimal number from a string.
- *
- * Accepts with or without "0x" prefix.
- * Returns: The parsed value, or 0 if invalid.
- */
-static uint64_t parse_hex_string(const char *s) {
-    uint64_t result = 0;
-
-    /* Skip optional "0x" or "0X" prefix */
-    if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X')) {
-        s += 2;
-    }
-
-    while (*s) {
-        char c = *s;
-        uint64_t digit;
-
-        if (c >= '0' && c <= '9') {
-            digit = c - '0';
-        } else if (c >= 'a' && c <= 'f') {
-            digit = c - 'a' + 10;
-        } else if (c >= 'A' && c <= 'F') {
-            digit = c - 'A' + 10;
-        } else {
-            break;  /* Stop at first non-hex character */
-        }
-
-        result = (result << 4) | digit;
-        s++;
-    }
-
-    return result;
-}
-
-/* =============================================================================
  * Command Handler Functions
  *
  * Each command has a corresponding cmd_xxx() function.
@@ -146,6 +70,8 @@ static uint64_t parse_hex_string(const char *s) {
  */
 static void cmd_help(void) {
     puts("\nAvailable commands:\n");
+    puts("  programs      - List available programs\n");
+    puts("  run <program> - Run an available program\n");
     puts("  uptime        - Show system uptime in ms\n");
     puts("  help          - Show this help\n");
     puts("  meminfo       - Show memory statistics\n");
@@ -160,6 +86,44 @@ static void cmd_help(void) {
     puts("\nDebugging:\n");
     puts("  crash         - Trigger a page fault\n");
     puts("  divzero       - Trigger divide by zero\n");
+    puts("\n");
+}
+
+static void cmd_run(const char *arg) {
+    puts("\nRunning program: ");
+    puts(arg);
+    puts("\n");
+
+    /* Skip leading whitespace */
+    while (*arg == CHAR_SPACE) arg++;
+
+    if (*arg == '\0') {
+        puts("\nUsage: run <program_name>\n");
+        puts("Example: run shell\n\n");
+        return;
+    }
+    size_t program_len = strlen(arg);
+    if (program_len > 0) {
+        programs_run(arg);
+    } else {
+        puts("Error: missing program name");
+    }
+
+    puts("\n");
+}
+static void cmd_programs(void) {
+    puts("\nAvailable programs:\n");
+
+    for(int i = 0; i < programs_count(); i++) {
+        puts("  ");
+        puts(programs_get(i)->name);
+        puts("         - ");
+        puts(programs_get(i)->description);
+        puts("\n");
+    }
+
+    puts("Total programs: ");
+    put_dec(programs_count());
     puts("\n");
 }
 
@@ -235,7 +199,7 @@ static void cmd_free(const char *arg) {
         return;
     }
 
-    uint64_t addr = parse_hex_string(arg);
+    uint64_t addr = parse_hex(arg);
 
     /* Don't allow freeing page 0 (NULL pointer protection) */
     if (addr == 0) {
@@ -309,13 +273,13 @@ static void cmd_test(const char *arg) {
     }
 
     /* "all" - run all tests */
-    if (strings_equal(arg, "all")) {
+    if (strcmp(arg, "all") == 0) {
         test_run_all();
         return;
     }
 
     /* Check for component.name format */
-    const char *dot = find_char(arg, '.');
+    const char *dot = strchr(arg, '.');
     if (dot != NULL) {
         /* Extract component and name */
         static char component[32];
@@ -373,28 +337,32 @@ static void execute_command(void) {
     }
 
     /* Match command and dispatch to handler */
-    if (strings_equal(command_buffer, "help")) {
+    if (strcmp(command_buffer, "help") == 0) {
         cmd_help();
-    } else if (strings_equal(command_buffer, "meminfo")) {
+    } else if (strcmp(command_buffer, "meminfo") == 0) {
         cmd_meminfo();
-    } else if (strings_equal(command_buffer, "alloc")) {
+    } else if (strcmp(command_buffer, "alloc") == 0) {
         cmd_alloc();
-    } else if (string_starts_with(command_buffer, "free ")) {
+    } else if (strncmp(command_buffer, "free ", 5) == 0) {
         cmd_free(command_buffer + 5);  /* Skip "free " prefix */
-    } else if (strings_equal(command_buffer, "free")) {
+    } else if (strcmp(command_buffer, "free") == 0) {
         cmd_free("");  /* No argument - will show usage */
-    } else if (strings_equal(command_buffer, "crash")) {
+    } else if (strcmp(command_buffer, "crash") == 0) {
         cmd_crash();
-    } else if (strings_equal(command_buffer, "divzero")) {
+    } else if (strcmp(command_buffer, "divzero") == 0) {
         cmd_divzero();
-    } else if (strings_equal(command_buffer, "clear")) {
+    } else if (strcmp(command_buffer, "clear") == 0) {
         cmd_clear();
-    } else if (string_starts_with(command_buffer, "test ")) {
+    } else if (strncmp(command_buffer, "test ", 5) == 0) {
         cmd_test(command_buffer + 5);  /* Skip "test " prefix */
-    } else if (strings_equal(command_buffer, "test")) {
+    } else if (strcmp(command_buffer, "test") == 0) {
         cmd_test("");  /* No argument - will list tests */
-    } else if (strings_equal(command_buffer, "uptime")) {
+    } else if (strcmp(command_buffer, "uptime") == 0) {
         cmd_uptime();
+    } else if (strcmp(command_buffer, "programs") == 0) {
+        cmd_programs();
+    } else if (strncmp(command_buffer, "run ", 4) == 0) {
+        cmd_run(command_buffer + 4);  /* Skip "run " prefix */
     } else {
         puts("\nUnknown command: ");
         puts(command_buffer);
@@ -419,6 +387,7 @@ void shell_init(void) {
     puts("       Seed OS Shell v0.1\n");
     puts("  Type 'help' for available commands\n");
     puts("========================================\n");
+    programs_init();
     shell_prompt();
 }
 

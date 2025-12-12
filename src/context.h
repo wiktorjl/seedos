@@ -48,6 +48,8 @@
 
 #include <stdint.h>
 
+#define USER_STACK_SIZE 0x1000
+
 /* =============================================================================
  * User Context Structure
  *

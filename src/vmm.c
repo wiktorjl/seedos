@@ -150,6 +150,45 @@ int vmm_map_page(uint64_t pml4_phys, uint64_t virt, uint64_t phys, uint64_t flag
     return 0;
 }
 
+int vmm_unmap_page(uint64_t pml4_phys, uint64_t virt) {
+    uint64_t *pml4 = phys_to_virt(pml4_phys);
+
+    /* Extract indices */
+    int pml4_idx = PML4_INDEX(virt);
+    int pdpt_idx = PDPT_INDEX(virt);
+    int pd_idx   = PD_INDEX(virt);
+    int pt_idx   = PT_INDEX(virt);
+
+    /* Get PDPT */
+    uint64_t *pdpt;
+    if (pml4[pml4_idx] & PTE_PRESENT) {
+        pdpt = phys_to_virt(pml4[pml4_idx] & PTE_ADDR_MASK);
+    } else {
+        return -1;  /* PDPT not present */
+    }
+
+    /* Get PD */
+    uint64_t *pd;
+    if (pdpt[pdpt_idx] & PTE_PRESENT) {
+        pd = phys_to_virt(pdpt[pdpt_idx] & PTE_ADDR_MASK);
+    } else {
+        return -1;  /* PD not present */
+    }
+
+    /* Get PT */
+    uint64_t *pt;
+    if (pd[pd_idx] & PTE_PRESENT) {
+        pt = phys_to_virt(pd[pd_idx] & PTE_ADDR_MASK);
+    } else {
+        return -1;  /* PT not present */
+    }
+
+    /* Unmap the page */
+    pt[pt_idx] = 0;
+
+    return 0;
+}
+
 void vmm_switch_address_space(uint64_t pml4_phys) {
     asm volatile ("movq %0, %%cr3" : : "r"(pml4_phys) : "memory");
 }

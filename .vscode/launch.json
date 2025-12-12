@@ -1,0 +1,42 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Kernel (QEMU)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/kernel.elf",
+            "cwd": "${workspaceFolder}",
+            "miDebuggerServerAddress": "localhost:1234",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "setupCommands": [
+                {
+                    "description": "Set architecture to x86-64",
+                    "text": "set architecture i386:x86-64"
+                },
+                {
+                    "description": "Disable pagination",
+                    "text": "set pagination off"
+                }
+            ],
+            "stopAtConnect": true,
+            "preLaunchTask": "Start QEMU Debug Server"
+        },
+        {
+            "name": "Attach to QEMU",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/kernel.elf",
+            "cwd": "${workspaceFolder}",
+            "miDebuggerServerAddress": "localhost:1234",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "setupCommands": [
+                {
+                    "description": "Set architecture to x86-64",
+                    "text": "set architecture i386:x86-64"
+                }
+            ],
+            "stopAtConnect": true
+        }
+    ]
+}

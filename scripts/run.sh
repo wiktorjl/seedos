@@ -9,6 +9,7 @@
 #   --no-gui       Run in terminal-only mode (nographic)
 #   --log FILE     Log output to FILE (default: output.log)
 #   --no-log       Don't log output to a file
+#   --debug        Start QEMU with GDB server (-s -S), paused for debugger
 #   -h, --help     Show this help message
 #
 # Examples:
@@ -16,6 +17,7 @@
 #   ./scripts/run.sh --no-gui           # Terminal mode, log to output.log
 #   ./scripts/run.sh --log debug.log    # GUI mode, log to debug.log
 #   ./scripts/run.sh --no-gui --no-log  # Terminal mode, no logging
+#   ./scripts/run.sh --debug            # GUI mode, wait for GDB on localhost:1234
 #
 
 set -e
@@ -32,6 +34,7 @@ LOG_DIR="log"
 GUI_MODE=true
 LOG_FILE="$LOG_DIR/output.log"
 DO_LOG=true
+DEBUG_MODE=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -57,6 +60,10 @@ while [[ $# -gt 0 ]]; do
             DO_LOG=false
             shift
             ;;
+        --debug)
+            DEBUG_MODE=true
+            shift
+            ;;
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
             echo ""
@@ -65,6 +72,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --no-gui       Run in terminal-only mode (nographic)"
             echo "  --log FILE     Log output to FILE (default: output.log)"
             echo "  --no-log       Don't log output to a file"
+            echo "  --debug        Start with GDB server (-s -S), paused for debugger"
             echo "  -h, --help     Show this help message"
             exit 0
             ;;
@@ -98,6 +106,11 @@ if [[ "$GUI_MODE" == true ]]; then
 else
     echo "Mode: No GUI (terminal only, UEFI)"
     QEMU_CMD="$QEMU_CMD -nographic -serial mon:stdio -bios /usr/share/ovmf/OVMF.fd"
+fi
+
+if [[ "$DEBUG_MODE" == true ]]; then
+    echo "Debug: GDB server on localhost:1234 (QEMU paused)"
+    QEMU_CMD="$QEMU_CMD -s -S"
 fi
 
 if [[ "$DO_LOG" == true ]]; then

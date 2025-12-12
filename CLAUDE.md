@@ -65,6 +65,12 @@ This is a hobby project I started to re-learn fundamental CS concepts in the ope
 
 **Shell:**
 - Interactive commands: help, meminfo, alloc, free, crash, divzero, clear
+- `programs` - list available user programs
+- `run <name>` - run a user program
+
+**Program Loader:**
+- `programs.c` - registry of user programs with name, description, code
+- `programs_run()` - allocates address space, maps code/stack, enters userspace
 
 ### File Structure
 
@@ -91,6 +97,7 @@ This is a hobby project I started to re-learn fundamental CS concepts in the ope
 ├── context.h       # Context switching API
 ├── context_switch.S # Context switching (asm)
 ├── user_program.h/c # Hardcoded user binary
+├── programs.h/c    # User program registry and loader
 ├── tests.h/c       # Kernel test suite (shell commands)
 └── user.S          # User program source (assembled separately)
 ```
@@ -182,6 +189,7 @@ Educational deep-dives on OS internals are available in the `docs/` directory:
 | [IRQ.md](docs/IRQ.md) | Interrupts, IDT, and the PIC |
 | [SYSCALLS.md](docs/SYSCALLS.md) | System call implementation |
 | [SERIAL.md](docs/SERIAL.md) | Serial port (COM1) driver |
+| [CALLING_USERSPACE.md](docs/CALLING_USERSPACE.md) | Context switching and running user programs |
 
 ## Future Ideas
 

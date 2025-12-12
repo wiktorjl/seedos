@@ -1,0 +1,62 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Kernel",
+            "type": "shell",
+            "command": "make",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "Build ISO",
+            "type": "shell",
+            "command": "./scripts/build.sh",
+            "dependsOn": "Build Kernel",
+            "problemMatcher": []
+        },
+        {
+            "label": "Start QEMU Debug Server",
+            "type": "shell",
+            "command": "qemu-system-x86_64",
+            "args": [
+                "-cdrom", "seed.iso",
+                "-serial", "stdio",
+                "-s",
+                "-S"
+            ],
+            "dependsOn": "Build ISO",
+            "isBackground": true,
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^$"
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^.*$",
+                    "endsPattern": "^.*$"
+                }
+            }
+        },
+        {
+            "label": "Run QEMU",
+            "type": "shell",
+            "command": "qemu-system-x86_64",
+            "args": [
+                "-cdrom", "seed.iso",
+                "-serial", "stdio"
+            ],
+            "dependsOn": "Build ISO",
+            "problemMatcher": []
+        },
+        {
+            "label": "Clean",
+            "type": "shell",
+            "command": "make clean",
+            "problemMatcher": []
+        }
+    ]
+}

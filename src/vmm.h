@@ -137,6 +137,21 @@ uint64_t vmm_create_address_space(void);
  */
 int vmm_map_page(uint64_t pml4_phys, uint64_t virt, uint64_t phys, uint64_t flags);
 
+
+/*
+ * vmm_unmap_page - Remove a page mapping.
+ *
+ * @pml4_phys: Physical address of the PML4 (address space to modify)
+ * @virt:      Virtual address to unmap (must be page-aligned)
+ *
+ * Returns: 0 on success, -1 if the page was not mapped
+ *
+ * Walks the page table hierarchy to find and clear the final PT entry.
+ * Frees intermediate tables if they become empty.
+ */
+int vmm_unmap_page(uint64_t pml4_phys, uint64_t virt);
+
+
 /*
  * vmm_switch_address_space - Switch to a different address space.
  *
