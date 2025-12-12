@@ -169,20 +169,13 @@ void process_destroy(struct process *p) {
         return;
     }
 
-    /* Free allocated pages */
-    if (p->stack_page != 0) {
-        pmm_free(p->stack_page);
-    }
-    if (p->code_page != 0) {
-        pmm_free(p->code_page);
-    }
     if (p->pml4 != 0) {
-        pmm_free(p->pml4);
+        // pmm_free(p->pml4);
+        vmm_free_user_address_space(p->pml4);
+        p->pml4 = 0;
+        p->code_page = 0;
+        p->stack_page = 0;
     }
-
-    /* TODO: Free PML4 and intermediate page tables */
-    /* For now we leak the PML4 - proper cleanup requires walking
-     * the page table hierarchy and freeing all user-space tables */
 
     /* Mark as available */
     process_in_use = 0;

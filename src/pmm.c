@@ -47,6 +47,7 @@ static uint8_t *bitmap;           /* Pointer to bitmap array (virtual address) *
 static uint64_t bitmap_size;      /* Size of bitmap in bytes */
 static uint64_t total_pages;      /* Total number of pages being tracked */
 static uint64_t free_pages;       /* Number of currently free pages */
+static uint64_t usable_pages;     /* Total usable RAM (sum of usable regions) */
 
 /* =============================================================================
  * Bitmap Manipulation Helpers
@@ -90,13 +91,25 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
     for (uint64_t i = 0; i < memmap->entry_count; i++) {
         struct limine_memmap_entry *entry = memmap->entries[i];
         uint64_t entry_end = entry->base + entry->length;
-        if (entry_end > highest_addr) {
+        if (entry_end > highest_addr && entry->type == LIMINE_MEMMAP_USABLE) {
             highest_addr = entry_end;
         }
     }
 
-    total_pages = highest_addr / PAGE_SIZE;
+    total_pages = (highest_addr + PAGE_SIZE - 1) / PAGE_SIZE;
     bitmap_size = (total_pages + 7) / 8;  /* Round up to nearest byte */
+
+    /*
+     * Calculate total usable RAM by summing all usable regions.
+     * This is different from total_pages, which is just the tracking range.
+     */
+    usable_pages = 0;
+    for (uint64_t i = 0; i < memmap->entry_count; i++) {
+        struct limine_memmap_entry *entry = memmap->entries[i];
+        if (entry->type == LIMINE_MEMMAP_USABLE) {
+            usable_pages += entry->length / PAGE_SIZE;
+        }
+    }
 
     /*
      * Step 2: Find a usable memory region large enough for the bitmap.
@@ -209,4 +222,8 @@ uint64_t pmm_get_free_pages(void) {
 
 uint64_t pmm_get_total_pages(void) {
     return total_pages;
+}
+
+uint64_t pmm_get_usable_pages(void) {
+    return usable_pages;
 }

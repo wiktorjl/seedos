@@ -11,5 +11,6 @@ _start:
     mov $0xDEADBEEF, %rax
     mov (%rax), %rbx      # Page fault!
 
+.section .rodata
 message:
     .ascii "About to crash...\n"

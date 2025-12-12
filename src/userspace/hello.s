@@ -12,5 +12,6 @@ _start:
     mov $0, %rdi          # exit code = 0
     int $0x80
 
+.section .rodata
 message:
     .ascii "Hello from USERSPACE!\n"

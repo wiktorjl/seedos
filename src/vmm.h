@@ -106,6 +106,7 @@
 
 bool vmm_validate_user_range(const void *ptr, size_t len);
 
+void vmm_free_user_address_space(uint64_t pml4_phys);
 
 /*
  * vmm_init - Initialize the Virtual Memory Manager.

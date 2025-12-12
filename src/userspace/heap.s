@@ -70,6 +70,7 @@ fail:
     mov $1, %rdi
     int $0x80
 
+.section .rodata
 msg1:
     .ascii "Allocating 16 bytes...\n"
 msg2:

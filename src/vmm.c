@@ -23,9 +23,11 @@
 #include "pmm.h"
 #include "console.h"
 #include "memory.h"
+#include <stdint.h>
 
 /* Number of entries in each page table level (512 entries * 8 bytes = 4KB) */
 #define PAGE_TABLE_ENTRIES 512
+#define PAGE_TABLE_ENTRIES_USER 256
 
 /* =============================================================================
  * VMM Global State
@@ -71,6 +73,37 @@ bool vmm_validate_user_range(const void *ptr, size_t len) {
     // Check end doesn't overflow
     if (len > USER_SPACE_TOP - addr) return false;
     return true;
+}
+
+
+void vmm_free_user_address_space(uint64_t pml4_phys) {
+    uint64_t *pml4 = phys_to_virt(pml4_phys);
+    
+    // Only walk user-space (entries 0-255)
+    for (int i = 0; i < 256; i++) {
+        if (!(pml4[i] & PTE_PRESENT)) continue;
+        
+        uint64_t *pdpt = phys_to_virt(pml4[i] & PTE_ADDR_MASK);
+        for (int j = 0; j < 512; j++) {
+            if (!(pdpt[j] & PTE_PRESENT)) continue;
+            
+            uint64_t *pd = phys_to_virt(pdpt[j] & PTE_ADDR_MASK);
+            for (int k = 0; k < 512; k++) {
+                if (!(pd[k] & PTE_PRESENT)) continue;
+                
+                uint64_t *pt = phys_to_virt(pd[k] & PTE_ADDR_MASK);
+                for (int l = 0; l < 512; l++) {
+                    if (pt[l] & PTE_PRESENT) {
+                        pmm_free(pt[l] & PTE_ADDR_MASK);  // Free data page
+                    }
+                }
+                pmm_free(pd[k] & PTE_ADDR_MASK);  // Free PT
+            }
+            pmm_free(pdpt[j] & PTE_ADDR_MASK);  // Free PD
+        }
+        pmm_free(pml4[i] & PTE_ADDR_MASK);  // Free PDPT
+    }
+    pmm_free(pml4_phys);  // Free PML4 itself
 }
 
 /* =============================================================================

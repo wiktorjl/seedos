@@ -25,6 +25,7 @@ loop:
     mov $0, %rdi
     int $0x80
 
+.section .rodata
 star:
     .ascii "*"
 newline:

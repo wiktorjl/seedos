@@ -31,7 +31,10 @@ loop:
     mov $0, %rdi
     int $0x80
 
-digit:
-    .byte 0
+.section .rodata
 newline:
     .ascii "\n"
+
+.section .data
+digit:
+    .byte 0

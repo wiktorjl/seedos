@@ -71,7 +71,14 @@ uint64_t pmm_get_free_pages(void);
 
 /*
  * pmm_get_total_pages - Get the total count of tracked physical pages.
+ * Note: This is the bitmap size, not actual RAM (includes holes for MMIO).
  */
 uint64_t pmm_get_total_pages(void);
+
+/*
+ * pmm_get_usable_pages - Get the total count of usable RAM pages.
+ * This is the sum of all USABLE regions from the memory map.
+ */
+uint64_t pmm_get_usable_pages(void);
 
 #endif /* PMM_H */

@@ -11,5 +11,6 @@ _start:
 spin:
     jmp spin
 
+.section .rodata
 message:
     .ascii "Looping forever.......\n"

@@ -54,6 +54,39 @@ LIMINE_HHDM_REQUEST;
 LIMINE_MEMMAP_REQUEST;
 LIMINE_FRAMEBUFFER_REQUEST;
 
+static struct limine_memmap_response *memmap;
+static uint64_t hhdm_offset;
+
+/* Forward declarations */
+int verify_bootloader_info(struct limine_memmap_response **memmap, uint64_t *hhdm_offset) {
+    /* Check HHDM response */
+    if (hhdm_request.response == NULL) {
+        puts("[error] HHDM request failed\n");
+        return 0;
+    }
+
+    /* Check memory map response */
+    if (memmap_request.response == NULL) {
+        puts("[error] Memory map request failed\n");
+        return 0;
+    }
+
+    /* Extract bootloader-provided information */
+    *hhdm_offset = hhdm_request.response->offset;
+    *memmap = memmap_request.response;
+
+    return 1;
+}
+
+/* Print kernel banner */
+void print_banner(void) {
+    puts("\n");
+    puts("===========================================\n");
+    puts("    SeedOS - A Simple Educational Kernel\n");
+    puts("===========================================\n");
+    puts("\n");
+}
+
 /* =============================================================================
  * Kernel Entry Point
  *
@@ -73,33 +106,31 @@ void kernel_main(void) {
     if (fb_init((void *)fb_request.response) == 0) {
         fb_console_init();
         console_init();
+    } else {
+        puts("[warning] Framebuffer initialization failed\n");
     }
-
-    /* Verify bootloader provided required information */
-    if (hhdm_request.response == NULL) {
-        puts("[FAIL] No HHDM from bootloader\n");
+    
+    if (!verify_bootloader_info(&memmap, &hhdm_offset)) {
+        puts("Kernel panic: Invalid bootloader information\n");
         goto halt;
     }
 
-    if (memmap_request.response == NULL) {
-        puts("[FAIL] No memory map from bootloader\n");
-        goto halt;
-    }
-
-    struct limine_memmap_response *memmap = memmap_request.response;
-    uint64_t hhdm_offset = hhdm_request.response->offset;
-
-    /* Display boot banner */
-    puts("\n");
-    puts("SEED OS\n");
-    puts("x86-64 Kernel\n");
-    puts("\n");
+    print_banner();
 
     /* Initialize kernel subsystems */
     pmm_init(memmap, hhdm_offset);
-    puts("[ok] pmm: ");
+    puts("\n[ok] pmm\n");
+    puts("    Total RAM: ");
+    put_dec(pmm_get_usable_pages() * 4 / 1024);
+    puts(" MB\n");
+    puts("    Free RAM: ");
     put_dec(pmm_get_free_pages() * 4 / 1024);
-    puts(" MB free\n");
+    puts(" MB\n");
+    puts("    Bitmap: ");
+    put_dec((pmm_get_total_pages() + 7) / 8 / 1024);
+    puts(" KB (tracking ");
+    put_dec(pmm_get_total_pages() * 4 / 1024);
+    puts(" MB address space)\n");
 
     gdt_init();
     puts("[ok] gdt\n");
