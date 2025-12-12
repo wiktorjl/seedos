@@ -57,6 +57,9 @@ This is a hobby project I started to re-learn fundamental CS concepts in the ope
 - `int 0x80` handler with DPL=3 (user-callable)
 - `sys_write(fd, buf, len)` - write to console (validates user pointers)
 - `sys_exit(code)` - terminate process, returns exit code to kernel
+- `sys_getpid()` - get current process ID
+- `sys_uptime()` - get system uptime in milliseconds
+- `sys_sbrk(increment)` - grow/query heap, returns old break address
 
 **Context Switching:**
 - `context_switch_to_user()` - enter userspace, returns when sys_exit called
@@ -74,35 +77,70 @@ This is a hobby project I started to re-learn fundamental CS concepts in the ope
 - `process.c` - process lifecycle: create, load, run, destroy
 - Clean memory cleanup on process exit (code page, stack page, PML4)
 
+**ELF Loader:**
+- `elf.c` - parses and loads ELF64 executables
+- Validates ELF magic, class (64-bit), endianness, type (EXEC), architecture (x86-64)
+- Loads PT_LOAD segments at their specified virtual addresses
+- Properly handles BSS (p_memsz > p_filesz)
+- User programs built as ELF with custom linker script (`src/userspace/user.ld`)
+
+**User Programs** (in `src/userspace/`):
+- `hello.s` - "Hello World" test
+- `info.s` - displays PID and uptime via syscalls
+- `heap.s` - tests sbrk heap allocation
+- `count.s` - prints digits 0-9
+- `alpha.s` - prints A-Z
+- `stars.s` - prints 20 asterisks
+- `loop.s` - infinite loop (for testing preemption)
+- `crash.s` - triggers page fault (for testing exception handling)
+
 ### File Structure
 
 ```
 ~/os/
-├── boot.S          # Entry point, stack setup
-├── kernel.c        # Main, serial I/O, initialization
-├── linker.ld       # Linker script (higher-half)
+├── src/
+│   ├── boot.S          # Entry point, stack setup
+│   ├── kernel.c        # Main, serial I/O, initialization
+│   ├── linker.ld       # Kernel linker script (higher-half)
+│   ├── pmm.h/c         # Physical memory manager
+│   ├── vmm.h/c         # Virtual memory manager
+│   ├── idt.h/c         # Interrupt descriptor table
+│   ├── isr.S           # Interrupt service routines (asm)
+│   ├── pic.h/c         # Programmable interrupt controller
+│   ├── keyboard.h/c    # PS/2 keyboard driver
+│   ├── shell.h/c       # Interactive shell
+│   ├── fb.h/c          # Framebuffer driver + font
+│   ├── console.h/c     # Unified serial+FB output
+│   ├── gdt.h/c         # Global descriptor table
+│   ├── gdt_load.S      # GDT/TSS loading (asm)
+│   ├── syscall.h/c     # System call handler
+│   ├── context.h       # Context switching API
+│   ├── context_switch.S # Context switching (asm)
+│   ├── programs.h/c    # User program registry
+│   ├── process.h/c     # Process lifecycle management
+│   ├── elf.h/c         # ELF64 loader
+│   ├── pit.h/c         # Programmable Interval Timer
+│   ├── serial.h/c      # Serial port (COM1) driver
+│   ├── string.h/c      # String utilities (memcpy, memset, strcmp)
+│   └── userspace/
+│       ├── user.ld         # User program linker script
+│       ├── user_programs.h # Generated binary declarations
+│       ├── hello.s         # Hello world program
+│       ├── info.s          # PID/uptime display
+│       ├── heap.s          # Heap allocation test
+│       ├── count.s         # Count 0-9
+│       ├── alpha.s         # Print A-Z
+│       ├── stars.s         # Print asterisks
+│       ├── loop.s          # Infinite loop
+│       └── crash.s         # Page fault test
+├── test/
+│   ├── test_framework.h/c  # Kernel test framework
+│   ├── test_pmm.c          # PMM tests
+│   ├── test_vmm.c          # VMM tests
+│   └── ...                 # Other component tests
 ├── limine.h        # Boot protocol structures
 ├── limine.conf     # Bootloader config
-├── Makefile
-├── pmm.h/c         # Physical memory manager
-├── vmm.h/c         # Virtual memory manager
-├── idt.h/c         # Interrupt descriptor table
-├── isr.S           # Interrupt service routines (asm)
-├── pic.h/c         # Programmable interrupt controller
-├── keyboard.h/c    # PS/2 keyboard driver
-├── shell.h/c       # Interactive shell
-├── fb.h/c          # Framebuffer driver + font
-├── console.h/c     # Unified serial+FB output
-├── gdt.h/c         # Global descriptor table
-├── gdt_load.S      # GDT/TSS loading (asm)
-├── syscall.h/c     # System call handler
-├── context.h       # Context switching API
-├── context_switch.S # Context switching (asm)
-├── user_program.h/c # Hardcoded user binary
-├── programs.h/c    # User program registry
-├── process.h/c     # Process lifecycle management
-├── tests.h/c       # Kernel test suite (shell commands)
-└── user.S          # User program source (assembled separately)
+└── Makefile
 ```
 
 ## Completed Roadmap
@@ -197,7 +235,6 @@ Educational deep-dives on OS internals are available in the `docs/` directory:
 ## Future Ideas
 
 - Process scheduler (round-robin, multiple processes)
-- ELF loader (load programs from disk)
 - Virtual filesystem
 - More syscalls (read, open, close, fork, exec)
-- User-space memory allocation (sbrk/mmap)
+- Load ELF programs from disk (currently embedded in kernel)
