@@ -49,6 +49,10 @@ struct process {
     int exit_code;          /* Exit code after process terminates */
 };
 
+int process_get_exit_code();
+
+void process_set_exit_code(int code);
+
 /*
  * process_create - Create a new process with its own address space.
  *

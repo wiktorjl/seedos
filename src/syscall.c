@@ -21,6 +21,7 @@
 
 #include "syscall.h"
 #include "console.h"
+#include "process.h"
 #include "vmm.h"
 #include "context.h"
 
@@ -53,6 +54,9 @@ static void sys_exit(uint64_t exit_code) {
 
     /* Switch back to kernel address space before returning */
     vmm_switch_address_space(vmm_get_kernel_pml4());
+
+    /* Save the exit code in the process structure */
+    process_set_exit_code(exit_code);
 
     /*
      * Return to where context_save_kernel_state() was called.

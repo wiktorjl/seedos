@@ -28,6 +28,16 @@
 static struct process current_process;
 static int process_in_use = 0;
 
+static int last_exit_code = 0;
+
+int process_get_exit_code() {
+    return last_exit_code;
+}   
+
+void process_set_exit_code(int code) {
+    last_exit_code = code;
+}
+
 struct process *process_create(void) {
     /* Only one process at a time for now */
     if (process_in_use) {
@@ -120,7 +130,7 @@ int process_run(struct process *p) {
 
     /* Process has exited, return exit code */
     /* TODO: Capture actual exit code from sys_exit */
-    return p->exit_code;
+    return last_exit_code;
 }
 
 void process_destroy(struct process *p) {
@@ -134,6 +144,9 @@ void process_destroy(struct process *p) {
     }
     if (p->code_page != 0) {
         pmm_free(p->code_page);
+    }
+    if (p->pml4 != 0) {
+        pmm_free(p->pml4);
     }
 
     /* TODO: Free PML4 and intermediate page tables */
