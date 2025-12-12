@@ -53,13 +53,16 @@ _start:
     mov $0, %rdi
     int $0x80
 
+.section .rodata
 pid_label:
     .ascii "PID: "
 uptime_label:
     .ascii "Uptime: "
 ms_label:
     .ascii "ok\n\n"
-digit:
-    .byte 0
 newline:
     .ascii "\n"
+
+.section .data
+digit:
+    .byte 0
