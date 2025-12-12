@@ -55,12 +55,13 @@ This is a hobby project I started to re-learn fundamental CS concepts in the ope
 
 **Syscalls:**
 - `int 0x80` handler with DPL=3 (user-callable)
-- `sys_write(fd, buf, len)` - write to console
-- `sys_exit(code)` - terminate process and return to kernel
+- `sys_write(fd, buf, len)` - write to console (validates user pointers)
+- `sys_exit(code)` - terminate process, returns exit code to kernel
 
 **Context Switching:**
 - `context_switch_to_user()` - enter userspace, returns when sys_exit called
 - `context_return_to_kernel()` - return from userspace to kernel
+- Userspace exceptions return gracefully to kernel (no system halt)
 - Clean separation of assembly (context_switch.S) and C code
 
 **Shell:**
@@ -70,7 +71,8 @@ This is a hobby project I started to re-learn fundamental CS concepts in the ope
 
 **Program Loader:**
 - `programs.c` - registry of user programs with name, description, code
-- `programs_run()` - allocates address space, maps code/stack, enters userspace
+- `process.c` - process lifecycle: create, load, run, destroy
+- Clean memory cleanup on process exit (code page, stack page, PML4)
 
 ### File Structure
 
@@ -97,7 +99,8 @@ This is a hobby project I started to re-learn fundamental CS concepts in the ope
 ├── context.h       # Context switching API
 ├── context_switch.S # Context switching (asm)
 ├── user_program.h/c # Hardcoded user binary
-├── programs.h/c    # User program registry and loader
+├── programs.h/c    # User program registry
+├── process.h/c     # Process lifecycle management
 ├── tests.h/c       # Kernel test suite (shell commands)
 └── user.S          # User program source (assembled separately)
 ```

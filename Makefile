@@ -33,7 +33,7 @@ LDFLAGS = -nostdlib           \
           -T $(SRC_DIR)/linker.ld
 
 # Kernel source files (in src/)
-C_SOURCES = kernel.c pmm.c idt.c pic.c keyboard.c programs.c process.c shell.c fb.c gdt.c console.c vmm.c syscall.c pit.c serial.c string.c 
+C_SOURCES = kernel.c pmm.c idt.c pic.c keyboard.c programs.c process.c shell.c fb.c gdt.c console.c vmm.c syscall.c pit.c serial.c string.c
 ASM_SOURCES = boot.S isr.S gdt_load.S context_switch.S
 
 # Test source files (in test/)
@@ -44,15 +44,17 @@ C_OBJECTS = $(addprefix $(BUILD_DIR)/,$(C_SOURCES:.c=.o))
 ASM_OBJECTS = $(addprefix $(BUILD_DIR)/,$(ASM_SOURCES:.S=.o))
 TEST_OBJECTS = $(addprefix $(BUILD_DIR)/,$(TEST_SOURCES:.c=.o))
 
-# User program artifacts
-USER_PROG_SRC = $(USER_DIR)/user_program.s
-USER_PROG_OBJ = $(BUILD_DIR)/user_prog.o
-USER_PROG_BIN = $(BUILD_DIR)/user.bin
-USER_PROG_C = $(USER_DIR)/user_program.c
-USER_PROG_KERNEL_OBJ = $(BUILD_DIR)/user_program.o
+# =============================================================================
+# User Programs
+#
+# Each .s file in src/userspace/ becomes an embedded binary:
+#   hello.s -> hello.o -> hello.bin -> hello_bin.c -> hello_bin.o
+# =============================================================================
+USER_PROGRAMS = hello loop crash count alpha stars
+USER_PROG_OBJS = $(addprefix $(BUILD_DIR)/,$(addsuffix _bin.o,$(USER_PROGRAMS)))
 
 # All objects
-OBJECTS = $(ASM_OBJECTS) $(C_OBJECTS) $(TEST_OBJECTS) $(USER_PROG_KERNEL_OBJ)
+OBJECTS = $(ASM_OBJECTS) $(C_OBJECTS) $(TEST_OBJECTS) $(USER_PROG_OBJS)
 
 # Output
 KERNEL = $(BUILD_DIR)/kernel.elf
@@ -65,25 +67,41 @@ all: $(KERNEL)
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-# Build user program: assemble .s -> .o -> .bin -> .c
-$(USER_PROG_OBJ): $(USER_PROG_SRC) | $(BUILD_DIR)
+# =============================================================================
+# User Program Build Rules
+#
+# Pattern rules to build any user program:
+#   1. Assemble .s to .o
+#   2. Extract raw binary with objcopy
+#   3. Generate C file with xxd
+#   4. Compile C file to kernel object
+# =============================================================================
+
+# Step 1: Assemble .s -> .o
+$(BUILD_DIR)/%_user.o: $(USER_DIR)/%.s | $(BUILD_DIR)
 	$(CC) -c -o $@ $<
 
-$(USER_PROG_BIN): $(USER_PROG_OBJ)
+# Step 2: Extract binary .o -> .bin
+$(BUILD_DIR)/%.bin: $(BUILD_DIR)/%_user.o
 	$(OBJCOPY) -O binary $< $@
 
-$(USER_PROG_C): $(USER_PROG_BIN)
+# Step 3: Generate C file .bin -> _bin.c
+$(USER_DIR)/%_bin.c: $(BUILD_DIR)/%.bin
 	@echo "Generating $@ from $<"
-	@echo '#include "user_program.h"' > $@
+	@echo '#include "user_programs.h"' > $@
 	@echo '' >> $@
-	@echo 'unsigned char user_bin[] = {' >> $@
+	@echo 'unsigned char $*_bin[] = {' >> $@
 	@xxd -i < $< >> $@
 	@echo '};' >> $@
-	@echo "unsigned int user_bin_len = $$(wc -c < $<);" >> $@
+	@echo "unsigned int $*_bin_len = $$(wc -c < $<);" >> $@
 
-# Compile generated user_program.c
-$(USER_PROG_KERNEL_OBJ): $(USER_PROG_C) | $(BUILD_DIR)
+# Step 4: Compile generated C -> .o
+$(BUILD_DIR)/%_bin.o: $(USER_DIR)/%_bin.c | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+# =============================================================================
+# Kernel Build Rules
+# =============================================================================
 
 $(KERNEL): $(OBJECTS) $(SRC_DIR)/linker.ld
 	$(LD) $(LDFLAGS) -o $@ $(OBJECTS)
@@ -101,6 +119,7 @@ $(BUILD_DIR)/%.o: $(TEST_DIR)/%.c | $(BUILD_DIR)
 
 clean:
 	rm -rf $(BUILD_DIR)
+	rm -f $(USER_DIR)/*_bin.c
 
 # IDE setup - generates .clangd config and compile_commands.json for VS Code/clangd
 .PHONY: ide-setup

@@ -1,7 +1,7 @@
 #include <stddef.h>
 #include "programs.h"
 #include "process.h"
-#include "user_program.h"
+#include "user_programs.h"
 #include "string.h"
 
 static struct user_program programs[MAX_PROGRAMS];
@@ -22,8 +22,18 @@ static void register_program(const char *name, const char *desc,
 }
 
 void programs_init(void) {
-    register_program("hello", "A simple hello world program", 
-                     (unsigned char *)user_bin, user_bin_len);
+    register_program("hello", "Prints hello and exits",
+                     hello_bin, hello_bin_len);
+    register_program("count", "Prints digits 0-9",
+                     count_bin, count_bin_len);
+    register_program("alpha", "Prints A-Z alphabet",
+                     alpha_bin, alpha_bin_len);
+    register_program("stars", "Prints 20 asterisks",
+                     stars_bin, stars_bin_len);
+    register_program("loop", "Loops forever (test preemption)",
+                     loop_bin, loop_bin_len);
+    register_program("crash", "Deliberately crashes (test exception)",
+                     crash_bin, crash_bin_len);
 }
 
 int programs_count(void) {
