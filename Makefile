@@ -59,6 +59,9 @@ OBJECTS = $(ASM_OBJECTS) $(C_OBJECTS) $(TEST_OBJECTS) $(USER_PROG_OBJS)
 # Output
 KERNEL = $(BUILD_DIR)/kernel.elf
 
+# Prevent Make from deleting intermediate files in the user program build chain
+.PRECIOUS: $(BUILD_DIR)/%_user.o $(BUILD_DIR)/%.elf $(USER_DIR)/%_bin.c
+
 .PHONY: all clean
 
 all: $(KERNEL)

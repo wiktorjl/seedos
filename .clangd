@@ -1,5 +1,5 @@
 CompileFlags:
-    Add:
-      - -Wno-unused-parameter
-    Remove:
-      - -mno-red-zone  # clangd doesn't need this
+  Add:
+    - -Wno-unused-parameter
+  Remove:
+    - -mno-red-zone  # clangd does not need this

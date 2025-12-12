@@ -1,3 +1,4 @@
+src/userspace/*.c
 *.log
 *.o
 *.iso
