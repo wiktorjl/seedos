@@ -80,6 +80,12 @@ static uint32_t cursor_row;           /* Current row (0-based) */
 static uint32_t console_fg_color = FB_WHITE;  /* Text foreground color */
 static uint32_t console_bg_color = FB_BLACK;  /* Text background color */
 
+/* Cursor blink state */
+static int cursor_blink_visible = 1;          /* Is cursor currently visible? */
+static uint64_t cursor_last_blink = 0;        /* Tick count at last blink toggle */
+static int cursor_style = 0;                  /* 0 = block, 1 = underscore */
+#define CURSOR_BLINK_RATE 50                  /* Blink every 50 ticks (500ms at 100Hz) */
+
 /* Tab stop spacing (in characters) */
 #define TAB_WIDTH 8
 
@@ -491,4 +497,66 @@ void fb_console_clear(void) {
     fb_clear(console_bg_color);
     cursor_column = 0;
     cursor_row = 0;
+}
+
+/*
+ * draw_block_cursor - Draw a solid block cursor at the given position.
+ */
+static void draw_block_cursor(uint32_t x, uint32_t y, uint32_t color) {
+    for (int row = 0; row < FONT_HEIGHT; row++) {
+        for (int col = 0; col < FONT_WIDTH; col++) {
+            fb_putpixel(x + col, y + row, color);
+        }
+    }
+}
+
+/*
+ * fb_set_cursor_style - Set the cursor display style.
+ */
+void fb_set_cursor_style(int style) {
+    cursor_style = style;
+}
+
+/*
+ * fb_get_cursor_style - Get the current cursor style.
+ */
+int fb_get_cursor_style(void) {
+    return cursor_style;
+}
+
+/*
+ * fb_cursor_blink_tick - Toggle cursor visibility periodically.
+ */
+void fb_cursor_blink_tick(uint64_t current_ticks) {
+    /* Only blink if framebuffer is initialized */
+    if (framebuffer_address == NULL) {
+        return;
+    }
+
+    /* Check if it's time to toggle */
+    if (current_ticks - cursor_last_blink >= CURSOR_BLINK_RATE) {
+        cursor_blink_visible = !cursor_blink_visible;
+        cursor_last_blink = current_ticks;
+
+        /* Calculate cursor pixel position */
+        uint32_t x = cursor_column * FONT_WIDTH;
+        uint32_t y = cursor_row * FONT_HEIGHT;
+
+        /* Draw or erase cursor based on style */
+        if (cursor_style == FB_CURSOR_UNDERSCORE) {
+            /* Underscore cursor */
+            if (cursor_blink_visible) {
+                fb_putchar_at('_', x, y, console_fg_color, console_bg_color);
+            } else {
+                fb_putchar_at(' ', x, y, console_fg_color, console_bg_color);
+            }
+        } else {
+            /* Block cursor (default) */
+            if (cursor_blink_visible) {
+                draw_block_cursor(x, y, console_fg_color);
+            } else {
+                draw_block_cursor(x, y, console_bg_color);
+            }
+        }
+    }
 }

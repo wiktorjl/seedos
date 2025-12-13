@@ -175,4 +175,37 @@ void fb_console_puts(const char *s);
  */
 void fb_console_clear(void);
 
+/*
+ * fb_cursor_blink_tick - Update cursor blink state.
+ *
+ * @current_ticks: Current PIT tick count.
+ *
+ * Called from the timer interrupt handler to toggle cursor visibility.
+ * Blinks approximately every 500ms (50 ticks at 100Hz).
+ */
+void fb_cursor_blink_tick(uint64_t current_ticks);
+
+/* =============================================================================
+ * Cursor Style Configuration
+ * =============================================================================
+ */
+
+/* Cursor style options */
+#define FB_CURSOR_BLOCK      0  /* Solid block cursor (full character cell) */
+#define FB_CURSOR_UNDERSCORE 1  /* Underscore cursor */
+
+/*
+ * fb_set_cursor_style - Set the cursor display style.
+ *
+ * @style: FB_CURSOR_BLOCK or FB_CURSOR_UNDERSCORE
+ */
+void fb_set_cursor_style(int style);
+
+/*
+ * fb_get_cursor_style - Get the current cursor style.
+ *
+ * Returns: FB_CURSOR_BLOCK or FB_CURSOR_UNDERSCORE
+ */
+int fb_get_cursor_style(void);
+
 #endif /* FB_H */

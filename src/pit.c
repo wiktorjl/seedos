@@ -16,6 +16,7 @@
 #include "pit.h"
 #include "io.h"
 #include "pic.h"
+#include "fb.h"
 
 /*
  * Global tick counter - incremented by pit_handler() on each timer interrupt.
@@ -63,4 +64,5 @@ uint64_t pit_get_ticks(void) {
  */
 void pit_handler(void) {
     ticks++;
+    fb_cursor_blink_tick(ticks);
 }
