@@ -1,91 +1,72 @@
+/*
+ * programs.c - Program Loader
+ *
+ * Loads and executes user programs from the TAR-based initrd filesystem.
+ * Programs are stored as ELF executables in /bin/ within the initrd.
+ *
+ * Usage:
+ *   int exit_code = programs_run("hello", argc, argv);
+ *
+ * This will look for "bin/hello" in the initrd, load the ELF, and execute it.
+ */
+
 #include <stddef.h>
 #include "programs.h"
 #include "process.h"
-#include "user_programs.h"
 #include "string.h"
+#include "console.h"
+#include "tar.h"
 
-static struct user_program programs[MAX_PROGRAMS];
-static int program_count = 0;
-
-static void register_program(const char *name, const char *desc, 
-                               unsigned char *code, unsigned int len) {
-
-    if(program_count < MAX_PROGRAMS) {
-        programs[program_count].name = name;
-        programs[program_count].description = desc;
-        programs[program_count].code = code;
-        programs[program_count].code_len = len;
-        program_count++;
-
-    }
-                                
-}
-
-void programs_init(void) {
-    register_program("info", "Prints information about the system",
-                     info_bin, info_bin_len);
-    register_program("heap", "Tests heap allocation", 
-                    heap_bin, heap_bin_len);
-    register_program("hello", "Prints hello and exits",
-                     hello_bin, hello_bin_len);
-    register_program("count", "Prints digits 0-9",
-                     count_bin, count_bin_len);
-    register_program("alpha", "Prints A-Z alphabet",
-                     alpha_bin, alpha_bin_len);
-    register_program("stars", "Prints 20 asterisks",
-                     stars_bin, stars_bin_len);
-    register_program("loop", "Loops forever (test preemption)",
-                     loop_bin, loop_bin_len);
-    register_program("crash", "Deliberately crashes (test exception)",
-                     crash_bin, crash_bin_len);
-    register_program("input", "Tests keyboard input (q to quit)",
-                     input_bin, input_bin_len);
-    register_program("ctest", "C program test (argc/argv demo)",
-                     ctest_bin, ctest_bin_len);
-}
-
-int programs_count(void) {
-    
-    return program_count;
-}
-
-struct user_program *programs_get(int index) {
-    if(index >= 0 && index < program_count) {
-        return &programs[index];
-    } else {
-        return NULL;
-    }
-}
-
-struct user_program *programs_find(const char *name) {
-    for(int i = 0; i < program_count; i++) {
-        if(programs[i].name != NULL && strcmp(programs[i].name, name) == 0) {
-            return &programs[i];
-        }
-    }
-    return NULL;
-}
-
+/*
+ * programs_run - Load and execute a program from the initrd.
+ *
+ * @name: Program name or path (e.g., "hello" or "bin/hello")
+ * @argc: Argument count to pass to program
+ * @argv: Argument vector to pass to program
+ *
+ * If name doesn't start with "bin/", it's automatically prepended.
+ *
+ * Returns: Program exit code, or -1 on error.
+ */
 int programs_run(const char *name, int argc, char **argv) {
-    struct user_program *prog = programs_find(name);
-    if (prog == NULL) {
+    char path[128];
+    size_t i = 0;
+
+    /* Only prepend "bin/" if path doesn't already start with it */
+    if (!(name[0] == 'b' && name[1] == 'i' && name[2] == 'n' && name[3] == '/')) {
+        path[0] = 'b'; path[1] = 'i'; path[2] = 'n'; path[3] = '/';
+        i = 4;
+    }
+
+    /* Copy the name */
+    const char *p = name;
+    while (*p && i < sizeof(path) - 1) {
+        path[i++] = *p++;
+    }
+    path[i] = '\0';
+
+    /* Find program in initrd */
+    const struct tar_file *file = tar_find(path);
+    if (file == NULL) {
         return -1;
     }
 
-    struct process *p = process_create();
-    if (p == NULL) {
+    /* Create new process */
+    struct process *proc = process_create();
+    if (proc == NULL) {
+        puts("Error: Failed to create process\n");
         return -1;
     }
 
     /* Load ELF executable into process address space */
-    if (process_load_elf(p, prog->code, prog->code_len) != 0) {
-        process_destroy(p);
+    if (process_load_elf(proc, file->data, file->size) != 0) {
+        puts("Error: Failed to load ELF\n");
+        process_destroy(proc);
         return -1;
     }
 
     /* Run with argc/argv on stack */
-    int exit_code = process_run_with_args(p, argc, argv);
-    process_destroy(p);
+    int exit_code = process_run_with_args(proc, argc, argv);
+    process_destroy(proc);
     return exit_code;
 }
-

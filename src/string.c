@@ -78,6 +78,22 @@ void *memcpy(void *dest, const void *src, uint64_t n) {
 }
 
 /*
+ * strncpy - Copy at most n characters from src to dest.
+ *
+ * If src is shorter than n, the remainder of dest is filled with NULs.
+ */
+char *strncpy(char *dest, const char *src, uint64_t n) {
+    uint64_t i;
+    for (i = 0; i < n && src[i] != '\0'; i++) {
+        dest[i] = src[i];
+    }
+    for (; i < n; i++) {
+        dest[i] = '\0';
+    }
+    return dest;
+}
+
+/*
  * parse_hex - Parse a hexadecimal number from a string.
  *
  * Accepts with or without "0x" prefix.

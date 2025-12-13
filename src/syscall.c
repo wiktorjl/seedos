@@ -46,16 +46,11 @@
  * @exit_code: The exit code to report (0 = success, non-zero = error).
  *
  * This function does not return. It:
- *   1. Prints the exit code for debugging
- *   2. Switches back to the kernel's address space
+ *   1. Switches back to the kernel's address space
+ *   2. Saves the exit code in the process structure
  *   3. Returns control to the kernel (via context_return_to_kernel)
  */
 static void sys_exit(uint64_t exit_code) {
-    puts("\n========================================\n");
-    puts("Process exited with code ");
-    put_dec(exit_code);
-    puts("\n========================================\n");
-
     /* Switch back to kernel address space before returning */
     vmm_switch_address_space(vmm_get_kernel_pml4());
 
@@ -191,15 +186,4 @@ void syscall_handler(struct syscall_registers *regs) {
             regs->rax = SYSCALL_ERROR;
             break;
     }
-}
-
-char * strncpy(char *dest, const char *src, uint64_t n) {
-    uint64_t i;
-    for (i = 0; i < n && src[i] != '\0'; i++) {
-        dest[i] = src[i];
-    }
-    for (; i < n; i++) {
-        dest[i] = '\0';
-    }
-    return dest;
 }

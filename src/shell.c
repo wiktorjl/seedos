@@ -22,11 +22,11 @@
 #include "pit.h"
 #include "pmm.h"
 #include "console.h"
+#include "tar.h"
 #include "test_framework.h"
 #include "string.h"
-#include <stddef.h>
 #include "programs.h"
-
+#include <stddef.h>
 
 /* =============================================================================
  * Command Buffer
@@ -38,6 +38,36 @@
 
 static char command_buffer[COMMAND_BUFFER_SIZE];
 static int command_length = 0;
+
+/* Current working directory for ls/cd commands */
+#define MAX_PATH_LEN 128
+static char current_path[MAX_PATH_LEN] = "";
+
+/* Last program exit code (for 'last_exit' command) */
+static int last_exit_code = 0;
+
+/*
+ * normalize_path - Clean up a path by removing ./ and leading /
+ *
+ * Writes normalized path to dest buffer.
+ */
+static void normalize_path(const char *src, char *dest, size_t dest_size) {
+    /* Skip leading ./ */
+    if (src[0] == '.' && src[1] == '/') {
+        src += 2;
+    }
+    /* Skip leading / */
+    while (*src == '/') {
+        src++;
+    }
+
+    /* Copy rest */
+    size_t i = 0;
+    while (*src && i < dest_size - 1) {
+        dest[i++] = *src++;
+    }
+    dest[i] = '\0';
+}
 
 /* =============================================================================
  * Special Character Codes
@@ -68,20 +98,25 @@ static int command_length = 0;
  * cmd_help - Display list of available commands.
  */
 static void cmd_help(void) {
-    puts("\nAvailable commands:\n");
-    puts("  programs      - List available programs\n");
-    puts("  run <program> - Run an available program\n");
+    puts("\nFilesystem:\n");
+    puts("  ls [path]     - List directory contents\n");
+    puts("  cd [path]     - Change current directory\n");
+    puts("  cat <file>    - Display file contents\n");
+    puts("\nPrograms:\n");
+    puts("  run <program> - Run a program from /bin\n");
+    puts("\nSystem:\n");
     puts("  uptime        - Show system uptime in ms\n");
-    puts("  help          - Show this help\n");
     puts("  meminfo       - Show memory statistics\n");
+    puts("  last_exit     - Show last program exit code\n");
     puts("  alloc         - Allocate a physical page\n");
     puts("  free <addr>   - Free a physical page (hex address)\n");
     puts("  clear         - Clear screen\n");
+    puts("  help          - Show this help\n");
     puts("\nTests:\n");
-    puts("  test              - List all available tests\n");
+    puts("  test              - List all tests\n");
     puts("  test all          - Run all tests\n");
-    puts("  test <component>  - Run all tests for component\n");
-    puts("  test <comp>.<name> - Run specific test\n");
+    puts("  test <component>  - Run tests for component\n");
+    puts("  test <c>.<name>   - Run specific test\n");
     puts("\nDebugging:\n");
     puts("  crash         - Trigger a page fault\n");
     puts("  divzero       - Trigger divide by zero\n");
@@ -92,14 +127,21 @@ static void cmd_help(void) {
 #define MAX_ARGS 16
 #define MAX_ARG_LEN 64
 
+/*
+ * cmd_run - Run a user program from the initrd.
+ *
+ * @arg: Program name and optional arguments (e.g., "hello" or "ctest arg1 arg2")
+ *
+ * Parses arguments and calls programs_run(). Stores exit code in last_exit_code.
+ */
 static void cmd_run(const char *arg) {
     /* Skip leading whitespace */
     while (*arg == CHAR_SPACE) arg++;
 
     if (*arg == '\0') {
-        puts("\nUsage: run <program> [args...]\n");
+        puts("Usage: run <program> [args...]\n");
         puts("Example: run hello\n");
-        puts("Example: run ctest arg1 arg2\n\n");
+        puts("Example: run bin/ctest arg1 arg2\n");
         return;
     }
 
@@ -126,48 +168,77 @@ static void cmd_run(const char *arg) {
     argv[argc] = NULL;
 
     if (argc == 0) {
-        puts("\nError: missing program name\n\n");
+        puts("Error: missing program name\n");
         return;
     }
 
-    /* Print what we're running */
-    puts("\nRunning: ");
-    puts(argv[0]);
-    if (argc > 1) {
-        puts(" (");
-        put_dec(argc - 1);
-        puts(" args)");
-    }
-    puts("\n\n");
+    /* Normalize the program path */
+    char prog_path[MAX_PATH_LEN];
+    normalize_path(argv[0], prog_path, sizeof(prog_path));
 
     /* Run the program with arguments */
-    int exit_code = programs_run(argv[0], argc, argv);
+    puts("\n");
+    int exit_code = programs_run(prog_path, argc, argv);
+    last_exit_code = exit_code;
 
     if (exit_code == -1) {
         puts("Error: program not found: ");
-        puts(argv[0]);
-        puts("\n");
-    } else {
-        puts("\nProgram exited with code: ");
-        put_dec(exit_code);
+        puts(prog_path);
         puts("\n");
     }
-    puts("\n");
 }
-static void cmd_programs(void) {
-    puts("\nAvailable programs:\n");
 
-    for(int i = 0; i < programs_count(); i++) {
-        puts("  ");
-        puts(programs_get(i)->name);
-        puts("         - ");
-        puts(programs_get(i)->description);
-        puts("\n");
+/*
+ * cmd_cat - Display contents of a file from the initrd.
+ */
+static void cmd_cat(const char *arg) {
+    /* Skip leading whitespace */
+    while (*arg == CHAR_SPACE) arg++;
+
+    if (*arg == '\0') {
+        puts("Usage: cat <file>\n");
+        puts("Example: cat bin/hello.txt\n");
+        return;
     }
 
-    puts("Total programs: ");
-    put_dec(programs_count());
-    puts("\n");
+    /* Normalize the path */
+    char path[MAX_PATH_LEN];
+    normalize_path(arg, path, sizeof(path));
+
+    /* Try to find the file */
+    const struct tar_file *file = tar_find(path);
+
+    /* If not found and we have a current directory, try relative to it */
+    if (file == NULL && strlen(current_path) > 0) {
+        char full_path[MAX_PATH_LEN];
+        size_t cur_len = strlen(current_path);
+        size_t path_len = strlen(path);
+
+        if (cur_len + 1 + path_len < MAX_PATH_LEN) {
+            memcpy(full_path, current_path, cur_len);
+            full_path[cur_len] = '/';
+            memcpy(full_path + cur_len + 1, path, path_len + 1);
+            file = tar_find(full_path);
+        }
+    }
+
+    if (file == NULL) {
+        puts("Error: not found: ");
+        puts(path);
+        puts("\n");
+        return;
+    }
+
+    if (file->is_dir) {
+        puts("Error: is a directory: ");
+        puts(path);
+        puts("\n");
+        return;
+    }
+
+    for (size_t i = 0; i < file->size; i++) {
+        putc(((const char *)file->data)[i]);
+    }
 }
 
 /*
@@ -204,9 +275,17 @@ static void cmd_meminfo(void) {
 }
 
 static void cmd_uptime(void) {
-    puts("\nUptime: \n");
+    puts("\nUptime: ");
     put_dec(pit_get_ticks() * 10);
     puts(" ms\n\n");
+}
+
+/*
+ * cmd_last_exit - Display the last program exit code.
+ */
+static void cmd_last_exit(void) {
+    put_dec(last_exit_code);
+    puts("\n");
 }
 
 /*
@@ -360,6 +439,148 @@ static void cmd_test(const char *arg) {
 }
 
 /* =============================================================================
+ * Filesystem Commands (ls, cd, cat)
+ * =============================================================================
+ */
+
+/*
+ * print_tar_entry - Callback for tar_list_dir to print one entry.
+ */
+static void print_tar_entry(const char *name, size_t size, int is_dir, void *ctx) {
+    (void)ctx;
+
+    /* Skip empty names and "./" entries */
+    if (strlen(name) == 0 || strcmp(name, "./") == 0) {
+        return;
+    }
+
+    if (is_dir) {
+        puts("    <dir>  ");
+        puts(name);
+    } else {
+        /* Right-align size in 8 chars */
+        char size_buf[12];
+        int len = 0;
+        size_t tmp = size;
+        do {
+            size_buf[len++] = '0' + (tmp % 10);
+            tmp /= 10;
+        } while (tmp > 0);
+
+        /* Print padding spaces */
+        for (int i = len; i < 8; i++) putc(' ');
+        /* Print digits in reverse */
+        while (len > 0) putc(size_buf[--len]);
+
+        puts("  ");
+        puts(name);
+    }
+    puts("\n");
+}
+
+/*
+ * cmd_ls - List directory contents from initrd.
+ */
+static void cmd_ls(const char *arg) {
+    /* Skip leading whitespace */
+    while (*arg == CHAR_SPACE) arg++;
+
+    /* Use argument if provided, otherwise use current_path */
+    const char *path = (*arg != '\0') ? arg : current_path;
+
+    puts("\nContents of /");
+    if (strlen(path) > 0) {
+        puts(path);
+    }
+    puts(":\n");
+
+    int count = tar_list_dir(path, print_tar_entry, NULL);
+
+    if (count == 0) {
+        puts("  (empty or not found)\n");
+    }
+    puts("\n");
+}
+
+/*
+ * cmd_cd - Change current directory.
+ */
+static void cmd_cd(const char *arg) {
+    /* Skip leading whitespace */
+    while (*arg == CHAR_SPACE) arg++;
+
+    if (*arg == '\0') {
+        /* No argument - go to root */
+        current_path[0] = '\0';
+        puts("\nChanged to /\n\n");
+        return;
+    }
+
+    if (strcmp(arg, "..") == 0) {
+        /* Go up one directory */
+        size_t len = strlen(current_path);
+        if (len == 0) {
+            puts("\nAlready at root\n\n");
+            return;
+        }
+
+        /* Remove trailing slash if present */
+        if (len > 0 && current_path[len-1] == '/') {
+            current_path[len-1] = '\0';
+            len--;
+        }
+
+        /* Find last slash and truncate there */
+        char *last_slash = NULL;
+        for (char *p = current_path; *p != '\0'; p++) {
+            if (*p == '/') {
+                last_slash = p;
+            }
+        }
+
+        if (last_slash != NULL) {
+            *last_slash = '\0';
+        } else {
+            /* No slash found - we're one level deep, go to root */
+            current_path[0] = '\0';
+        }
+    } else if (arg[0] == '/') {
+        /* Absolute path - copy without leading slash */
+        strncpy(current_path, arg + 1, MAX_PATH_LEN - 1);
+        current_path[MAX_PATH_LEN - 1] = '\0';
+    } else {
+        /* Relative path - append to current */
+        size_t cur_len = strlen(current_path);
+
+        if (cur_len > 0 && current_path[cur_len-1] != '/') {
+            /* Add separator if needed */
+            if (cur_len < MAX_PATH_LEN - 1) {
+                current_path[cur_len++] = '/';
+                current_path[cur_len] = '\0';
+            }
+        }
+
+        /* Append new path component manually */
+        size_t i = 0;
+        while (arg[i] != '\0' && cur_len + i < MAX_PATH_LEN - 1) {
+            current_path[cur_len + i] = arg[i];
+            i++;
+        }
+        current_path[cur_len + i] = '\0';
+    }
+
+    /* Remove trailing slash for consistency */
+    size_t len = strlen(current_path);
+    if (len > 0 && current_path[len-1] == '/') {
+        current_path[len-1] = '\0';
+    }
+
+    puts("\nChanged to /");
+    puts(current_path);
+    puts("\n\n");
+}
+
+/* =============================================================================
  * Command Dispatcher
  * =============================================================================
  */
@@ -402,10 +623,22 @@ static void execute_command(void) {
         cmd_test("");  /* No argument - will list tests */
     } else if (strcmp(command_buffer, "uptime") == 0) {
         cmd_uptime();
-    } else if (strcmp(command_buffer, "programs") == 0) {
-        cmd_programs();
+    } else if (strcmp(command_buffer, "last_exit") == 0) {
+        cmd_last_exit();
+    } else if (strcmp(command_buffer, "cat") == 0) {
+        cmd_cat("");
+    } else if (strncmp(command_buffer, "cat ", 4) == 0) {
+        cmd_cat(command_buffer + 4);
     } else if (strncmp(command_buffer, "run ", 4) == 0) {
         cmd_run(command_buffer + 4);  /* Skip "run " prefix */
+    } else if (strcmp(command_buffer, "ls") == 0) {
+        cmd_ls("");
+    } else if (strncmp(command_buffer, "ls ", 3) == 0) {
+        cmd_ls(command_buffer + 3);
+    } else if (strcmp(command_buffer, "cd") == 0) {
+        cmd_cd("");
+    } else if (strncmp(command_buffer, "cd ", 3) == 0) {
+        cmd_cd(command_buffer + 3);
     } else {
         puts("\nUnknown command: ");
         puts(command_buffer);
@@ -430,15 +663,19 @@ void shell_init(void) {
     puts("       Seed OS Shell v0.1\n");
     puts("  Type 'help' for available commands\n");
     puts("========================================\n");
-    programs_init();
     shell_prompt();
 }
 
 /*
- * shell_prompt - Display the command prompt.
+ * shell_prompt - Display the command prompt with current path.
  */
 void shell_prompt(void) {
-    puts("seed> ");
+    puts("seed:");
+    puts("/");
+    if (strlen(current_path) > 0) {
+        puts(current_path);
+    }
+    puts("> ");
 }
 
 /*
