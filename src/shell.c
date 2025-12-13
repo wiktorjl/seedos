@@ -88,26 +88,70 @@ static void cmd_help(void) {
     puts("\n");
 }
 
-static void cmd_run(const char *arg) {
-    puts("\nRunning program: ");
-    puts(arg);
-    puts("\n");
+/* Maximum arguments for a user program */
+#define MAX_ARGS 16
+#define MAX_ARG_LEN 64
 
+static void cmd_run(const char *arg) {
     /* Skip leading whitespace */
     while (*arg == CHAR_SPACE) arg++;
 
     if (*arg == '\0') {
-        puts("\nUsage: run <program_name>\n");
-        puts("Example: run shell\n\n");
+        puts("\nUsage: run <program> [args...]\n");
+        puts("Example: run hello\n");
+        puts("Example: run ctest arg1 arg2\n\n");
         return;
     }
-    size_t program_len = strlen(arg);
-    if (program_len > 0) {
-        programs_run(arg);
-    } else {
-        puts("Error: missing program name");
+
+    /* Parse into argv array */
+    static char arg_storage[MAX_ARGS][MAX_ARG_LEN];
+    static char *argv[MAX_ARGS + 1];  /* +1 for NULL terminator */
+    int argc = 0;
+
+    const char *p = arg;
+    while (*p && argc < MAX_ARGS) {
+        /* Skip whitespace */
+        while (*p == CHAR_SPACE) p++;
+        if (*p == '\0') break;
+
+        /* Copy argument */
+        int i = 0;
+        while (*p && *p != CHAR_SPACE && i < MAX_ARG_LEN - 1) {
+            arg_storage[argc][i++] = *p++;
+        }
+        arg_storage[argc][i] = '\0';
+        argv[argc] = arg_storage[argc];
+        argc++;
+    }
+    argv[argc] = NULL;
+
+    if (argc == 0) {
+        puts("\nError: missing program name\n\n");
+        return;
     }
 
+    /* Print what we're running */
+    puts("\nRunning: ");
+    puts(argv[0]);
+    if (argc > 1) {
+        puts(" (");
+        put_dec(argc - 1);
+        puts(" args)");
+    }
+    puts("\n\n");
+
+    /* Run the program with arguments */
+    int exit_code = programs_run(argv[0], argc, argv);
+
+    if (exit_code == -1) {
+        puts("Error: program not found: ");
+        puts(argv[0]);
+        puts("\n");
+    } else {
+        puts("\nProgram exited with code: ");
+        put_dec(exit_code);
+        puts("\n");
+    }
     puts("\n");
 }
 static void cmd_programs(void) {

@@ -40,6 +40,8 @@ void programs_init(void) {
                      crash_bin, crash_bin_len);
     register_program("input", "Tests keyboard input (q to quit)",
                      input_bin, input_bin_len);
+    register_program("ctest", "C program test (argc/argv demo)",
+                     ctest_bin, ctest_bin_len);
 }
 
 int programs_count(void) {
@@ -64,7 +66,7 @@ struct user_program *programs_find(const char *name) {
     return NULL;
 }
 
-int programs_run(const char *name) {
+int programs_run(const char *name, int argc, char **argv) {
     struct user_program *prog = programs_find(name);
     if (prog == NULL) {
         return -1;
@@ -81,7 +83,8 @@ int programs_run(const char *name) {
         return -1;
     }
 
-    int exit_code = process_run(p);
+    /* Run with argc/argv on stack */
+    int exit_code = process_run_with_args(p, argc, argv);
     process_destroy(p);
     return exit_code;
 }

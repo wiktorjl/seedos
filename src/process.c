@@ -12,6 +12,7 @@
 #include "context.h"
 #include "string.h"
 #include "elf.h"
+#include "console.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -162,6 +163,82 @@ int process_run(struct process *p) {
 
     /* Process has exited, return exit code */
     /* TODO: Capture actual exit code from sys_exit */
+    return last_exit_code;
+}
+
+int process_run_with_args(struct process *p, int argc, char **argv) {
+    if (p == NULL) {
+        return -1;
+    }
+
+    /*
+     * Set up argc/argv on the user stack.
+     *
+     * Stack layout (high to low):
+     *   [argv strings]    <- at top of stack page
+     *   [NULL]            <- argv terminator
+     *   [argv[n-1] ptr]
+     *   ...
+     *   [argv[0] ptr]
+     *   [argc]            <- RSP points here
+     */
+
+    /* Get kernel-accessible pointer to stack page */
+    uint8_t *stack_virt = (uint8_t *)phys_to_virt(p->stack_page);
+    uint8_t *stack_top = stack_virt + PROCESS_STACK_SIZE;
+
+    /* Step 1: Copy strings to top of stack (high addresses, working down) */
+    uint64_t string_user_addrs[32];  /* Max 32 arguments */
+    if (argc > 32) {
+        argc = 32;
+    }
+
+    uint8_t *str_ptr = stack_top;
+    for (int i = argc - 1; i >= 0; i--) {
+        /* Calculate string length including null terminator */
+        size_t len = 0;
+        const char *s = argv[i];
+        while (s[len]) len++;
+        len++;  /* Include null terminator */
+
+        /* Move pointer down and copy string */
+        str_ptr -= len;
+        memcpy(str_ptr, argv[i], len);
+
+        /* Calculate user-space address of this string */
+        uint64_t offset = str_ptr - stack_virt;
+        string_user_addrs[i] = USER_STACK_BASE + offset;
+    }
+
+    /* Step 2: Align to 8 bytes for pointer array */
+    str_ptr = (uint8_t *)((uint64_t)str_ptr & ~7ULL);
+
+    /* Step 3: Push NULL terminator for argv */
+    str_ptr -= 8;
+    *(uint64_t *)str_ptr = 0;
+
+    /* Step 4: Push argv pointers (in reverse order so argv[0] is at lowest address) */
+    for (int i = argc - 1; i >= 0; i--) {
+        str_ptr -= 8;
+        *(uint64_t *)str_ptr = string_user_addrs[i];
+    }
+
+    /* Step 5: Push argc */
+    str_ptr -= 8;
+    *(uint64_t *)str_ptr = (uint64_t)argc;
+
+    /* Calculate new user RSP */
+    uint64_t new_stack = USER_STACK_BASE + (str_ptr - stack_virt);
+
+    /* Set up user context for context switch */
+    struct user_context ctx;
+    ctx.pml4 = p->pml4;
+    ctx.entry = p->entry;
+    ctx.stack = new_stack;
+
+    /* Enter userspace - blocks until sys_exit */
+    context_switch_to_user(&ctx);
+
     return last_exit_code;
 }
 

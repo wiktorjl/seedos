@@ -38,6 +38,7 @@
 #include "pit.h"
 #include "vmm.h"
 #include "test_framework.h"
+#include "programs.h"
 #include "test_all.h"
 
 /*

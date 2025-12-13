@@ -68,6 +68,16 @@
  * =============================================================================
  */
 struct syscall_registers {
+    /* Saved registers (in reverse push order) */
+    uint64_t r15;
+    uint64_t r14;
+    uint64_t r13;
+    uint64_t r12;
+    uint64_t r11;
+    uint64_t r10;
+    uint64_t r9;
+    uint64_t r8;
+    uint64_t rbp;
     uint64_t rdi;  /* Argument 1: fd / exit_code */
     uint64_t rsi;  /* Argument 2: buffer pointer */
     uint64_t rdx;  /* Argument 3: byte count */

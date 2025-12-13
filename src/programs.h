@@ -14,6 +14,6 @@ void programs_init(void);
 int programs_count(void);
 struct user_program *programs_get(int index);
 struct user_program *programs_find(const char *name);
-int programs_run(const char *name);
+int programs_run(const char *name, int argc, char **argv);
 
 #endif

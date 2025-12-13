@@ -58,7 +58,7 @@ isr_common:
     iretq
 
 isr_common_syscall:
-    
+
     /* Save all general-purpose registers */
     pushq %rax
     pushq %rbx
@@ -66,14 +66,32 @@ isr_common_syscall:
     pushq %rdx
     pushq %rsi
     pushq %rdi
+    pushq %rbp
+    pushq %r8
+    pushq %r9
+    pushq %r10
+    pushq %r11
+    pushq %r12
+    pushq %r13
+    pushq %r14
+    pushq %r15
 
     /* First argument (rdi) = pointer to interrupt_frame (current stack pointer) */
     movq %rsp, %rdi
-    
+
     /* Call C handler */
     call syscall_handler
 
     /* Restore all general-purpose registers */
+    popq %r15
+    popq %r14
+    popq %r13
+    popq %r12
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
+    popq %rbp
     popq %rdi
     popq %rsi
     popq %rdx

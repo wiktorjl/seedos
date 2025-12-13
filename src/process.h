@@ -122,6 +122,28 @@ int process_load_elf(struct process *p, const void *data, uint64_t size);
 int process_run(struct process *p);
 
 /*
+ * process_run_with_args - Execute the process with command-line arguments.
+ *
+ * @p:    Process to execute
+ * @argc: Number of arguments
+ * @argv: Array of argument strings (NULL-terminated)
+ *
+ * Sets up argc/argv on the user stack before entering userspace.
+ * The C runtime (crt0) will pop these and pass them to main().
+ *
+ * Stack layout on entry:
+ *   [strings...]    <- high addresses
+ *   [NULL]
+ *   [argv[n-1] ptr]
+ *   ...
+ *   [argv[0] ptr]
+ *   [argc]          <- RSP points here
+ *
+ * Returns: The process's exit code.
+ */
+int process_run_with_args(struct process *p, int argc, char **argv);
+
+/*
  * process_destroy - Free all resources associated with a process.
  *
  * @p: Process to destroy (may be NULL, in which case this is a no-op)

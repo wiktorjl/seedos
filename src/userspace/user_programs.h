@@ -44,4 +44,8 @@ extern unsigned int stars_bin_len;
 extern unsigned char input_bin[];
 extern unsigned int input_bin_len;
 
+/* ctest - C program test (argc/argv demo) */
+extern unsigned char ctest_bin[];
+extern unsigned int ctest_bin_len;
+
 #endif /* USER_PROGRAMS_H */
