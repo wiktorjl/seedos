@@ -42,6 +42,7 @@
 #ifndef KEYBOARD_H
 #define KEYBOARD_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 /* =============================================================================
@@ -89,5 +90,7 @@ int keyboard_has_char(void);
  *   char c = keyboard_get_char();
  */
 char keyboard_get_char(void);
+
+size_t keyboard_read(char *buf, size_t len);
 
 #endif /* KEYBOARD_H */

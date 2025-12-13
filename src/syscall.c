@@ -26,9 +26,11 @@
 #include "context.h"
 #include "pit.h"
 #include <stdint.h>
+#include "keyboard.h"
 
 /* File descriptor for standard output (stdout) */
 #define FD_STDOUT 1
+#define FD_STDIN 0
 
 /* Error return value for syscalls */
 #define SYSCALL_ERROR ((uint64_t)-1)
@@ -102,6 +104,24 @@ static uint64_t sys_write(uint64_t fd, uint64_t buffer, uint64_t count) {
     return count;  /* All bytes written successfully */
 }
 
+static uint64_t sys_read(uint64_t fd, uint64_t buffer, uint64_t count) {
+    char *buf = (char *)buffer;
+
+    if (!vmm_validate_user_range((const void *)buffer, count)) {
+        puts("Error: Invalid user buffer address\n");
+        return 0;
+    }
+
+    if (fd != FD_STDIN) {
+        return 0;
+    }
+
+    /* Read available chars (returns actual count, may be 0) */
+    size_t bytes_read = keyboard_read(buf, count);
+    
+    return bytes_read;
+}
+
 static uint64_t sys_getpid(void) {
     return process_get_pid();
 }
@@ -148,6 +168,10 @@ void syscall_handler(struct syscall_registers *regs) {
             regs->rax = sys_write(regs->rdi, regs->rsi, regs->rdx);
             break;
         
+        case SYS_READ:
+            regs->rax = sys_read(regs->rdi, regs->rsi, regs->rdx);
+            break;
+            
         case SYS_GETPID:
             regs->rax = sys_getpid();
             break;

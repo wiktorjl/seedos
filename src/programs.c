@@ -38,6 +38,8 @@ void programs_init(void) {
                      loop_bin, loop_bin_len);
     register_program("crash", "Deliberately crashes (test exception)",
                      crash_bin, crash_bin_len);
+    register_program("input", "Tests keyboard input (q to quit)",
+                     input_bin, input_bin_len);
 }
 
 int programs_count(void) {

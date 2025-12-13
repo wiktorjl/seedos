@@ -137,6 +137,9 @@ void kernel_main(void) {
 
     vmm_init(hhdm_offset);
     puts("[ok] vmm\n");
+    puts("    HHDM Offset: ");
+    put_hex(hhdm_offset);
+    puts("\n");
 
     idt_init();
     puts("[ok] idt\n");

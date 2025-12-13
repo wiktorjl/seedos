@@ -238,3 +238,17 @@ char keyboard_get_char(void) {
     buffer_read_pos = (buffer_read_pos + 1) % INPUT_BUFFER_SIZE;
     return c;
 }
+
+
+size_t keyboard_read(char *buf, size_t len) {
+    size_t bytes_read = 0;
+
+    while (bytes_read < len) {
+        char c = keyboard_get_char();
+        if (c == 0) {
+            break;  /* No more characters available */
+        }
+        buf[bytes_read++] = c;
+    }
+    return bytes_read;  
+}
