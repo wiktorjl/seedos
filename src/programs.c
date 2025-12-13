@@ -20,11 +20,12 @@
 /*
  * programs_run - Load and execute a program from the initrd.
  *
- * @name: Program name or path (e.g., "hello" or "bin/hello")
+ * @name: Program name or path (e.g., "hello" or "data/myprog")
  * @argc: Argument count to pass to program
  * @argv: Argument vector to pass to program
  *
- * If name doesn't start with "bin/", it's automatically prepended.
+ * If name contains '/', it's treated as a full path.
+ * Otherwise, "bin/" is prepended (e.g., "hello" -> "bin/hello").
  *
  * Returns: Program exit code, or -1 on error.
  */
@@ -32,8 +33,17 @@ int programs_run(const char *name, int argc, char **argv) {
     char path[128];
     size_t i = 0;
 
-    /* Only prepend "bin/" if path doesn't already start with it */
-    if (!(name[0] == 'b' && name[1] == 'i' && name[2] == 'n' && name[3] == '/')) {
+    /* Check if name contains a slash (i.e., is a path) */
+    int has_slash = 0;
+    for (const char *c = name; *c; c++) {
+        if (*c == '/') {
+            has_slash = 1;
+            break;
+        }
+    }
+
+    /* Only prepend "bin/" if name is not already a path */
+    if (!has_slash) {
         path[0] = 'b'; path[1] = 'i'; path[2] = 'n'; path[3] = '/';
         i = 4;
     }

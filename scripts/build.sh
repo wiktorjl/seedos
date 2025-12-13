@@ -47,6 +47,13 @@ for prog in hello info heap count alpha stars loop crash input ctest filetest; d
     fi
 done
 echo "HELLO!" > "$BUILD_DIR/initrd/bin/hello.txt"
+
+# Copy extra files from initrd_extra/ if it exists
+if [ -d "initrd_extra" ]; then
+    cp -r initrd_extra/* "$BUILD_DIR/initrd/"
+    echo "  Added extra files from initrd_extra/"
+fi
+
 tar --format=ustar -cf "$BUILD_DIR/iso_root/boot/initrd.tar" -C "$BUILD_DIR/initrd" .
 
 # Step 4: Copy Limine bootloader files
