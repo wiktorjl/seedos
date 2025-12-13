@@ -33,7 +33,7 @@
 #ifndef IO_H
 #define IO_H
 
-#include <stdint.h>
+#include "types.h"
 
 /* =============================================================================
  * I/O Port Access Functions

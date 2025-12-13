@@ -46,7 +46,7 @@
 #ifndef CONTEXT_H
 #define CONTEXT_H
 
-#include <stdint.h>
+#include "types.h"
 
 #define USER_STACK_SIZE 0x1000
 

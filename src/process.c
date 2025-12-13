@@ -108,6 +108,10 @@ struct process *process_create(void) {
         return NULL;
     }
 
+    /* Initialize file descriptor table */
+    struct fd_table empty_fdt = {0};
+    p->fds = empty_fdt;
+
     process_in_use = 1;
     return p;
 }
@@ -307,3 +311,9 @@ void * process_sbrk(intptr_t increment) {
     return (void *)old_brk;
 }
 
+struct fd_table *process_get_fd_table(void) {
+    if (!process_in_use) {
+        return NULL;
+    }
+    return &current_process.fds;
+}

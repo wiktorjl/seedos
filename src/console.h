@@ -43,7 +43,7 @@
 #ifndef CONSOLE_H
 #define CONSOLE_H
 
-#include <stdint.h>
+#include "types.h"
 
 /* =============================================================================
  * Console API Functions

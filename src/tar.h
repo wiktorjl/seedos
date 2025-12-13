@@ -1,8 +1,7 @@
 #ifndef TAR_H
 #define TAR_H
-#include <stdbool.h>
-#include <stdint.h>
-#include <stddef.h>
+
+#include "types.h"
 
 #define TAR_BLOCK_SIZE 512
 #define TAR_TYPE_FILE     '0'

@@ -68,10 +68,15 @@ static uint64_t alloc_page_table(void) {
 
 bool vmm_validate_user_range(const void *ptr, size_t len) {
     uint64_t addr = (uint64_t)ptr;
+    // Check pointer is not null
+    if (addr == 0) return false;
     // Check pointer is in user space
     if (addr >= USER_SPACE_TOP) return false;
-    // Check end doesn't overflow
-    if (len > USER_SPACE_TOP - addr) return false;
+    // Check length is non-zero
+    if (len == 0) return false;
+    // Check end doesn't overflow or wrap into kernel space
+    uint64_t end = addr + len;
+    if (end < addr || end > USER_SPACE_TOP) return false;
     return true;
 }
 

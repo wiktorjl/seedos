@@ -51,7 +51,7 @@
 #ifndef FB_H
 #define FB_H
 
-#include <stdint.h>
+#include "types.h"
 
 /* =============================================================================
  * Common Color Definitions (0xRRGGBB format)

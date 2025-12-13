@@ -22,6 +22,9 @@
 #define SYS_GETPID 3
 #define SYS_UPTIME 4
 #define SYS_SBRK   5
+#define SYS_OPEN   6
+#define SYS_CLOSE  7
+#define SYS_LSEEK  8
 
 /*
  * sys_exit - Terminate the current process
@@ -128,6 +131,63 @@ static inline void *sys_sbrk(long increment) {
     );
     return ret;
 }
+
+/*
+* sys_open - Open a file
+* @path: Path to the file
+* @flags: Open flags (O_RDONLY = 0)
+*
+* Returns: File descriptor on success, -1 on error
+*/
+static inline int sys_open(const char *path, int flags) {
+    int ret;
+    __asm__ volatile (
+        "mov %1, %%rax\n"
+        "int $0x80\n"
+        : "=a"(ret)
+        : "i"(SYS_OPEN), "D"(path), "S"(flags)
+        : "memory"
+    );
+    return ret;
+}
+
+/*
+* sys_close - Close a file descriptor
+* @fd: File descriptor to close
+*
+* Returns: 0 on success, -1 on error
+*/
+static inline int sys_close(int fd) {
+    int ret;
+    __asm__ volatile (
+        "mov %1, %%rax\n"
+        "int $0x80\n"
+        : "=a"(ret)
+        : "i"(SYS_CLOSE), "D"(fd)
+    );
+    return ret;
+}
+
+/*
+* sys_lseek - Reposition file offset
+* @fd: File descriptor
+* @offset: Offset value
+* @whence: 0=SEEK_SET, 1=SEEK_CUR, 2=SEEK_END
+*
+* Returns: New position on success, -1 on error
+*/
+static inline long sys_lseek(int fd, long offset, int whence) {
+    long ret;
+    __asm__ volatile (
+        "mov %1, %%rax\n"
+        "int $0x80\n"
+        : "=a"(ret)
+        : "i"(SYS_LSEEK), "D"(fd), "S"(offset), "d"(whence)
+    );
+    return ret;
+}
+
+
 
 /* ============================================================================
  * Convenience Functions

@@ -39,9 +39,7 @@
 #ifndef VMM_H
 #define VMM_H
 
-#include <stdint.h>
-#include <stdbool.h>
-#include <stddef.h>
+#include "types.h"
 
 /* Page size - must match PAGE_SIZE in pmm.h */
 #define VMM_PAGE_SIZE 4096

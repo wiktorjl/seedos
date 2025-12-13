@@ -52,7 +52,7 @@
 #ifndef PIT_H
 #define PIT_H
 
-#include <stdint.h>
+#include "types.h"
 
 /* =============================================================================
  * PIT Hardware Constants

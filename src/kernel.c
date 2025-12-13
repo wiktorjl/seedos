@@ -36,6 +36,7 @@
 #include "gdt.h"
 #include "console.h"
 #include "pit.h"
+#include "vfs.h"
 #include "vmm.h"
 #include "test_framework.h"
 #include "test_all.h"
@@ -176,6 +177,9 @@ void kernel_main(void) {
     } else {
         puts("[warn] no initrd\n");
     }
+
+    vfs_init();
+    puts("[ok] vfs\n");
 
     
     /* Start the shell */

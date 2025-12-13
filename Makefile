@@ -33,7 +33,7 @@ LDFLAGS = -nostdlib           \
           -T $(SRC_DIR)/linker.ld
 
 # Kernel source files (in src/)
-C_SOURCES = kernel.c pmm.c idt.c pic.c keyboard.c programs.c process.c shell.c fb.c gdt.c console.c vmm.c syscall.c pit.c serial.c string.c elf.c tar.c
+C_SOURCES = kernel.c pmm.c idt.c pic.c keyboard.c programs.c process.c shell.c fb.c gdt.c console.c vmm.c syscall.c pit.c serial.c string.c elf.c tar.c tarfs.c vfs.c
 ASM_SOURCES = boot.S isr.S gdt_load.S context_switch.S
 
 # Test source files (in test/)
@@ -49,7 +49,7 @@ TEST_OBJECTS = $(addprefix $(BUILD_DIR)/,$(TEST_SOURCES:.c=.o))
 #
 # Build chain: .c -> _ucode.o + crt0.o -> .elf -> _bin.c -> _bin.o
 # =============================================================================
-USER_PROGRAMS = hello info heap count alpha stars loop crash input ctest
+USER_PROGRAMS = hello info heap count alpha stars loop crash input ctest filetest
 USER_PROG_OBJS = $(addprefix $(BUILD_DIR)/,$(addsuffix _bin.o,$(USER_PROGRAMS)))
 
 # C compiler flags for userspace (NO -mcmodel=kernel!)

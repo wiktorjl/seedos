@@ -24,8 +24,7 @@
 #ifndef PMM_H
 #define PMM_H
 
-#include <stdint.h>
-#include <stddef.h>
+#include "types.h"
 #include "limine.h"
 
 /* Page size in bytes (4KB). This is the smallest unit we allocate. */

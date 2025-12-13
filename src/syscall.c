@@ -27,6 +27,8 @@
 #include "pit.h"
 #include <stdint.h>
 #include "keyboard.h"
+#include "vfs.h"
+#include "tarfs.h"
 
 /* File descriptor for standard output (stdout) */
 #define FD_STDOUT 1
@@ -39,6 +41,109 @@
  * Individual Syscall Implementations
  * =============================================================================
  */
+
+
+static int64_t sys_open(uint64_t path_ptr, uint64_t flags) {
+    const char *path = (const char *)path_ptr;
+
+    // 1. Validate user pointer (use vmm_validate_user_string or similar)
+    if (!vmm_validate_user_range((const void *)path_ptr, 1)) {
+        puts("Error: Invalid user path pointer\n");
+        return -1;
+    }
+
+    // 2. Get current process fd_table: process_get_fd_table()
+    struct fd_table *fdt = process_get_fd_table();
+    
+    // 3. Allocate fd: vfs_alloc_fd(fdt)
+    int fd = vfs_alloc_fd(fdt);
+    if (fd == -1) {
+        return -1;  // No free file descriptors
+    }
+
+    // 4. Open vnode: tarfs_open(path)
+    struct vnode *vn = tarfs_open(path);
+
+    if(vn == NULL) {
+        vfs_free_fd(fdt, fd);
+        return -1;  // File not found
+    }
+
+    // 6. Set up fd entry: fdt->fds[fd].vn = vnode, .position = 0, .flags = flags
+    fdt->fds[fd].vn = vn;
+    fdt->fds[fd].position = 0;
+    fdt->fds[fd].flags = (int)flags;
+
+    // 7. Return fd
+    return fd;
+}
+
+/*
+* sys_close - Close a file descriptor.
+*/
+static int64_t sys_close(uint64_t fd) {
+    if(fd >= MAX_FDS) {
+        return -1;  // Invalid fd
+    }
+
+    // 1. Get fd_table
+    struct fd_table *fdt = process_get_fd_table();
+    // 2. Get file_descriptor with vfs_get_fd()
+    struct file_descriptor *file_desc = vfs_get_fd(fdt, (int)fd);
+    
+    if( file_desc == NULL) {
+        return -1;  // fd not in use
+    }
+
+    struct vnode *vn = file_desc->vn;
+    vn->ops->close(vn);  // 3. Get vnode from file_descriptor
+    vfs_free_fd(fdt, (int)fd);
+    return 0;
+}
+
+
+static int64_t sys_lseek(uint64_t fd, int64_t offset, uint64_t whence) {
+    // 1. Get fd_table and file_descriptor
+    if(fd >= MAX_FDS) {
+        return -1;  // Invalid fd
+    }
+
+    // 1. Get fd_table
+    struct fd_table *fdt = process_get_fd_table();
+    // 2. Get file_descriptor with vfs_get_fd()
+    struct file_descriptor *file_desc = vfs_get_fd(fdt, (int)fd);
+
+    // 2. Calculate new position based on whence:
+    //    SEEK_SET: new_pos = offset
+    //    SEEK_CUR: new_pos = position + offset
+    //    SEEK_END: new_pos = vnode->size + offset
+    if( file_desc == NULL) {
+        return -1;  // fd not in use
+    }
+    int64_t new_pos;
+    switch (whence) {
+        case 0:  // SEEK_SET
+            new_pos = offset;
+            break;
+        case 1:  // SEEK_CUR
+            new_pos = (int64_t)file_desc->position + offset;
+            break;
+        case 2:  // SEEK_END
+            new_pos = (int64_t)file_desc->vn->size + offset;
+            break;
+        default:
+            return -1;  // Invalid whence
+    }
+
+    if(new_pos < 0) {
+        return -1;  // Invalid position
+    }
+
+    file_desc->position = (size_t)new_pos;
+    return new_pos;
+
+}
+
 
 /*
  * sys_exit - Terminate the current process.
@@ -107,14 +212,24 @@ static uint64_t sys_read(uint64_t fd, uint64_t buffer, uint64_t count) {
         return 0;
     }
 
-    if (fd != FD_STDIN) {
-        return 0;
+    if (fd == FD_STDIN) {
+        /* Read available chars (returns actual count, may be 0) */
+        size_t bytes_read = keyboard_read(buf, count);
+        return bytes_read;
+    } else {
+        struct fd_table *fdt = process_get_fd_table();
+        struct file_descriptor *file_desc = vfs_get_fd(fdt, (int)fd);
+        if( file_desc == NULL) {
+            return 0;
+        }
+        struct vnode *vn = file_desc->vn;
+        ssize_t bytes_read = vn->ops->read(vn, buf, (size_t)count, file_desc->position);
+        if(bytes_read < 0) {
+            return 0;
+        }
+        file_desc->position += (size_t)bytes_read;
+        return (uint64_t)bytes_read;
     }
-
-    /* Read available chars (returns actual count, may be 0) */
-    size_t bytes_read = keyboard_read(buf, count);
-    
-    return bytes_read;
 }
 
 static uint64_t sys_getpid(void) {
@@ -177,6 +292,15 @@ void syscall_handler(struct syscall_registers *regs) {
 
         case SYS_SBRK:
             regs->rax = sys_brk(regs->rdi);
+            break;
+        case SYS_OPEN:
+            regs->rax = sys_open(regs->rdi, regs->rsi);
+            break;
+        case SYS_CLOSE:
+            regs->rax = sys_close(regs->rdi);
+            break;
+        case SYS_LSEEK:
+            regs->rax = sys_lseek(regs->rdi, (int64_t)regs->rsi, regs->rdx);
             break;
 
         default:

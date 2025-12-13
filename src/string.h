@@ -8,7 +8,7 @@
 #ifndef STRING_H
 #define STRING_H
 
-#include <stdint.h>
+#include "types.h"
 
 /*
  * strcmp - Compare two null-terminated strings.

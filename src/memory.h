@@ -58,9 +58,7 @@
 #ifndef MEMORY_H
 #define MEMORY_H
 
-#include <stdint.h>
-#include <stddef.h>
-#include <stdbool.h>
+#include "types.h"
 
 #define USER_SPACE_TOP 0x0000800000000000ULL
 

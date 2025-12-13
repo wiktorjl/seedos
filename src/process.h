@@ -32,7 +32,8 @@
 #ifndef PROCESS_H
 #define PROCESS_H
 
-#include <stdint.h>
+#include "vfs.h"
+#include "types.h"
 
 /*
  * struct process - Represents a user process.
@@ -49,6 +50,7 @@ struct process {
     uint64_t stack;         /* Initial stack pointer */
     int exit_code;          /* Exit code after process terminates */
     int pid;                /* Process ID */
+    struct fd_table fds;    /* File descriptor table */
 };
 
 void *process_sbrk(int64_t increment);
@@ -155,5 +157,22 @@ int process_run_with_args(struct process *p, int argc, char **argv);
  *   - The process struct itself
  */
 void process_destroy(struct process *p);
+
+/**
+ * @brief Get the file descriptor table of the current process.
+ * 
+ * Retrieves a pointer to the file descriptor table associated with the 
+ * currently executing process. The file descriptor table maintains the 
+ * mapping between file descriptor integers and their corresponding file 
+ * objects or resources.
+ * 
+ * @return Pointer to the file descriptor table of the current process.
+ *         Returns NULL if no process is currently active or if the 
+ *         current process has no file descriptor table allocated.
+ * 
+ * @note This function should only be called in process context.
+ * @note The returned pointer should not be freed by the caller.
+ */
+struct fd_table *process_get_fd_table(void);
 
 #endif /* PROCESS_H */

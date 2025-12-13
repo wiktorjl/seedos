@@ -27,7 +27,7 @@
 #ifndef ELF_H
 #define ELF_H
 
-#include <stdint.h>
+#include "types.h"
 
 /* =============================================================================
  * ELF Identification (e_ident)
