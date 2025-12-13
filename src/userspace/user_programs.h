@@ -40,4 +40,8 @@ extern unsigned int alpha_bin_len;
 extern unsigned char stars_bin[];
 extern unsigned int stars_bin_len;
 
+/* input - tests keyboard input via sys_read */
+extern unsigned char input_bin[];
+extern unsigned int input_bin_len;
+
 #endif /* USER_PROGRAMS_H */
