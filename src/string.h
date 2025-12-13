@@ -60,4 +60,6 @@ void *memcpy(void *dest, const void *src, uint64_t n);
  */
 uint64_t parse_hex(const char *s);
 
+char * strncpy(char *dest, const char *src, uint64_t n);
+
 #endif /* STRING_H */

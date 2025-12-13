@@ -38,8 +38,8 @@
 #include "pit.h"
 #include "vmm.h"
 #include "test_framework.h"
-#include "programs.h"
 #include "test_all.h"
+#include "tar.h"
 
 /*
  * Limine bootloader requests.
@@ -54,6 +54,7 @@ LIMINE_BASE_REVISION_DECLARATION;
 LIMINE_HHDM_REQUEST;
 LIMINE_MEMMAP_REQUEST;
 LIMINE_FRAMEBUFFER_REQUEST;
+LIMINE_MODULE_REQUEST;
 
 static struct limine_memmap_response *memmap;
 static uint64_t hhdm_offset;
@@ -165,6 +166,18 @@ void kernel_main(void) {
 
     puts("\n");
 
+    struct limine_module_response *mod = module_request.response;
+    if (mod && mod->module_count > 0) {
+        struct limine_file *initrd = mod->modules[0];
+        tar_init(initrd->address, initrd->size);
+        puts("[ok] initrd: ");
+        put_dec(tar_get_file_count());
+        puts(" files\n");
+    } else {
+        puts("[warn] no initrd\n");
+    }
+
+    
     /* Start the shell */
     shell_init();
 

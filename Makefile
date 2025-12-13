@@ -33,7 +33,7 @@ LDFLAGS = -nostdlib           \
           -T $(SRC_DIR)/linker.ld
 
 # Kernel source files (in src/)
-C_SOURCES = kernel.c pmm.c idt.c pic.c keyboard.c programs.c process.c shell.c fb.c gdt.c console.c vmm.c syscall.c pit.c serial.c string.c elf.c
+C_SOURCES = kernel.c pmm.c idt.c pic.c keyboard.c programs.c process.c shell.c fb.c gdt.c console.c vmm.c syscall.c pit.c serial.c string.c elf.c tar.c
 ASM_SOURCES = boot.S isr.S gdt_load.S context_switch.S
 
 # Test source files (in test/)

@@ -35,6 +35,13 @@ echo "Copying kernel and bootloader config..."
 cp "$BUILD_DIR/kernel.elf" "$BUILD_DIR/iso_root/boot/"
 cp config/limine.conf "$BUILD_DIR/iso_root/boot/limine/"
 
+# Step 3b: Create initrd
+echo "Creating initrd..."
+mkdir -p "$BUILD_DIR/initrd/bin"
+# For now, just a test file (will be replaced with ELF binaries later)
+echo "test" > "$BUILD_DIR/initrd/bin/test.txt"
+tar --format=ustar -cf "$BUILD_DIR/iso_root/boot/initrd.tar" -C "$BUILD_DIR/initrd" .
+
 # Step 4: Copy Limine bootloader files
 echo "Copying Limine bootloader files..."
 cp limine/limine-bios.sys "$BUILD_DIR/iso_root/boot/limine/"

@@ -37,6 +37,7 @@
  * which areas are usable, reserved, ACPI, etc.
  */
 #define LIMINE_MEMMAP_REQUEST_MAGIC LIMINE_COMMON_MAGIC, 0x67cf3d9d378a806f, 0xe304acdfc50c3c62
+#define LIMINE_MODULE_REQUEST_MAGIC LIMINE_COMMON_MAGIC, 0x3e7e279702be32af, 0xca1c4f3bd1280cee
 
 /* Memory region types */
 #define LIMINE_MEMMAP_USABLE                 0
@@ -66,6 +67,15 @@ struct limine_memmap_request {
     struct limine_memmap_response *response; /* Filled by Limine */
 };
 
+
+#define LIMINE_FRAMEBUFFER_REQUEST \
+    __attribute__((used, section(".limine_requests"))) \
+    static volatile struct limine_framebuffer_request fb_request = { \
+        .id = { LIMINE_FRAMEBUFFER_REQUEST_MAGIC }, \
+        .revision = 0, \
+        .response = (void *)0 \
+    }
+    
 /*
  * HHDM (Higher Half Direct Map) request
  *
@@ -156,10 +166,27 @@ struct limine_framebuffer_request {
     struct limine_framebuffer_response *response;
 };
 
-#define LIMINE_FRAMEBUFFER_REQUEST \
+struct limine_file {
+    uint64_t revision;  /* Revision of this structure */
+    void *address;      /* Virtual address where module is loaded */
+    uint64_t size;      /* Size in bytes */
+    char *path;         /* Null-terminated path string */
+};
+struct limine_module_response {
+    uint64_t revision;
+    uint64_t module_count;
+    struct limine_file **modules;
+};
+struct limine_module_request {
+    uint64_t id[4];
+    uint64_t revision;
+    struct limine_module_response *response;
+};
+
+#define LIMINE_MODULE_REQUEST \
     __attribute__((used, section(".limine_requests"))) \
-    static volatile struct limine_framebuffer_request fb_request = { \
-        .id = { LIMINE_FRAMEBUFFER_REQUEST_MAGIC }, \
+    static volatile struct limine_module_request module_request = { \
+        .id = { LIMINE_MODULE_REQUEST_MAGIC }, \
         .revision = 0, \
         .response = (void *)0 \
     }
