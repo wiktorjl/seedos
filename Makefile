@@ -50,7 +50,7 @@ TEST_OBJECTS = $(addprefix $(BUILD_DIR)/,$(TEST_SOURCES:.c=.o))
 # Each .s file in src/userspace/ becomes an embedded binary:
 #   hello.s -> hello.o -> hello.bin -> hello_bin.c -> hello_bin.o
 # =============================================================================
-USER_PROGRAMS = info heap hello loop crash count alpha stars
+USER_PROGRAMS = info heap hello loop crash count alpha stars input
 USER_PROG_OBJS = $(addprefix $(BUILD_DIR)/,$(addsuffix _bin.o,$(USER_PROGRAMS)))
 
 # All objects
