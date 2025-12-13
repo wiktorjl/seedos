@@ -81,4 +81,7 @@ uint64_t pmm_get_total_pages(void);
  */
 uint64_t pmm_get_usable_pages(void);
 
+
+uint64_t vmm_get_physical(uint64_t pml4_phys, uint64_t virt);
+
 #endif /* PMM_H */

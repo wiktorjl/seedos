@@ -1,11 +1,11 @@
-# heap.s - Tests sbrk syscall by allocating memory and writing to it
+# heap.s - Tests sbrk syscall by allocating and freeing memory
 .globl _start
 _start:
     # Print "Allocating 16 bytes...\n"
     mov $1, %rax
     mov $1, %rdi
     lea msg1(%rip), %rsi
-    mov $22, %rdx
+    mov $23, %rdx
     int $0x80
 
     # sys_sbrk(16) - allocate 16 bytes
@@ -45,6 +45,29 @@ _start:
     mov $1, %rdx
     int $0x80
 
+    # Print "Freeing 16 bytes...\n"
+    mov $1, %rax
+    mov $1, %rdi
+    lea msg_free(%rip), %rsi
+    mov $20, %rdx
+    int $0x80
+
+    # sys_sbrk(-16) - free 16 bytes
+    mov $5, %rax          # SYS_SBRK
+    mov $-16, %rdi        # increment = -16
+    int $0x80
+
+    # Check if free failed
+    cmp $-1, %rax
+    je fail
+
+    # Print "Free OK\n"
+    mov $1, %rax
+    mov $1, %rdi
+    lea msg_freeok(%rip), %rsi
+    mov $8, %rdx
+    int $0x80
+
     # Print "Success!\n"
     mov $1, %rax
     mov $1, %rdi
@@ -79,5 +102,9 @@ msg3:
     .ascii "Success!\n"
 msg_fail:
     .ascii "Failed!\n"
+msg_free:
+    .ascii "Freeing 16 bytes...\n"
+msg_freeok:
+    .ascii "Free OK\n"
 newline:
     .ascii "\n"

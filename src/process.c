@@ -13,6 +13,7 @@
 #include "string.h"
 #include "elf.h"
 #include <stddef.h>
+#include <stdint.h>
 
 /* Page size for stack allocation */
 #define PROCESS_STACK_SIZE 0x1000
@@ -196,12 +197,11 @@ void * process_sbrk(intptr_t increment) {
         return (void *)-1;
     }
 
+    uint64_t old_page = (old_brk - 1) / VMM_PAGE_SIZE;
+    uint64_t new_page = (new_brk - 1) / VMM_PAGE_SIZE;
+
     /* Allocate new pages if growing */
     if (new_brk > old_brk) {
-        /* Calculate which pages need to be mapped */
-        uint64_t old_page = (old_brk - 1) / VMM_PAGE_SIZE;
-        uint64_t new_page = (new_brk - 1) / VMM_PAGE_SIZE;
-
         for (uint64_t page = old_page + 1; page <= new_page; page++) {
             uint64_t virt = page * VMM_PAGE_SIZE;
             uint64_t phys = pmm_alloc();
@@ -215,8 +215,18 @@ void * process_sbrk(intptr_t increment) {
             void *page_virt = phys_to_virt(phys);
             memset(page_virt, 0, VMM_PAGE_SIZE);
         }
+    } else if (new_brk < old_brk) {
+        for (uint64_t page = new_page + 1; page <= old_page; page++) {
+            uint64_t virt = page * VMM_PAGE_SIZE;
+            uint64_t phys = vmm_get_physical(p->pml4, virt);
+            if(phys != 0) {
+                vmm_unmap_page(p->pml4, virt);
+                pmm_free(phys);
+            }
+        }
     }
 
     p->brk = new_brk;
     return (void *)old_brk;
 }
+
