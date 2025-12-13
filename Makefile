@@ -47,13 +47,9 @@ TEST_OBJECTS = $(addprefix $(BUILD_DIR)/,$(TEST_SOURCES:.c=.o))
 # =============================================================================
 # User Programs
 #
-# Assembly programs: .s -> .o -> .elf -> _bin.c -> _bin.o
-# C programs: .c -> .o + crt0.o -> .elf -> _bin.c -> _bin.o
+# Build chain: .c -> _ucode.o + crt0.o -> .elf -> _bin.c -> _bin.o
 # =============================================================================
-USER_ASM_PROGRAMS = info heap hello loop crash count alpha stars input
-USER_C_PROGRAMS = ctest
-
-USER_PROGRAMS = $(USER_ASM_PROGRAMS) $(USER_C_PROGRAMS)
+USER_PROGRAMS = hello info heap count alpha stars loop crash input ctest
 USER_PROG_OBJS = $(addprefix $(BUILD_DIR)/,$(addsuffix _bin.o,$(USER_PROGRAMS)))
 
 # C compiler flags for userspace (NO -mcmodel=kernel!)
@@ -65,6 +61,7 @@ USER_CFLAGS = -ffreestanding       \
               -mno-sse2            \
               -Wall                \
               -Wextra              \
+              -Wno-unused-parameter \
               -O2                  \
               -g                   \
               -nostdlib
@@ -76,7 +73,7 @@ OBJECTS = $(ASM_OBJECTS) $(C_OBJECTS) $(TEST_OBJECTS) $(USER_PROG_OBJS)
 KERNEL = $(BUILD_DIR)/kernel.elf
 
 # Prevent Make from deleting intermediate files in the user program build chain
-.PRECIOUS: $(BUILD_DIR)/%_user.o $(BUILD_DIR)/%.elf $(USER_DIR)/%_bin.c
+.PRECIOUS: $(BUILD_DIR)/%_ucode.o $(BUILD_DIR)/%.elf $(USER_DIR)/%_bin.c
 
 .PHONY: all clean
 
@@ -89,45 +86,29 @@ $(BUILD_DIR):
 # =============================================================================
 # User Program Build Rules
 #
-# Pattern rules to build any user program as ELF:
-#   1. Assemble .s to .o
-#   2. Link to ELF executable
-#   3. Generate C file with xxd
-#   4. Compile C file to kernel object
+# Build chain for C user programs:
+#   1. Compile crt0.s -> crt0.o (C runtime startup)
+#   2. Compile %.c -> %_ucode.o
+#   3. Link crt0.o + %_ucode.o -> %.elf
+#   4. Generate _bin.c with xxd
+#   5. Compile _bin.c -> _bin.o (embedded in kernel)
 # =============================================================================
 
 # User program linker script
 USER_LDSCRIPT = $(USER_DIR)/user.ld
 
-# =============================================================================
-# Assembly User Programs
-# =============================================================================
-
-# Step 1a: Assemble .s -> .o (assembly programs)
-$(BUILD_DIR)/%_user.o: $(USER_DIR)/%.s | $(BUILD_DIR)
-	$(CC) -c -o $@ $<
-
-# Step 2a: Link assembly program to ELF (single object file)
-$(BUILD_DIR)/%.elf: $(BUILD_DIR)/%_user.o $(USER_LDSCRIPT)
-	$(LD) -nostdlib -static -T $(USER_LDSCRIPT) -o $@ $<
-
-# =============================================================================
-# C User Programs
-# =============================================================================
-
 # Compile crt0.s (C runtime startup)
 $(BUILD_DIR)/crt0.o: $(USER_DIR)/crt0.s | $(BUILD_DIR)
 	$(CC) -c -o $@ $<
 
-# Step 1b: Compile .c -> .o (C user programs)
+# Compile .c -> .o (C user programs)
 $(BUILD_DIR)/%_ucode.o: $(USER_DIR)/%.c | $(BUILD_DIR)
-	$(CC) $(USER_CFLAGS) -c $< -o $@
+	$(CC) $(USER_CFLAGS) -I$(USER_DIR) -c $< -o $@
 
-# Step 2b: Link C program to ELF (crt0.o + program.o)
-# Note: This rule is more specific and will override the assembly rule for C programs
-$(foreach prog,$(USER_C_PROGRAMS),$(eval $(BUILD_DIR)/$(prog).elf: $(BUILD_DIR)/crt0.o $(BUILD_DIR)/$(prog)_ucode.o $(USER_LDSCRIPT) ; $(LD) -nostdlib -static -T $(USER_LDSCRIPT) -o $$@ $(BUILD_DIR)/crt0.o $(BUILD_DIR)/$(prog)_ucode.o))
+# Link C program to ELF (crt0.o + program.o)
+$(foreach prog,$(USER_PROGRAMS),$(eval $(BUILD_DIR)/$(prog).elf: $(BUILD_DIR)/crt0.o $(BUILD_DIR)/$(prog)_ucode.o $(USER_LDSCRIPT) ; $(LD) -nostdlib -static -T $(USER_LDSCRIPT) -o $$@ $(BUILD_DIR)/crt0.o $(BUILD_DIR)/$(prog)_ucode.o))
 
-# Step 3: Generate C file .elf -> _bin.c
+# Generate C file .elf -> _bin.c
 $(USER_DIR)/%_bin.c: $(BUILD_DIR)/%.elf
 	@echo "Generating $@ from $<"
 	@echo '#include "user_programs.h"' > $@
