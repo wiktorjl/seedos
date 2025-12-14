@@ -40,6 +40,10 @@
 #define PROCESS_STACK_PAGES 16
 #define PROCESS_STACK_SIZE  (PROCESS_STACK_PAGES * 0x1000)
 
+/* Exec/spawn argument limits */
+#define EXEC_MAX_ARGS    16
+#define EXEC_MAX_ARG_LEN 64
+
 enum process_state {
     PROC_UNUSED = 0,   /* Slot available */
     PROC_READY,        /* Ready to run */
@@ -78,6 +82,10 @@ struct process {
      uint64_t saved_r8, saved_r9, saved_r10, saved_r11;
      uint64_t saved_r12, saved_r13, saved_r14, saved_r15;
 
+    /* Per-process buffers for spawn/exec argument handling.
+     * These must be per-process (not static) to handle concurrent spawns. */
+    char exec_args[EXEC_MAX_ARGS][EXEC_MAX_ARG_LEN];
+    char *exec_argv[EXEC_MAX_ARGS + 1];
 };
 
 void *process_sbrk(int64_t increment);

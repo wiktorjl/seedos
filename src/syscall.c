@@ -890,44 +890,42 @@ static int64_t sys_dup2(uint64_t oldfd, uint64_t newfd) {
  * =============================================================================
  */
 
-#define SPAWN_MAX_ARGS 16
-#define SPAWN_MAX_ARG_LEN 64
-
 /*
- * spawn_copy_argv - Copy argv from user space to kernel buffers.
+ * spawn_copy_argv - Copy argv from user space to process exec buffers.
  *
+ * @p:         Process whose exec_args/exec_argv buffers to use
  * @argv:      User-space argv array
  * @argv_ptr:  Raw pointer for validation
  * @path:      Program path (used as argv[0] if no args provided)
  * @argc_out:  Output: argument count
- * @argv_out:  Output: kernel argv array
- * @storage:   Storage for argument strings
+ *
+ * Uses p->exec_args for string storage and p->exec_argv for pointers.
+ * These per-process buffers avoid race conditions with concurrent spawns.
  *
  * Returns: 0 on success, -1 on error.
  */
-static int spawn_copy_argv(char **argv, uint64_t argv_ptr, const char *path,
-                           int *argc_out, char **argv_out,
-                           char storage[SPAWN_MAX_ARGS][SPAWN_MAX_ARG_LEN]) {
+static int spawn_copy_argv(struct process *p, char **argv, uint64_t argv_ptr,
+                           const char *path, int *argc_out) {
     int argc = 0;
 
     if (argv != NULL && vmm_validate_user_range((const void *)argv_ptr, 8)) {
-        while (argc < SPAWN_MAX_ARGS && argv[argc] != NULL) {
+        while (argc < EXEC_MAX_ARGS && argv[argc] != NULL) {
             if (!vmm_validate_user_range(argv[argc], 1)) break;
-            strncpy(storage[argc], argv[argc], SPAWN_MAX_ARG_LEN - 1);
-            storage[argc][SPAWN_MAX_ARG_LEN - 1] = '\0';
-            argv_out[argc] = storage[argc];
+            strncpy(p->exec_args[argc], argv[argc], EXEC_MAX_ARG_LEN - 1);
+            p->exec_args[argc][EXEC_MAX_ARG_LEN - 1] = '\0';
+            p->exec_argv[argc] = p->exec_args[argc];
             argc++;
         }
     }
-    argv_out[argc] = NULL;
+    p->exec_argv[argc] = NULL;
 
     /* If no args provided, use the program path as argv[0] */
     if (argc == 0) {
-        strncpy(storage[0], path, SPAWN_MAX_ARG_LEN - 1);
-        storage[0][SPAWN_MAX_ARG_LEN - 1] = '\0';
-        argv_out[0] = storage[0];
+        strncpy(p->exec_args[0], path, EXEC_MAX_ARG_LEN - 1);
+        p->exec_args[0][EXEC_MAX_ARG_LEN - 1] = '\0';
+        p->exec_argv[0] = p->exec_args[0];
         argc = 1;
-        argv_out[1] = NULL;
+        p->exec_argv[1] = NULL;
     }
 
     *argc_out = argc;
@@ -1011,11 +1009,9 @@ static int64_t sys_spawn(uint64_t path_ptr, uint64_t argv_ptr) {
         return -1;
     }
 
-    /* Copy argv from user space */
+    /* Copy argv from user space into parent's exec buffers */
     int argc;
-    static char arg_storage[SPAWN_MAX_ARGS][SPAWN_MAX_ARG_LEN];
-    static char *child_argv[SPAWN_MAX_ARGS + 1];
-    spawn_copy_argv(argv, argv_ptr, path, &argc, child_argv, arg_storage);
+    spawn_copy_argv(parent, argv, argv_ptr, path, &argc);
 
     /*
      * Save parent's saved_kernel_rsp before nested context switch.
@@ -1026,7 +1022,7 @@ static int64_t sys_spawn(uint64_t path_ptr, uint64_t argv_ptr) {
     uint64_t parent_saved_rsp = saved_kernel_rsp;
 
     /* Run child process - this blocks until child calls exit */
-    int exit_code = process_run_with_args(child, argc, child_argv);
+    int exit_code = process_run_with_args(child, argc, parent->exec_argv);
 
     /* Restore parent's saved_kernel_rsp for when parent later exits */
     saved_kernel_rsp = parent_saved_rsp;
@@ -1058,6 +1054,7 @@ static int64_t sys_spawn_async(uint64_t path_ptr, uint64_t argv_ptr) {
     const char *path = (const char *)path_ptr;
     char **argv = (char **)argv_ptr;
     const char *cwd = process_get_cwd();
+    struct process *parent = process_get_current();
 
     /* Create and load child process */
     struct process *child;
@@ -1065,14 +1062,12 @@ static int64_t sys_spawn_async(uint64_t path_ptr, uint64_t argv_ptr) {
         return -1;
     }
 
-    /* Copy argv from user space */
+    /* Copy argv from user space into parent's exec buffers */
     int argc;
-    static char arg_storage[SPAWN_MAX_ARGS][SPAWN_MAX_ARG_LEN];
-    static char *child_argv[SPAWN_MAX_ARGS + 1];
-    spawn_copy_argv(argv, argv_ptr, path, &argc, child_argv, arg_storage);
+    spawn_copy_argv(parent, argv, argv_ptr, path, &argc);
 
     /* Set up argc/argv on child's stack */
-    child->stack = process_setup_argv(child, argc, child_argv);
+    child->stack = process_setup_argv(child, argc, parent->exec_argv);
 
     /* Start the child process (non-blocking) */
     process_start(child);
