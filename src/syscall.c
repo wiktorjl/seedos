@@ -207,17 +207,26 @@ static int64_t sys_lseek(uint64_t fd, int64_t offset, uint64_t whence) {
  *
  * This function does not return. It:
  *   1. Switches back to the kernel's address space
- *   2. Saves the exit code in the process structure
- *   3. Returns control to the kernel (via context_return_to_kernel)
+ *   2. Saves the exit code and marks process as zombie
+ *   3. Wakes up any process waiting for this one
+ *   4. Returns control to the kernel (via context_return_to_kernel)
  */
 static void sys_exit(uint64_t exit_code) {
+    struct process *current = process_get_current();
+
     /* Switch back to kernel address space before returning */
     vmm_switch_address_space(vmm_get_kernel_pml4());
 
-    /* Save the exit code in the process structure */
+    /* Save the exit code (both per-process and global for legacy code) */
+    current->exit_code = (int)exit_code;
     process_set_exit_code(exit_code);
 
-    sched_remove(process_get_current());
+    /* Remove from scheduler and mark as zombie */
+    sched_remove(current);
+    current->state = PROC_ZOMBIE;
+
+    /* Wake up any process waiting for us */
+    sched_wake_waiters(current->pid);
 
     /*
      * Return to where context_save_kernel_state() was called.
@@ -1064,24 +1073,30 @@ static void sys_reboot(void) {
  * Returns: Exit code of the child, or -1 on error.
  */
 static int64_t sys_waitpid(uint64_t pid) {
-    /* Find process by PID */
-    struct process *child = NULL;
-
-    /* Search all process slots for matching PID */
-    extern struct process *process_find_by_pid(int pid);
-    child = process_find_by_pid((int)pid);
+    struct process *parent = process_get_current();
+    struct process *child = process_find_by_pid((int)pid);
 
     if (child == NULL) {
         return -1;  /* Process not found */
     }
 
-    /* Busy-wait until child becomes zombie (should use PROC_BLOCKED state) */
+    /* If child already exited, just reap it */
+    if (child->state == PROC_ZOMBIE) {
+        int exit_code = child->exit_code;
+        process_destroy(child);
+        return exit_code;
+    }
+
+    /* Block parent until child exits */
+    sched_block_on_pid(parent, (int)pid);
+
+    /* Wait for child to exit and wake us up */
     while (child->state != PROC_ZOMBIE) {
-        /* Yield CPU - enable interrupts and halt */
+        /* Enable interrupts and halt - timer will fire and run scheduler */
         __asm__ volatile("sti; hlt; cli");
     }
 
-    /* Get exit code and clean up */
+    /* Child has exited - reap it */
     int exit_code = child->exit_code;
     process_destroy(child);
 

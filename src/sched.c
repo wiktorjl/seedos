@@ -125,3 +125,25 @@ void sched_yield(void) {
     asm volatile("hlt");
 }
 
+void sched_block_on_pid(struct process *p, int pid) {
+    if (p == NULL) return;
+
+    /* Remove from ready queue */
+    sched_remove(p);
+
+    /* Mark as blocked and record what we're waiting for */
+    p->state = PROC_BLOCKED;
+    p->wait_pid = pid;
+}
+
+void sched_wake_waiters(int pid) {
+    /* Find any process blocked waiting for this PID */
+    struct process *waiter = process_find_blocked_on_pid(pid);
+
+    if (waiter != NULL) {
+        /* Wake up the waiter */
+        waiter->wait_pid = 0;
+        sched_add(waiter);  /* Sets state to PROC_READY */
+    }
+}
+

@@ -72,6 +72,7 @@ struct process {
     char cwd[256];          /* Current working directory (per-process, inherited on fork/exec) */
 
     enum process_state state;
+    int wait_pid;           /* PID this process is waiting for (if PROC_BLOCKED) */
 
      /* Saved CPU context for preemption */
      uint64_t saved_rip;
@@ -249,5 +250,13 @@ int process_start(struct process *p);
  * @return Pointer to process struct, or NULL if not found.
  */
 struct process *process_find_by_pid(int pid);
+
+/**
+ * @brief Find a process blocked waiting for a specific PID.
+ *
+ * @param pid: PID being waited for
+ * @return Pointer to blocked process, or NULL if none found.
+ */
+struct process *process_find_blocked_on_pid(int pid);
 
 #endif /* PROCESS_H */

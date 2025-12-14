@@ -72,6 +72,7 @@ struct process *process_create(void) {
     p->entry = USER_CODE_BASE;
     p->stack = USER_STACK_TOP;  /* RSP starts at top of stack */
     p->exit_code = 0;
+    p->wait_pid = 0;
     p->pid = next_pid++;
     p->brk = USER_HEAP_BASE;
 
@@ -443,6 +444,23 @@ int process_start(struct process *p) {
 struct process *process_find_by_pid(int pid) {
     for (int i = 0; i < MAX_PROCESSES; i++) {
         if (process_slots[i].state != PROC_UNUSED && process_slots[i].pid == pid) {
+            return &process_slots[i];
+        }
+    }
+    return NULL;
+}
+
+/*
+ * process_find_blocked_on_pid - Find a process blocked waiting for a PID.
+ *
+ * @pid: PID being waited for
+ *
+ * Returns: Pointer to blocked process, or NULL if none found.
+ */
+struct process *process_find_blocked_on_pid(int pid) {
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (process_slots[i].state == PROC_BLOCKED &&
+            process_slots[i].wait_pid == pid) {
             return &process_slots[i];
         }
     }
