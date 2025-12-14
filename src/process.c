@@ -12,9 +12,9 @@
 #include "context.h"
 #include "string.h"
 #include "elf.h"
-#include "console.h"
 #include <stddef.h>
 #include <stdint.h>
+#include "sched.h"
 
 /* Note: PROCESS_STACK_SIZE and PROCESS_STACK_PAGES are defined in process.h */
 
@@ -24,7 +24,8 @@
  * We support two process slots: one for the main process and one for
  * spawned child processes. This allows a shell to run programs.
  */
-static struct process process_slots[2];
+ static struct process process_slots[MAX_PROCESSES];
+
 static struct process *current_process = NULL;
 
 static int next_pid = 1;
@@ -51,7 +52,7 @@ int process_get_pid(void) {
 struct process *process_create(void) {
     /* Find a free slot */
     int slot = -1;
-    for (int i = 0; i < 2; i++) {
+     for (int i = 0; i < MAX_PROCESSES; i++) {
         if (!slot_in_use[i]) {
             slot = i;
             break;
@@ -136,6 +137,8 @@ struct process *process_create(void) {
     /* Initialize current working directory to root */
     p->cwd[0] = '/';
     p->cwd[1] = '\0';
+    
+    p->state = PROC_UNUSED;
 
     slot_in_use[slot] = 1;
     current_process = p;
@@ -291,7 +294,7 @@ void process_destroy(struct process *p) {
     }
 
     /* Mark slot as available */
-    for (int i = 0; i < 2; i++) {
+     for (int i = 0; i < MAX_PROCESSES; i++) {
         if (&process_slots[i] == p) {
             slot_in_use[i] = 0;
             break;
@@ -302,7 +305,7 @@ void process_destroy(struct process *p) {
     if (current_process == p) {
         /* Find another active process, or set to NULL */
         current_process = NULL;
-        for (int i = 0; i < 2; i++) {
+        for (int i = 0; i < MAX_PROCESSES; i++) {
             if (slot_in_use[i]) {
                 current_process = &process_slots[i];
                 break;
@@ -402,4 +405,33 @@ void process_set_current(struct process *p) {
  */
 struct process *process_get_current(void) {
     return current_process;
+}
+
+int process_start(struct process *p) {
+    if (p == NULL) return -1;
+
+    /* Initialize saved context for first entry to userspace */
+    p->saved_rip = p->entry;
+    p->saved_rsp = p->stack;
+    p->saved_rflags = 0x202;  /* IF=1, reserved bit=1 */
+
+    /* Clear all other registers */
+    p->saved_rax = 0;
+    p->saved_rbx = 0;
+    p->saved_rcx = 0;
+    p->saved_rdx = 0;
+    p->saved_rsi = 0;
+    p->saved_rdi = 0;
+    p->saved_rbp = 0;
+    p->saved_r8 = 0;
+    p->saved_r9 = 0;
+    p->saved_r10 = 0;
+    p->saved_r11 = 0;
+    p->saved_r12 = 0;
+    p->saved_r13 = 0;
+    p->saved_r14 = 0;
+    p->saved_r15 = 0;
+
+    sched_add(p);
+    return 0;
 }

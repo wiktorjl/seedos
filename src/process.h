@@ -33,11 +33,20 @@
 #define PROCESS_H
 
 #include "vfs.h"
-#include "types.h"
+
+#define MAX_PROCESSES 100
 
 /* Stack configuration: 64KB (16 pages) */
 #define PROCESS_STACK_PAGES 16
 #define PROCESS_STACK_SIZE  (PROCESS_STACK_PAGES * 0x1000)
+
+enum process_state {
+    PROC_UNUSED = 0,   /* Slot available */
+    PROC_READY,        /* Ready to run */
+    PROC_RUNNING,      /* Currently executing */
+    PROC_BLOCKED,      /* Waiting for I/O */
+    PROC_ZOMBIE        /* Exited, waiting for cleanup */
+};
 
 /*
  * struct process - Represents a user process.
@@ -57,6 +66,18 @@ struct process {
     int pid;                /* Process ID */
     struct fd_table fds;    /* File descriptor table */
     char cwd[256];          /* Current working directory */
+
+    enum process_state state;
+
+     /* Saved CPU context for preemption */
+     uint64_t saved_rip;
+     uint64_t saved_rsp;
+     uint64_t saved_rflags;
+     uint64_t saved_rax, saved_rbx, saved_rcx, saved_rdx;
+     uint64_t saved_rsi, saved_rdi, saved_rbp;
+     uint64_t saved_r8, saved_r9, saved_r10, saved_r11;
+     uint64_t saved_r12, saved_r13, saved_r14, saved_r15;
+
 };
 
 void *process_sbrk(int64_t increment);
@@ -207,5 +228,7 @@ void process_set_current(struct process *p);
  * @brief Get the current running process.
  */
 struct process *process_get_current(void);
+
+int process_start(struct process *p);
 
 #endif /* PROCESS_H */

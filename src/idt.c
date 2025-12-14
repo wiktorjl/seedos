@@ -23,6 +23,7 @@
 #include "vmm.h"
 #include <stddef.h>
 #include "pit.h"
+#include "sched.h"
 
 /* RPL (Requested Privilege Level) mask - lower 2 bits of segment selector */
 #define RPL_MASK 0x03
@@ -345,7 +346,13 @@ void interrupt_handler(struct interrupt_frame *frame) {
         uint8_t irq_number = frame->int_no - IRQ_BASE;
 
         if(irq_number == 0) {
-            pit_handler();
+            pit_handler();  
+        
+            /* Check if interrupted userspace (RPL == 3) */
+            if ((frame->cs & RPL_MASK) == RPL_USER) {
+                schedule(frame);
+            }
+
             pic_send_eoi(0);
             return;
         }
