@@ -103,6 +103,16 @@ char *strcpy(char *dest, const char *src) {
 }
 
 /*
+ * strcat - Concatenate two strings.
+ */
+char *strcat(char *dest, const char *src) {
+    char *d = dest;
+    while (*d) d++;  /* Find end of dest */
+    while ((*d++ = *src++));  /* Copy src */
+    return dest;
+}
+
+/*
  * parse_hex - Parse a hexadecimal number from a string.
  *
  * Accepts with or without "0x" prefix.

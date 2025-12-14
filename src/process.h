@@ -157,6 +157,19 @@ int process_run(struct process *p);
 int process_run_with_args(struct process *p, int argc, char **argv);
 
 /*
+ * process_setup_argv - Set up argc/argv on a process's user stack.
+ *
+ * @p:    Process whose stack to set up
+ * @argc: Argument count
+ * @argv: Argument vector (kernel pointers to strings)
+ *
+ * Returns: User-space stack pointer with argc/argv ready.
+ *
+ * Used by sys_spawn_async to prepare stack without running the process.
+ */
+uint64_t process_setup_argv(struct process *p, int argc, char **argv);
+
+/*
  * process_destroy - Free all resources associated with a process.
  *
  * @p: Process to destroy (may be NULL, in which case this is a no-op)

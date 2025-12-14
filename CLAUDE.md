@@ -238,3 +238,4 @@ Educational deep-dives on OS internals are available in the `docs/` directory:
 - Virtual filesystem
 - More syscalls (read, open, close, fork, exec)
 - Load ELF programs from disk (currently embedded in kernel)
+- when writing code or documentation, remember to create regular commits for tracking. If changes are big enough, consider branches

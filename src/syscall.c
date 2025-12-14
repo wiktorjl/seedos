@@ -885,6 +885,110 @@ static int64_t sys_dup2(uint64_t oldfd, uint64_t newfd) {
     return (int64_t)newfd;
 }
 
+/* =============================================================================
+ * Spawn Helper Functions
+ * =============================================================================
+ */
+
+#define SPAWN_MAX_ARGS 16
+#define SPAWN_MAX_ARG_LEN 64
+
+/*
+ * spawn_copy_argv - Copy argv from user space to kernel buffers.
+ *
+ * @argv:      User-space argv array
+ * @argv_ptr:  Raw pointer for validation
+ * @path:      Program path (used as argv[0] if no args provided)
+ * @argc_out:  Output: argument count
+ * @argv_out:  Output: kernel argv array
+ * @storage:   Storage for argument strings
+ *
+ * Returns: 0 on success, -1 on error.
+ */
+static int spawn_copy_argv(char **argv, uint64_t argv_ptr, const char *path,
+                           int *argc_out, char **argv_out,
+                           char storage[SPAWN_MAX_ARGS][SPAWN_MAX_ARG_LEN]) {
+    int argc = 0;
+
+    if (argv != NULL && vmm_validate_user_range((const void *)argv_ptr, 8)) {
+        while (argc < SPAWN_MAX_ARGS && argv[argc] != NULL) {
+            if (!vmm_validate_user_range(argv[argc], 1)) break;
+            strncpy(storage[argc], argv[argc], SPAWN_MAX_ARG_LEN - 1);
+            storage[argc][SPAWN_MAX_ARG_LEN - 1] = '\0';
+            argv_out[argc] = storage[argc];
+            argc++;
+        }
+    }
+    argv_out[argc] = NULL;
+
+    /* If no args provided, use the program path as argv[0] */
+    if (argc == 0) {
+        strncpy(storage[0], path, SPAWN_MAX_ARG_LEN - 1);
+        storage[0][SPAWN_MAX_ARG_LEN - 1] = '\0';
+        argv_out[0] = storage[0];
+        argc = 1;
+        argv_out[1] = NULL;
+    }
+
+    *argc_out = argc;
+    return 0;
+}
+
+/*
+ * spawn_create_child - Create and load a child process.
+ *
+ * @path_ptr:  User pointer to program path
+ * @cwd:       Current working directory to inherit
+ * @child_out: Output: created child process
+ *
+ * Returns: 0 on success, -1 on error.
+ */
+static int spawn_create_child(uint64_t path_ptr, const char *cwd,
+                              struct process **child_out) {
+    const char *path = (const char *)path_ptr;
+
+    /* Validate path pointer */
+    if (!vmm_validate_user_range((const void *)path_ptr, 1)) {
+        return -1;
+    }
+
+    /* Resolve executable path */
+    char full_path[PATH_MAX];
+    if (vfs_resolve_executable(path, cwd, full_path, sizeof(full_path)) != 0) {
+        return -1;
+    }
+
+    /* Look up executable via VFS */
+    const void *data;
+    size_t size;
+    if (vfs_lookup_executable(full_path, &data, &size) != 0) {
+        return -1;  /* Program not found */
+    }
+
+    /* Create child process */
+    struct process *child = process_create();
+    if (child == NULL) {
+        return -1;
+    }
+
+    /* Inherit cwd from parent */
+    process_set_cwd_for(child, cwd);
+
+    /* Load ELF executable */
+    if (process_load_elf(child, data, size) != 0) {
+        process_destroy(child);
+        return -1;
+    }
+
+    *child_out = child;
+    return 0;
+}
+
+/* =============================================================================
+ * Spawn Syscalls
+ * =============================================================================
+ */
+
 /*
  * sys_spawn - Run a program and wait for it to complete.
  *
@@ -898,91 +1002,20 @@ static int64_t sys_dup2(uint64_t oldfd, uint64_t newfd) {
 static int64_t sys_spawn(uint64_t path_ptr, uint64_t argv_ptr) {
     const char *path = (const char *)path_ptr;
     char **argv = (char **)argv_ptr;
-
-    /* Validate path pointer */
-    if (!vmm_validate_user_range((const void *)path_ptr, 1)) {
-        return -1;
-    }
-
-    /* Build full path - handle relative and absolute paths */
-    char full_path[PATH_MAX];
     const char *cwd = process_get_cwd();
-
-    /* Skip leading slash and ./ */
-    // WJL: This is duplicated code from sys_chdir. Should be refactored into a common function. Path manipulation is tricky and should be consistent. And it should not be here or limited to 256 bytes.
-    const char *name = path;
-    if (name[0] == '/') name++;
-    if (name[0] == '.' && name[1] == '/') name += 2;
-
-    /* Check if it's a path or just a program name */
-    // WJL: same comment here
-    int has_slash = 0;
-    for (const char *c = name; *c; c++) {
-        if (*c == '/') { has_slash = 1; break; }
-    }
-
-    // WJL: Same comment here
-    if (!has_slash) {
-        /* No slash - prepend "bin/" */
-        strcpy(full_path, "bin/");
-        strncpy(full_path + 4, name, sizeof(full_path) - 5);
-    } else {
-        strncpy(full_path, name, sizeof(full_path) - 1);
-    }
-    full_path[sizeof(full_path) - 1] = '\0';
-
-
-    // WJL: this is a syscall and we are dealing with a "specific" file system type - this should be abstracted away to VFS layer
-    /* Find program in initrd */
-    struct tar_file *file = tar_find(full_path);
-    if (file == NULL) {
-        return -1;  /* Program not found */
-    }
-
-    /* Save parent process */
     struct process *parent = process_get_current();
 
-    /* Create child process */
-    struct process *child = process_create();
-    if (child == NULL) {
-        return -1;  /* Failed to create process */
-    }
-
-    /* Inherit cwd from parent */
-    process_set_cwd_for(child, cwd);
-
-    /* Load ELF executable */
-    if (process_load_elf(child, file->data, file->size) != 0) {
-        process_destroy(child);
-        process_set_current(parent);
+    /* Create and load child process */
+    struct process *child;
+    if (spawn_create_child(path_ptr, cwd, &child) != 0) {
         return -1;
     }
 
-    // WJL: argument handling code should be refactored into a common function
-    /* Count and copy argv */
-    int argc = 0;
-    static char arg_storage[16][64];
-    static char *child_argv[17];
-
-    if (argv != NULL && vmm_validate_user_range((const void *)argv_ptr, 8)) {
-        while (argc < 16 && argv[argc] != NULL) {
-            if (!vmm_validate_user_range(argv[argc], 1)) break;
-            strncpy(arg_storage[argc], argv[argc], 63);
-            arg_storage[argc][63] = '\0';
-            child_argv[argc] = arg_storage[argc];
-            argc++;
-        }
-    }
-    child_argv[argc] = NULL;
-
-    /* If no args provided, use the program name */
-    if (argc == 0) {
-        strncpy(arg_storage[0], path, 63);
-        arg_storage[0][63] = '\0';
-        child_argv[0] = arg_storage[0];
-        argc = 1;
-        child_argv[1] = NULL;
-    }
+    /* Copy argv from user space */
+    int argc;
+    static char arg_storage[SPAWN_MAX_ARGS][SPAWN_MAX_ARG_LEN];
+    static char *child_argv[SPAWN_MAX_ARGS + 1];
+    spawn_copy_argv(argv, argv_ptr, path, &argc, child_argv, arg_storage);
 
     /*
      * Save parent's saved_kernel_rsp before nested context switch.
@@ -1021,120 +1054,29 @@ static int64_t sys_spawn(uint64_t path_ptr, uint64_t argv_ptr) {
  * Unlike sys_spawn, this returns immediately after starting the child.
  * Use sys_waitpid to wait for the child to complete.
  */
-//WJL: how different is this from sys_spawn? Can we refactor common code into a helper function?
 static int64_t sys_spawn_async(uint64_t path_ptr, uint64_t argv_ptr) {
     const char *path = (const char *)path_ptr;
     char **argv = (char **)argv_ptr;
-
-    /* Validate path pointer */
-    if (!vmm_validate_user_range((const void *)path_ptr, 1)) {
-        return -1;
-    }
-
-    /* Build full path - handle relative and absolute paths */
-    char full_path[256];
     const char *cwd = process_get_cwd();
 
-    /* Skip leading slash and ./ */
-    const char *name = path;
-    if (name[0] == '/') name++;
-    if (name[0] == '.' && name[1] == '/') name += 2;
-
-    /* Check if it's a path or just a program name */
-    int has_slash = 0;
-    for (const char *c = name; *c; c++) {
-        if (*c == '/') { has_slash = 1; break; }
-    }
-
-    if (!has_slash) {
-        /* No slash - prepend "bin/" */
-        strcpy(full_path, "bin/");
-        strncpy(full_path + 4, name, sizeof(full_path) - 5);
-    } else {
-        strncpy(full_path, name, sizeof(full_path) - 1);
-    }
-    full_path[sizeof(full_path) - 1] = '\0';
-
-    /* Find program in initrd */
-    struct tar_file *file = tar_find(full_path);
-    if (file == NULL) {
-        return -1;  /* Program not found */
-    }
-
-    /* Create child process */
-    struct process *child = process_create();
-    if (child == NULL) {
-        return -1;  /* Failed to create process */
-    }
-
-    /* Inherit cwd from parent */
-    process_set_cwd_for(child, cwd);
-
-    /* Load ELF executable */
-    if (process_load_elf(child, file->data, file->size) != 0) {
-        process_destroy(child);
+    /* Create and load child process */
+    struct process *child;
+    if (spawn_create_child(path_ptr, cwd, &child) != 0) {
         return -1;
     }
 
-    /* Count and copy argv */
-    int argc = 0;
-    static char arg_storage[16][64];
-    static char *child_argv[17];
+    /* Copy argv from user space */
+    int argc;
+    static char arg_storage[SPAWN_MAX_ARGS][SPAWN_MAX_ARG_LEN];
+    static char *child_argv[SPAWN_MAX_ARGS + 1];
+    spawn_copy_argv(argv, argv_ptr, path, &argc, child_argv, arg_storage);
 
-    if (argv != NULL && vmm_validate_user_range((const void *)argv_ptr, 8)) {
-        while (argc < 16 && argv[argc] != NULL) {
-            if (!vmm_validate_user_range(argv[argc], 1)) break;
-            strncpy(arg_storage[argc], argv[argc], 63);
-            arg_storage[argc][63] = '\0';
-            child_argv[argc] = arg_storage[argc];
-            argc++;
-        }
-    }
-    child_argv[argc] = NULL;
-
-    /* If no args provided, use the program name */
-    if (argc == 0) {
-        strncpy(arg_storage[0], path, 63);
-        arg_storage[0][63] = '\0';
-        child_argv[0] = arg_storage[0];
-        argc = 1;
-        child_argv[1] = NULL;
-    }
-
-    /* Set up argc/argv on child's stack (similar to process_run_with_args) */
-    uint8_t *top_page_virt = (uint8_t *)phys_to_virt(child->stack_pages[PROCESS_STACK_PAGES - 1]);
-    uint8_t *stack_top = top_page_virt + 0x1000;
-
-    uint64_t string_user_addrs[16];
-    uint8_t *str_ptr = stack_top;
-
-    for (int i = argc - 1; i >= 0; i--) {
-        size_t len = strlen(child_argv[i]) + 1;
-        str_ptr -= len;
-        memcpy(str_ptr, child_argv[i], len);
-        uint64_t offset_in_page = str_ptr - top_page_virt;
-        string_user_addrs[i] = (USER_STACK_TOP - 0x1000) + offset_in_page;
-    }
-
-    str_ptr = (uint8_t *)((uint64_t)str_ptr & ~7ULL);
-    str_ptr -= 8;
-    *(uint64_t *)str_ptr = 0;  /* NULL terminator */
-
-    for (int i = argc - 1; i >= 0; i--) {
-        str_ptr -= 8;
-        *(uint64_t *)str_ptr = string_user_addrs[i];
-    }
-
-    str_ptr -= 8;
-    *(uint64_t *)str_ptr = (uint64_t)argc;
-
-    uint64_t offset_in_page = str_ptr - top_page_virt;
-    child->stack = (USER_STACK_TOP - 0x1000) + offset_in_page;
+    /* Set up argc/argv on child's stack */
+    child->stack = process_setup_argv(child, argc, child_argv);
 
     /* Start the child process (non-blocking) */
     process_start(child);
 
-    /* Return child's PID */
     return child->pid;
 }
 

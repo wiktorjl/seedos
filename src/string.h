@@ -64,4 +64,12 @@ char *strncpy(char *dest, const char *src, uint64_t n);
 
 char *strcpy(char *dest, const char *src);
 
+/*
+ * strcat - Concatenate two strings.
+ *
+ * Appends src to the end of dest.
+ * Returns: Pointer to dest.
+ */
+char *strcat(char *dest, const char *src);
+
 #endif /* STRING_H */
