@@ -26,6 +26,7 @@
 
 #include "pmm.h"
 #include "memory.h"
+#include "console.h"
 
 /*
  * Global HHDM (Higher Half Direct Map) offset.
@@ -213,7 +214,15 @@ void pmm_free(uint64_t phys_addr) {
     if (page_index < total_pages && bitmap_is_used(page_index)) {
         bitmap_mark_free(page_index);
         free_pages++;
+    } else {
+        /* Invalid free (out of range or double-free) is ignored */
+        if(bitmap_is_used(page_index)) {
+            puts("ERROR: pmm_free: potential double free (bug?): ");
+            put_hex(phys_addr);
+            puts("\n");
+        }
     }
+
 }
 
 uint64_t pmm_get_free_pages(void) {

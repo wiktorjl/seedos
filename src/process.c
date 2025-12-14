@@ -169,10 +169,10 @@ int process_run(struct process *p) {
  * process_setup_argv - Set up argc/argv on the user stack.
  *
  * @p:    Process whose stack to set up
- * @argc: Argument count
+ * @argc: Argument count (must be <= EXEC_MAX_ARGS)
  * @argv: Argument vector (kernel pointers)
  *
- * Returns: User-space stack pointer with argc/argv ready.
+ * Returns: User-space stack pointer, or 0 on error (too many args).
  *
  * Stack layout per x86-64 ABI:
  *
@@ -196,13 +196,13 @@ uint64_t process_setup_argv(struct process *p, int argc, char **argv) {
     uint8_t *top_page_virt = (uint8_t *)phys_to_virt(p->stack_pages[PROCESS_STACK_PAGES - 1]);
     uint8_t *stack_top = top_page_virt + 0x1000;
 
-    /* Limit argc to prevent overflow */
-    if (argc > 32) {
-        argc = 32;
+    /* Reject too many arguments */
+    if (argc > EXEC_MAX_ARGS) {
+        return 0;  /* Error: too many arguments */
     }
 
     /* Step 1: Copy argument strings to top of stack */
-    uint64_t string_user_addrs[32];
+    uint64_t string_user_addrs[EXEC_MAX_ARGS];
     uint8_t *str_ptr = stack_top;
 
     for (int i = argc - 1; i >= 0; i--) {
@@ -243,6 +243,9 @@ int process_run_with_args(struct process *p, int argc, char **argv) {
 
     /* Set up argc/argv on stack */
     uint64_t new_stack = process_setup_argv(p, argc, argv);
+    if (new_stack == 0) {
+        return -1;  /* Too many arguments */
+    }
 
     /* Set up user context for context switch */
     struct user_context ctx;
@@ -365,7 +368,8 @@ int process_set_cwd(const char *path) {
         return -1;  /* Path too long */
     }
 
-    strcpy(current_process->cwd, path);
+    //strcpy(current_process->cwd, path);
+    strncpy(current_process->cwd, path, sizeof(current_process->cwd) - 1);
     return 0;
 }
 

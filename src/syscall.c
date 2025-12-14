@@ -998,6 +998,10 @@ static int64_t sys_spawn_async(uint64_t path_ptr, uint64_t argv_ptr) {
 
     /* Set up argc/argv on child's stack */
     child->stack = process_setup_argv(child, argc, parent->exec_argv);
+    if (child->stack == 0) {
+        process_destroy(child);
+        return -1;  /* Too many arguments */
+    }
 
     /* Start the child process (non-blocking) */
     process_start(child);
