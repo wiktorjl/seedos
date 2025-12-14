@@ -17,19 +17,6 @@
 #include <unistd.h>
 #include <string.h>
 
-/* Format size with appropriate unit (K, M, G) for human-readable output */
-static void format_size(unsigned long size, char *buf, size_t buflen) {
-    if (size < 1024) {
-        snprintf(buf, buflen, "%lu", size);
-    } else if (size < 1024 * 1024) {
-        snprintf(buf, buflen, "%luK", size / 1024);
-    } else if (size < 1024 * 1024 * 1024) {
-        snprintf(buf, buflen, "%luM", size / (1024 * 1024));
-    } else {
-        snprintf(buf, buflen, "%luG", size / (1024 * 1024 * 1024));
-    }
-}
-
 int main(int argc, char **argv) {
     const char *path = ".";
     const char *display_path = ".";
