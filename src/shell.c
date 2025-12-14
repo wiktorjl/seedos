@@ -101,7 +101,6 @@ static void cmd_help(void) {
     puts("\nFilesystem:\n");
     puts("  ls [path]     - List directory contents\n");
     puts("  cd [path]     - Change current directory\n");
-    puts("  cat <file>    - Display file contents\n");
     puts("\nPrograms:\n");
     puts("  run <program> - Run a program from /bin\n");
     puts("\nSystem:\n");
@@ -176,68 +175,25 @@ static void cmd_run(const char *arg) {
     char prog_path[MAX_PATH_LEN];
     normalize_path(argv[0], prog_path, sizeof(prog_path));
 
-    /* Run the program with arguments */
+    /* Build the cwd path (e.g., "/" or "/bin") */
+    char cwd[MAX_PATH_LEN + 1];
+    cwd[0] = '/';
+    if (current_path[0] != '\0') {
+        strncpy(cwd + 1, current_path, MAX_PATH_LEN - 1);
+        cwd[MAX_PATH_LEN] = '\0';
+    } else {
+        cwd[1] = '\0';
+    }
+
+    /* Run the program with arguments and current working directory */
     puts("\n");
-    int exit_code = programs_run(prog_path, argc, argv);
+    int exit_code = programs_run_cwd(prog_path, argc, argv, cwd);
     last_exit_code = exit_code;
 
     if (exit_code == -1) {
         puts("Error: program not found: ");
         puts(prog_path);
         puts("\n");
-    }
-}
-
-/*
- * cmd_cat - Display contents of a file from the initrd.
- */
-static void cmd_cat(const char *arg) {
-    /* Skip leading whitespace */
-    while (*arg == CHAR_SPACE) arg++;
-
-    if (*arg == '\0') {
-        puts("Usage: cat <file>\n");
-        puts("Example: cat bin/hello.txt\n");
-        return;
-    }
-
-    /* Normalize the path */
-    char path[MAX_PATH_LEN];
-    normalize_path(arg, path, sizeof(path));
-
-    /* Try to find the file */
-    const struct tar_file *file = tar_find(path);
-
-    /* If not found and we have a current directory, try relative to it */
-    if (file == NULL && strlen(current_path) > 0) {
-        char full_path[MAX_PATH_LEN];
-        size_t cur_len = strlen(current_path);
-        size_t path_len = strlen(path);
-
-        if (cur_len + 1 + path_len < MAX_PATH_LEN) {
-            memcpy(full_path, current_path, cur_len);
-            full_path[cur_len] = '/';
-            memcpy(full_path + cur_len + 1, path, path_len + 1);
-            file = tar_find(full_path);
-        }
-    }
-
-    if (file == NULL) {
-        puts("Error: not found: ");
-        puts(path);
-        puts("\n");
-        return;
-    }
-
-    if (file->is_dir) {
-        puts("Error: is a directory: ");
-        puts(path);
-        puts("\n");
-        return;
-    }
-
-    for (size_t i = 0; i < file->size; i++) {
-        putc(((const char *)file->data)[i]);
     }
 }
 
@@ -509,6 +465,8 @@ static void cmd_cd(const char *arg) {
     /* Skip leading whitespace */
     while (*arg == CHAR_SPACE) arg++;
 
+    char new_path[MAX_PATH_LEN];
+
     if (*arg == '\0') {
         /* No argument - go to root */
         current_path[0] = '\0';
@@ -524,15 +482,20 @@ static void cmd_cd(const char *arg) {
             return;
         }
 
+        /* Copy current path to work with */
+        strncpy(new_path, current_path, MAX_PATH_LEN - 1);
+        new_path[MAX_PATH_LEN - 1] = '\0';
+        len = strlen(new_path);
+
         /* Remove trailing slash if present */
-        if (len > 0 && current_path[len-1] == '/') {
-            current_path[len-1] = '\0';
+        if (len > 0 && new_path[len-1] == '/') {
+            new_path[len-1] = '\0';
             len--;
         }
 
         /* Find last slash and truncate there */
         char *last_slash = NULL;
-        for (char *p = current_path; *p != '\0'; p++) {
+        for (char *p = new_path; *p != '\0'; p++) {
             if (*p == '/') {
                 last_slash = p;
             }
@@ -542,41 +505,87 @@ static void cmd_cd(const char *arg) {
             *last_slash = '\0';
         } else {
             /* No slash found - we're one level deep, go to root */
-            current_path[0] = '\0';
+            new_path[0] = '\0';
         }
-    } else if (arg[0] == '/') {
-        /* Absolute path - copy without leading slash */
-        strncpy(current_path, arg + 1, MAX_PATH_LEN - 1);
-        current_path[MAX_PATH_LEN - 1] = '\0';
-    } else {
-        /* Relative path - append to current */
-        size_t cur_len = strlen(current_path);
 
-        if (cur_len > 0 && current_path[cur_len-1] != '/') {
-            /* Add separator if needed */
-            if (cur_len < MAX_PATH_LEN - 1) {
-                current_path[cur_len++] = '/';
-                current_path[cur_len] = '\0';
+        /* Update current_path (going up is always valid) */
+        strncpy(current_path, new_path, MAX_PATH_LEN - 1);
+        current_path[MAX_PATH_LEN - 1] = '\0';
+    } else if (arg[0] == '/') {
+        /* Absolute path - build without leading slash */
+        strncpy(new_path, arg + 1, MAX_PATH_LEN - 1);
+        new_path[MAX_PATH_LEN - 1] = '\0';
+
+        /* Remove trailing slash for consistency */
+        size_t len = strlen(new_path);
+        if (len > 0 && new_path[len-1] == '/') {
+            new_path[len-1] = '\0';
+        }
+
+        /* Validate the path exists (empty = root is always valid) */
+        if (new_path[0] != '\0') {
+            const struct tar_file *dir = tar_find(new_path);
+            if (dir == NULL || !dir->is_dir) {
+                puts("\nError: not a directory: ");
+                puts(arg);
+                puts("\n\n");
+                return;
             }
         }
 
-        /* Append new path component manually */
+        strncpy(current_path, new_path, MAX_PATH_LEN - 1);
+        current_path[MAX_PATH_LEN - 1] = '\0';
+    } else {
+        /* Relative path - build full path first */
+        size_t cur_len = strlen(current_path);
+
+        if (cur_len > 0) {
+            strncpy(new_path, current_path, MAX_PATH_LEN - 1);
+            new_path[MAX_PATH_LEN - 1] = '\0';
+
+            /* Add separator if needed */
+            if (new_path[cur_len-1] != '/') {
+                if (cur_len < MAX_PATH_LEN - 1) {
+                    new_path[cur_len++] = '/';
+                    new_path[cur_len] = '\0';
+                }
+            }
+        } else {
+            new_path[0] = '\0';
+            cur_len = 0;
+        }
+
+        /* Append new path component */
         size_t i = 0;
         while (arg[i] != '\0' && cur_len + i < MAX_PATH_LEN - 1) {
-            current_path[cur_len + i] = arg[i];
+            new_path[cur_len + i] = arg[i];
             i++;
         }
-        current_path[cur_len + i] = '\0';
-    }
+        new_path[cur_len + i] = '\0';
 
-    /* Remove trailing slash for consistency */
-    size_t len = strlen(current_path);
-    if (len > 0 && current_path[len-1] == '/') {
-        current_path[len-1] = '\0';
+        /* Remove trailing slash for consistency */
+        size_t len = strlen(new_path);
+        if (len > 0 && new_path[len-1] == '/') {
+            new_path[len-1] = '\0';
+        }
+
+        /* Validate the path exists */
+        const struct tar_file *dir = tar_find(new_path);
+        if (dir == NULL || !dir->is_dir) {
+            puts("\nError: not a directory: ");
+            puts(arg);
+            puts("\n\n");
+            return;
+        }
+
+        strncpy(current_path, new_path, MAX_PATH_LEN - 1);
+        current_path[MAX_PATH_LEN - 1] = '\0';
     }
 
     puts("\nChanged to /");
-    puts(current_path);
+    if (current_path[0] != '\0') {
+        puts(current_path);
+    }
     puts("\n\n");
 }
 
@@ -625,10 +634,6 @@ static void execute_command(void) {
         cmd_uptime();
     } else if (strcmp(command_buffer, "last_exit") == 0) {
         cmd_last_exit();
-    } else if (strcmp(command_buffer, "cat") == 0) {
-        cmd_cat("");
-    } else if (strncmp(command_buffer, "cat ", 4) == 0) {
-        cmd_cat(command_buffer + 4);
     } else if (strncmp(command_buffer, "run ", 4) == 0) {
         cmd_run(command_buffer + 4);  /* Skip "run " prefix */
     } else if (strcmp(command_buffer, "ls") == 0) {

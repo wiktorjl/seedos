@@ -68,6 +68,8 @@
   #define SYS_GETCWD 12  /* Getcwd: rdi=buf, rsi=size -> buf or NULL */
   #define SYS_CHDIR  13  /* Chdir: rdi=path -> 0 on success */
   #define SYS_ISATTY 14  /* Isatty: rdi=fd -> 1 if tty, 0 otherwise */
+  #define SYS_DUP    15  /* Dup: rdi=oldfd -> new fd */
+  #define SYS_DUP2   16  /* Dup2: rdi=oldfd, rsi=newfd -> newfd */
 
 
 /* =============================================================================

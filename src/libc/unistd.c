@@ -47,6 +47,14 @@ int isatty(int fd) {
     return __syscall1(__NR_isatty, fd);
 }
 
+int dup(int oldfd) {
+    return __syscall1(__NR_dup, oldfd);
+}
+
+int dup2(int oldfd, int newfd) {
+    return __syscall2(__NR_dup2, oldfd, newfd);
+}
+
 unsigned long uptime(void) {
     return __syscall0(__NR_uptime);
 }

@@ -1,35 +1,357 @@
 /*
  * stdio.c - Standard Input/Output
  *
- * Implements printf/sprintf with common format specifiers.
+ * Implements printf/sprintf with common format specifiers,
+ * FILE streams, and buffered I/O.
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 /* ============================================================================
- * Character I/O
+ * FILE Stream Implementation
  * ============================================================================ */
 
-int putchar(int c) {
-    char ch = (char)c;
-    write(STDOUT_FILENO, &ch, 1);
-    return c;
+/* Static FILE structures for standard streams */
+static FILE _stdin_file = {
+    .fd = STDIN_FILENO,
+    .flags = _F_READ,
+    .buf = NULL,
+    .bufsiz = 0,
+    .bufpos = 0,
+    .buflen = 0
+};
+
+static FILE _stdout_file = {
+    .fd = STDOUT_FILENO,
+    .flags = _F_WRITE,
+    .buf = NULL,
+    .bufsiz = 0,
+    .bufpos = 0,
+    .buflen = 0
+};
+
+static FILE _stderr_file = {
+    .fd = STDERR_FILENO,
+    .flags = _F_WRITE,
+    .buf = NULL,
+    .bufsiz = 0,
+    .bufpos = 0,
+    .buflen = 0
+};
+
+/* Pointers to standard streams */
+FILE *stdin = &_stdin_file;
+FILE *stdout = &_stdout_file;
+FILE *stderr = &_stderr_file;
+
+/* Pool of FILE structures for fopen */
+static FILE _file_pool[FOPEN_MAX];
+static int _file_pool_used[FOPEN_MAX];
+
+/* Allocate a FILE from the pool */
+static FILE *alloc_file(void) {
+    for (int i = 0; i < FOPEN_MAX; i++) {
+        if (!_file_pool_used[i]) {
+            _file_pool_used[i] = 1;
+            memset(&_file_pool[i], 0, sizeof(FILE));
+            return &_file_pool[i];
+        }
+    }
+    return NULL;
 }
 
-int puts(const char *s) {
-    write(STDOUT_FILENO, s, strlen(s));
-    putchar('\n');
+/* Free a FILE back to the pool */
+static void free_file(FILE *fp) {
+    for (int i = 0; i < FOPEN_MAX; i++) {
+        if (&_file_pool[i] == fp) {
+            _file_pool_used[i] = 0;
+            return;
+        }
+    }
+}
+
+FILE *fopen(const char *path, const char *mode) {
+    int flags = 0;
+    int file_flags = 0;
+
+    /* Parse mode string */
+    if (mode[0] == 'r') {
+        flags = O_RDONLY;
+        file_flags = _F_READ;
+    } else if (mode[0] == 'w') {
+        flags = O_WRONLY | O_CREAT | O_TRUNC;
+        file_flags = _F_WRITE;
+    } else if (mode[0] == 'a') {
+        flags = O_WRONLY | O_CREAT | O_APPEND;
+        file_flags = _F_WRITE;
+    } else {
+        return NULL;
+    }
+
+    /* Check for '+' (read/write) */
+    if (mode[1] == '+' || (mode[1] && mode[2] == '+')) {
+        flags = O_RDWR | (flags & ~(O_RDONLY | O_WRONLY));
+        file_flags = _F_READ | _F_WRITE;
+    }
+
+    int fd = open(path, flags);
+    if (fd < 0) {
+        return NULL;
+    }
+
+    FILE *fp = alloc_file();
+    if (!fp) {
+        close(fd);
+        return NULL;
+    }
+
+    fp->fd = fd;
+    fp->flags = file_flags;
+    fp->buf = NULL;
+    fp->bufsiz = 0;
+    fp->bufpos = 0;
+    fp->buflen = 0;
+
+    return fp;
+}
+
+int fclose(FILE *stream) {
+    if (!stream) {
+        return EOF;
+    }
+
+    /* Flush any buffered output */
+    fflush(stream);
+
+    /* Free allocated buffer */
+    if (stream->flags & _F_ALLOC) {
+        free(stream->buf);
+    }
+
+    int ret = close(stream->fd);
+
+    /* Return FILE to pool */
+    free_file(stream);
+
+    return (ret < 0) ? EOF : 0;
+}
+
+int fflush(FILE *stream) {
+    if (!stream) {
+        return 0;  /* Flush all - not implemented */
+    }
+
+    /* Flush write buffer */
+    if ((stream->flags & _F_WRITE) && stream->bufpos > 0) {
+        ssize_t written = write(stream->fd, stream->buf, stream->bufpos);
+        if (written < 0) {
+            stream->flags |= _F_ERR;
+            return EOF;
+        }
+        stream->bufpos = 0;
+    }
+
     return 0;
 }
 
-int getchar(void) {
-    char c;
-    if (read(STDIN_FILENO, &c, 1) == 1) {
-        return (unsigned char)c;
+int fgetc(FILE *stream) {
+    if (!stream || !(stream->flags & _F_READ)) {
+        return EOF;
     }
-    return EOF;
+
+    if (stream->flags & _F_EOF) {
+        return EOF;
+    }
+
+    unsigned char c;
+    ssize_t n = read(stream->fd, &c, 1);
+    if (n <= 0) {
+        if (n == 0) {
+            stream->flags |= _F_EOF;
+        } else {
+            stream->flags |= _F_ERR;
+        }
+        return EOF;
+    }
+
+    return c;
+}
+
+int getc(FILE *stream) {
+    return fgetc(stream);
+}
+
+char *fgets(char *s, int size, FILE *stream) {
+    if (!s || size <= 0 || !stream) {
+        return NULL;
+    }
+
+    int i = 0;
+    while (i < size - 1) {
+        int c = fgetc(stream);
+        if (c == EOF) {
+            if (i == 0) {
+                return NULL;  /* EOF at start */
+            }
+            break;
+        }
+        s[i++] = (char)c;
+        if (c == '\n') {
+            break;
+        }
+    }
+
+    s[i] = '\0';
+    return s;
+}
+
+int fputc(int c, FILE *stream) {
+    if (!stream || !(stream->flags & _F_WRITE)) {
+        return EOF;
+    }
+
+    unsigned char ch = (unsigned char)c;
+    ssize_t n = write(stream->fd, &ch, 1);
+    if (n != 1) {
+        stream->flags |= _F_ERR;
+        return EOF;
+    }
+
+    return (unsigned char)c;
+}
+
+int fputs(const char *s, FILE *stream) {
+    if (!s || !stream) {
+        return EOF;
+    }
+
+    size_t len = strlen(s);
+    ssize_t n = write(stream->fd, s, len);
+    if (n < 0) {
+        stream->flags |= _F_ERR;
+        return EOF;
+    }
+
+    return 0;
+}
+
+size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
+    if (!ptr || !stream || size == 0 || nmemb == 0) {
+        return 0;
+    }
+
+    if (!(stream->flags & _F_READ)) {
+        return 0;
+    }
+
+    size_t total = size * nmemb;
+    ssize_t n = read(stream->fd, ptr, total);
+    if (n <= 0) {
+        if (n == 0) {
+            stream->flags |= _F_EOF;
+        } else {
+            stream->flags |= _F_ERR;
+        }
+        return 0;
+    }
+
+    return (size_t)n / size;
+}
+
+size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
+    if (!ptr || !stream || size == 0 || nmemb == 0) {
+        return 0;
+    }
+
+    if (!(stream->flags & _F_WRITE)) {
+        return 0;
+    }
+
+    size_t total = size * nmemb;
+    ssize_t n = write(stream->fd, ptr, total);
+    if (n < 0) {
+        stream->flags |= _F_ERR;
+        return 0;
+    }
+
+    return (size_t)n / size;
+}
+
+int fseek(FILE *stream, long offset, int whence) {
+    if (!stream) {
+        return -1;
+    }
+
+    /* Flush before seeking */
+    fflush(stream);
+
+    off_t ret = lseek(stream->fd, offset, whence);
+    if (ret < 0) {
+        return -1;
+    }
+
+    /* Clear EOF flag on successful seek */
+    stream->flags &= ~_F_EOF;
+    stream->buflen = 0;
+    stream->bufpos = 0;
+
+    return 0;
+}
+
+long ftell(FILE *stream) {
+    if (!stream) {
+        return -1;
+    }
+
+    return (long)lseek(stream->fd, 0, SEEK_CUR);
+}
+
+void rewind(FILE *stream) {
+    if (stream) {
+        fseek(stream, 0, SEEK_SET);
+        clearerr(stream);
+    }
+}
+
+int feof(FILE *stream) {
+    return stream ? (stream->flags & _F_EOF) != 0 : 0;
+}
+
+int ferror(FILE *stream) {
+    return stream ? (stream->flags & _F_ERR) != 0 : 0;
+}
+
+void clearerr(FILE *stream) {
+    if (stream) {
+        stream->flags &= ~(_F_EOF | _F_ERR);
+    }
+}
+
+int fileno(FILE *stream) {
+    return stream ? stream->fd : -1;
+}
+
+/* ============================================================================
+ * Character I/O (using FILE streams)
+ * ============================================================================ */
+
+int putchar(int c) {
+    return fputc(c, stdout);
+}
+
+int puts(const char *s) {
+    if (fputs(s, stdout) == EOF) {
+        return EOF;
+    }
+    return fputc('\n', stdout);
+}
+
+int getchar(void) {
+    return fgetc(stdin);
 }
 
 /* ============================================================================
@@ -246,12 +568,26 @@ int sprintf(char *str, const char *format, ...) {
     return ret;
 }
 
-int vprintf(const char *format, va_list ap) {
+int vfprintf(FILE *stream, const char *format, va_list ap) {
     char buf[1024];
     int len = vsnprintf(buf, sizeof(buf), format, ap);
     int to_write = len < (int)sizeof(buf) - 1 ? len : (int)sizeof(buf) - 1;
-    write(STDOUT_FILENO, buf, to_write);
+    if (stream) {
+        fwrite(buf, 1, to_write, stream);
+    }
     return len;
+}
+
+int vprintf(const char *format, va_list ap) {
+    return vfprintf(stdout, format, ap);
+}
+
+int fprintf(FILE *stream, const char *format, ...) {
+    va_list ap;
+    va_start(ap, format);
+    int ret = vfprintf(stream, format, ap);
+    va_end(ap);
+    return ret;
 }
 
 int printf(const char *format, ...) {

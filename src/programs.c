@@ -18,18 +18,19 @@
 #include "tar.h"
 
 /*
- * programs_run - Load and execute a program from the initrd.
+ * programs_run_cwd - Load and execute a program with a specific initial cwd.
  *
  * @name: Program name or path (e.g., "hello" or "data/myprog")
  * @argc: Argument count to pass to program
  * @argv: Argument vector to pass to program
+ * @cwd:  Initial working directory (e.g., "/" or "/bin")
  *
  * If name contains '/', it's treated as a full path.
  * Otherwise, "bin/" is prepended (e.g., "hello" -> "bin/hello").
  *
  * Returns: Program exit code, or -1 on error.
  */
-int programs_run(const char *name, int argc, char **argv) {
+int programs_run_cwd(const char *name, int argc, char **argv, const char *cwd) {
     char path[128];
     size_t i = 0;
 
@@ -68,6 +69,11 @@ int programs_run(const char *name, int argc, char **argv) {
         return -1;
     }
 
+    /* Set initial working directory */
+    if (cwd != NULL && cwd[0] != '\0') {
+        process_set_cwd(cwd);
+    }
+
     /* Load ELF executable into process address space */
     if (process_load_elf(proc, file->data, file->size) != 0) {
         puts("Error: Failed to load ELF\n");
@@ -79,4 +85,13 @@ int programs_run(const char *name, int argc, char **argv) {
     int exit_code = process_run_with_args(proc, argc, argv);
     process_destroy(proc);
     return exit_code;
+}
+
+/*
+ * programs_run - Load and execute a program from the initrd.
+ *
+ * Wrapper that calls programs_run_cwd with "/" as the initial cwd.
+ */
+int programs_run(const char *name, int argc, char **argv) {
+    return programs_run_cwd(name, argc, argv, "/");
 }

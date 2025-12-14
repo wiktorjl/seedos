@@ -40,7 +40,7 @@ echo "Creating initrd..."
 rm -rf "$BUILD_DIR/initrd"
 mkdir -p "$BUILD_DIR/initrd/bin"
 # Copy all user program ELFs to initrd
-for prog in hello info heap count alpha stars loop crash input ctest filetest ls; do
+for prog in hello info heap count alpha stars loop crash input ctest filetest ls cat; do
     if [ -f "$BUILD_DIR/${prog}.elf" ]; then
         cp "$BUILD_DIR/${prog}.elf" "$BUILD_DIR/initrd/bin/${prog}"
         echo "  Added $prog to initrd"

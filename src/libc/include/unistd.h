@@ -28,6 +28,10 @@ ssize_t write(int fd, const void *buf, size_t count);
 int close(int fd);
 off_t lseek(int fd, off_t offset, int whence);
 
+/* File descriptor duplication */
+int dup(int oldfd);
+int dup2(int oldfd, int newfd);
+
 /* Process control */
 pid_t getpid(void);
 void _exit(int status) __attribute__((noreturn));

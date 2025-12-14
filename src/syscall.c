@@ -93,30 +93,64 @@ struct kernel_dirent {
 static int64_t sys_open(uint64_t path_ptr, uint64_t flags) {
     const char *path = (const char *)path_ptr;
 
-    // 1. Validate user pointer (use vmm_validate_user_string or similar)
+    // 1. Validate user pointer
     if (!vmm_validate_user_range((const void *)path_ptr, 1)) {
         puts("Error: Invalid user path pointer\n");
         return -1;
     }
 
-    // 2. Get current process fd_table: process_get_fd_table()
+    // 2. Build full path (handle relative paths using cwd)
+    char full_path[256];
+    if (path[0] == '/') {
+        /* Absolute path - skip leading slash for tarfs */
+        strncpy(full_path, path + 1, sizeof(full_path) - 1);
+        full_path[sizeof(full_path) - 1] = '\0';
+    } else if (path[0] == '\0') {
+        /* Empty path = root */
+        full_path[0] = '\0';
+    } else {
+        /* Relative path - prepend cwd */
+        const char *cwd = process_get_cwd();
+        size_t cwd_len = strlen(cwd);
+
+        if (cwd_len == 1 && cwd[0] == '/') {
+            /* cwd is root - just use path as-is */
+            strncpy(full_path, path, sizeof(full_path) - 1);
+            full_path[sizeof(full_path) - 1] = '\0';
+        } else {
+            /* cwd is like "/bin" - need to combine */
+            /* Skip leading slash from cwd for tarfs */
+            const char *cwd_no_slash = (cwd[0] == '/') ? cwd + 1 : cwd;
+            size_t cwd_no_slash_len = strlen(cwd_no_slash);
+
+            if (cwd_no_slash_len + 1 + strlen(path) < sizeof(full_path)) {
+                strcpy(full_path, cwd_no_slash);
+                full_path[cwd_no_slash_len] = '/';
+                strcpy(full_path + cwd_no_slash_len + 1, path);
+            } else {
+                return -1;  /* Path too long */
+            }
+        }
+    }
+
+    // 3. Get current process fd_table
     struct fd_table *fdt = process_get_fd_table();
-    
-    // 3. Allocate fd: vfs_alloc_fd(fdt)
+
+    // 4. Allocate fd
     int fd = vfs_alloc_fd(fdt);
     if (fd == -1) {
         return -1;  // No free file descriptors
     }
 
-    // 4. Open vnode: tarfs_open(path)
-    struct vnode *vn = tarfs_open(path);
+    // 5. Open vnode
+    struct vnode *vn = tarfs_open(full_path);
 
-    if(vn == NULL) {
+    if (vn == NULL) {
         vfs_free_fd(fdt, fd);
         return -1;  // File not found
     }
 
-    // 6. Set up fd entry: fdt->fds[fd].vn = vnode, .position = 0, .flags = flags
+    // 6. Set up fd entry
     fdt->fds[fd].vn = vn;
     fdt->fds[fd].position = 0;
     fdt->fds[fd].flags = (int)flags;
@@ -551,6 +585,88 @@ static int64_t sys_isatty(uint64_t fd) {
     return 0;
 }
 
+/*
+ * sys_dup - Duplicate a file descriptor.
+ *
+ * Returns the lowest available fd that is a copy of oldfd.
+ */
+static int64_t sys_dup(uint64_t oldfd) {
+    if (oldfd >= MAX_FDS) {
+        return -1;
+    }
+
+    struct fd_table *fdt = process_get_fd_table();
+    struct file_descriptor *old_desc = vfs_get_fd(fdt, (int)oldfd);
+
+    if (old_desc == NULL) {
+        return -1;  /* oldfd not open */
+    }
+
+    /* Find lowest available fd */
+    int newfd = vfs_alloc_fd(fdt);
+    if (newfd < 0) {
+        return -1;  /* No free fd */
+    }
+
+    /* Copy the file descriptor entry */
+    fdt->fds[newfd].vn = old_desc->vn;
+    fdt->fds[newfd].position = old_desc->position;
+    fdt->fds[newfd].flags = old_desc->flags;
+
+    /* Increment vnode refcount */
+    old_desc->vn->refcount++;
+
+    return newfd;
+}
+
+/*
+ * sys_dup2 - Duplicate a file descriptor to a specific fd number.
+ *
+ * If newfd is already open, it is closed first.
+ * If oldfd == newfd, just return newfd.
+ */
+static int64_t sys_dup2(uint64_t oldfd, uint64_t newfd) {
+    if (oldfd >= MAX_FDS || newfd >= MAX_FDS) {
+        return -1;
+    }
+
+    /* If oldfd == newfd, just return newfd */
+    if (oldfd == newfd) {
+        /* But first verify oldfd is valid */
+        struct fd_table *fdt = process_get_fd_table();
+        struct file_descriptor *old_desc = vfs_get_fd(fdt, (int)oldfd);
+        if (old_desc == NULL) {
+            return -1;
+        }
+        return (int64_t)newfd;
+    }
+
+    struct fd_table *fdt = process_get_fd_table();
+    struct file_descriptor *old_desc = vfs_get_fd(fdt, (int)oldfd);
+
+    if (old_desc == NULL) {
+        return -1;  /* oldfd not open */
+    }
+
+    /* If newfd is open, close it first */
+    struct file_descriptor *new_desc = vfs_get_fd(fdt, (int)newfd);
+    if (new_desc != NULL) {
+        /* Close newfd */
+        new_desc->vn->ops->close(new_desc->vn);
+        vfs_free_fd(fdt, (int)newfd);
+    }
+
+    /* Copy the file descriptor entry */
+    fdt->fds[newfd].vn = old_desc->vn;
+    fdt->fds[newfd].position = old_desc->position;
+    fdt->fds[newfd].flags = old_desc->flags;
+
+    /* Increment vnode refcount */
+    old_desc->vn->refcount++;
+
+    return (int64_t)newfd;
+}
+
 /* =============================================================================
  * Syscall Dispatcher
  * =============================================================================
@@ -632,6 +748,14 @@ void syscall_handler(struct syscall_registers *regs) {
 
         case SYS_ISATTY:
             regs->rax = sys_isatty(regs->rdi);
+            break;
+
+        case SYS_DUP:
+            regs->rax = sys_dup(regs->rdi);
+            break;
+
+        case SYS_DUP2:
+            regs->rax = sys_dup2(regs->rdi, regs->rsi);
             break;
 
         default:

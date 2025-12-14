@@ -51,7 +51,7 @@ TEST_OBJECTS = $(addprefix $(BUILD_DIR)/,$(TEST_SOURCES:.c=.o))
 # Build chain: .c -> _ucode.o + crt0.o + libc.a -> .elf
 # ELF files are copied to initrd by build.sh, NOT embedded in kernel.
 # =============================================================================
-USER_PROGRAMS = hello info heap count alpha stars loop crash input ctest filetest ls
+USER_PROGRAMS = hello info heap count alpha stars loop crash input ctest filetest ls cat
 USER_ELF_FILES = $(addprefix $(BUILD_DIR)/,$(addsuffix .elf,$(USER_PROGRAMS)))
 
 # C compiler flags for userspace (NO -mcmodel=kernel!)

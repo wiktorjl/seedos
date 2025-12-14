@@ -29,6 +29,8 @@
 #define __NR_getcwd  12
 #define __NR_chdir   13
 #define __NR_isatty  14
+#define __NR_dup     15
+#define __NR_dup2    16
 
 /* Syscall with 0 arguments */
 static inline long __syscall0(long n) {

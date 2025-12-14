@@ -16,9 +16,22 @@
  * @argv: Argument vector to pass to program
  *
  * If name doesn't start with "bin/", it's automatically prepended.
+ * Process cwd is initialized to "/".
  *
  * Returns: Program exit code, or -1 if program not found or failed to load.
  */
 int programs_run(const char *name, int argc, char **argv);
+
+/*
+ * programs_run_cwd - Load and execute a program with a specific initial cwd.
+ *
+ * @name: Program name or path
+ * @argc: Argument count
+ * @argv: Argument vector
+ * @cwd:  Initial working directory (e.g., "/" or "/bin")
+ *
+ * Returns: Program exit code, or -1 on error.
+ */
+int programs_run_cwd(const char *name, int argc, char **argv, const char *cwd);
 
 #endif /* PROGRAMS_H */
