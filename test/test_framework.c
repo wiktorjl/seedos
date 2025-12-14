@@ -26,8 +26,8 @@ static uint64_t saved_hhdm_offset = 0;
  */
 
 static int str_equal(const char *a, const char *b) {
-    while (*a && *b) {
-        if (*a != *b) return 0;
+    while(*a && *b) {
+        if(*a != *b) return 0;
         a++;
         b++;
     }
@@ -36,7 +36,7 @@ static int str_equal(const char *a, const char *b) {
 
 static int str_len(const char *s) {
     int len = 0;
-    while (*s++) len++;
+    while(*s++) len++;
     return len;
 }
 
@@ -66,7 +66,7 @@ struct limine_memmap_response *test_get_memmap(void) {
 
 int test_register(const char *component, const char *name,
                   const char *description, test_func_t func) {
-    if (test_count >= MAX_TESTS) {
+    if(test_count >= MAX_TESTS) {
         return -1;
     }
 
@@ -149,23 +149,23 @@ static void print_result(const char *component, const char *name, int result) {
 
     /* Pad to align results */
     int len = str_len(component) + str_len(name) + 1;
-    while (len < 30) {
+    while(len < 30) {
         puts(" ");
         len++;
     }
 
-    if (result == TEST_PASS) {
+    if(result == TEST_PASS) {
         puts(" [PASS]\n");
-    } else if (result == TEST_SKIP) {
+    }else if(result == TEST_SKIP) {
         puts(" [SKIP]\n");
-    } else {
+    }else {
         puts(" [FAIL]\n");
     }
 }
 
 /* Run a single test entry and return result */
 static int run_test_entry(struct test_entry *entry, int verbose) {
-    if (verbose) {
+    if(verbose) {
         puts("  Running ");
         puts(entry->component);
         puts(".");
@@ -179,7 +179,7 @@ static int run_test_entry(struct test_entry *entry, int verbose) {
 }
 
 void test_run_all(void) {
-    if (test_count == 0) {
+    if(test_count == 0) {
         puts("\nNo tests registered.\n\n");
         return;
     }
@@ -191,10 +191,10 @@ void test_run_all(void) {
 
     int passed = 0, failed = 0, skipped = 0;
 
-    for (int i = 0; i < test_count; i++) {
+    for(int i = 0; i < test_count; i++) {
         int result = run_test_entry(&test_registry[i], 0);
-        if (result == TEST_PASS) passed++;
-        else if (result == TEST_SKIP) skipped++;
+        if(result == TEST_PASS) passed++;
+        else if(result == TEST_SKIP) skipped++;
         else failed++;
     }
 
@@ -214,13 +214,13 @@ void test_run_component(const char *component) {
     int passed = 0, failed = 0, skipped = 0;
 
     /* First pass: check if component exists */
-    for (int i = 0; i < test_count; i++) {
-        if (str_equal(test_registry[i].component, component)) {
+    for(int i = 0; i < test_count; i++) {
+        if(str_equal(test_registry[i].component, component)) {
             found++;
         }
     }
 
-    if (found == 0) {
+    if(found == 0) {
         puts("\nNo tests found for component: ");
         puts(component);
         puts("\n\n");
@@ -235,11 +235,11 @@ void test_run_component(const char *component) {
     puts("\n========================================\n\n");
 
     /* Second pass: run matching tests */
-    for (int i = 0; i < test_count; i++) {
-        if (str_equal(test_registry[i].component, component)) {
+    for(int i = 0; i < test_count; i++) {
+        if(str_equal(test_registry[i].component, component)) {
             int result = run_test_entry(&test_registry[i], 0);
-            if (result == TEST_PASS) passed++;
-            else if (result == TEST_SKIP) skipped++;
+            if(result == TEST_PASS) passed++;
+            else if(result == TEST_SKIP) skipped++;
             else failed++;
         }
     }
@@ -256,8 +256,8 @@ void test_run_component(const char *component) {
 }
 
 void test_run_single(const char *component, const char *name) {
-    for (int i = 0; i < test_count; i++) {
-        if (str_equal(test_registry[i].component, component) &&
+    for(int i = 0; i < test_count; i++) {
+        if(str_equal(test_registry[i].component, component) &&
             str_equal(test_registry[i].name, name)) {
 
             puts("\n");
@@ -272,8 +272,8 @@ void test_run_single(const char *component, const char *name) {
 
             puts("\n========================================\n");
             puts("  Result: ");
-            if (result == TEST_PASS) puts("PASS");
-            else if (result == TEST_SKIP) puts("SKIP");
+            if(result == TEST_PASS) puts("PASS");
+            else if(result == TEST_SKIP) puts("SKIP");
             else puts("FAIL");
             puts("\n========================================\n\n");
             return;
@@ -294,7 +294,7 @@ void test_run_single(const char *component, const char *name) {
  */
 
 void test_list_all(void) {
-    if (test_count == 0) {
+    if(test_count == 0) {
         puts("\nNo tests registered.\n\n");
         return;
     }
@@ -305,9 +305,9 @@ void test_list_all(void) {
 
     const char *current_component = NULL;
 
-    for (int i = 0; i < test_count; i++) {
+    for(int i = 0; i < test_count; i++) {
         /* Print component header when it changes */
-        if (current_component == NULL ||
+        if(current_component == NULL ||
             !str_equal(current_component, test_registry[i].component)) {
             current_component = test_registry[i].component;
             puts("  [");
@@ -320,7 +320,7 @@ void test_list_all(void) {
 
         /* Pad for alignment */
         int len = str_len(test_registry[i].name);
-        while (len < 20) {
+        while(len < 20) {
             puts(" ");
             len++;
         }
@@ -344,14 +344,14 @@ void test_list_component(const char *component) {
     puts(component);
     puts("]:\n\n");
 
-    for (int i = 0; i < test_count; i++) {
-        if (str_equal(test_registry[i].component, component)) {
+    for(int i = 0; i < test_count; i++) {
+        if(str_equal(test_registry[i].component, component)) {
             found++;
             puts("  ");
             puts(test_registry[i].name);
 
             int len = str_len(test_registry[i].name);
-            while (len < 20) {
+            while(len < 20) {
                 puts(" ");
                 len++;
             }
@@ -362,7 +362,7 @@ void test_list_component(const char *component) {
         }
     }
 
-    if (found == 0) {
+    if(found == 0) {
         puts("  (no tests found)\n");
     }
 

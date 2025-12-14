@@ -106,7 +106,7 @@ static int test_vmm_kernel_pml4(void) {
  */
 static int test_vmm_write_mapped(void) {
     uint64_t hhdm = test_get_hhdm_offset();
-    if (hhdm == 0) {
+    if(hhdm == 0) {
         return TEST_SKIP;
     }
 

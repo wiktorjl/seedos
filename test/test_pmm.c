@@ -56,20 +56,20 @@ static int test_pmm_alloc_multiple(void) {
     int i;
 
     /* Allocate 8 pages */
-    for (i = 0; i < 8; i++) {
+    for(i = 0; i < 8; i++) {
         pages[i] = pmm_alloc();
         TEST_ASSERT_NOT_NULL(pages[i]);
     }
 
     /* All pages should be unique */
-    for (i = 0; i < 8; i++) {
-        for (int j = i + 1; j < 8; j++) {
+    for(i = 0; i < 8; i++) {
+        for(int j = i + 1; j < 8; j++) {
             TEST_ASSERT_NEQ(pages[i], pages[j]);
         }
     }
 
     /* Free all pages */
-    for (i = 0; i < 8; i++) {
+    for(i = 0; i < 8; i++) {
         pmm_free(pages[i]);
     }
 
@@ -116,7 +116,7 @@ static int test_pmm_counts(void) {
  */
 static int test_pmm_write_read(void) {
     uint64_t hhdm = test_get_hhdm_offset();
-    if (hhdm == 0) {
+    if(hhdm == 0) {
         return TEST_SKIP;  /* HHDM not available */
     }
 

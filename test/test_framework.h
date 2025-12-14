@@ -150,11 +150,11 @@ struct limine_memmap_response *test_get_memmap(void);
  */
 #define TEST_ASSERT(cond) \
     do { \
-        if (!(cond)) { \
+        if(!(cond)) { \
             test_print_failure(__FILE__, __LINE__, #cond); \
             return TEST_FAIL; \
         } \
-    } while (0)
+    } while(0)
 
 /*
  * TEST_ASSERT_EQ - Assert that two values are equal.
@@ -165,11 +165,11 @@ struct limine_memmap_response *test_get_memmap(void);
     do { \
         uint64_t _a = (uint64_t)(actual); \
         uint64_t _e = (uint64_t)(expected); \
-        if (_a != _e) { \
+        if(_a != _e) { \
             test_print_eq_failure(__FILE__, __LINE__, #actual, _a, _e); \
             return TEST_FAIL; \
         } \
-    } while (0)
+    } while(0)
 
 /*
  * TEST_ASSERT_NEQ - Assert that two values are not equal.
@@ -180,11 +180,11 @@ struct limine_memmap_response *test_get_memmap(void);
     do { \
         uint64_t _a = (uint64_t)(actual); \
         uint64_t _ne = (uint64_t)(not_expected); \
-        if (_a == _ne) { \
+        if(_a == _ne) { \
             test_print_neq_failure(__FILE__, __LINE__, #actual, _a); \
             return TEST_FAIL; \
         } \
-    } while (0)
+    } while(0)
 
 /*
  * TEST_ASSERT_NULL - Assert that a pointer is NULL.
