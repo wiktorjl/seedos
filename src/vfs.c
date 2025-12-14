@@ -10,32 +10,76 @@ void vfs_init(void) {
 
 /*
  * vfs_resolve_path - Normalize a path for filesystem lookup.
+ *
+ * Handles:
+ *   ./path    - strip "./" prefix
+ *   .         - current directory
+ *   /path     - absolute path (strips leading slash for tarfs)
+ *   path      - relative path (prepends cwd)
+ *
+ * Output is in tarfs format (no leading slash).
  */
 int vfs_resolve_path(const char *path, const char *cwd, char *out, size_t out_size) {
     if (path == NULL || out == NULL || out_size == 0) {
         return -1;
     }
 
-    /* Strip leading "/" - tarfs uses paths without leading slash */
-    if (path[0] == '/') {
-        path++;
+    /* Default cwd to root if not provided */
+    if (cwd == NULL) {
+        cwd = "/";
     }
 
-    /* Strip "./" prefix */
+    /* Strip "./" prefix if present */
     if (path[0] == '.' && path[1] == '/') {
         path += 2;
     }
 
-    /* Copy the normalized path */
-    size_t len = strlen(path);
-    if (len >= out_size) {
-        return -1;  /* Path too long */
+    /* Handle "." or empty string (current directory) */
+    if (strcmp(path, ".") == 0 || path[0] == '\0') {
+        if (cwd[0] == '/' && cwd[1] == '\0') {
+            out[0] = '\0';  /* Root = empty for tarfs */
+        } else {
+            /* Skip leading slash from cwd */
+            const char *cwd_no_slash = (cwd[0] == '/') ? cwd + 1 : cwd;
+            if (strlen(cwd_no_slash) >= out_size) {
+                return -1;
+            }
+            strcpy(out, cwd_no_slash);
+        }
+        return 0;
     }
 
-    strcpy(out, path);
+    /* Handle absolute path */
+    if (path[0] == '/') {
+        /* Skip leading slash for tarfs */
+        if (strlen(path + 1) >= out_size) {
+            return -1;
+        }
+        strcpy(out, path + 1);
+        return 0;
+    }
 
-    /* TODO: Handle relative paths with cwd prepending */
-    (void)cwd;
+    /* Relative path - prepend cwd */
+    if (cwd[0] == '/' && cwd[1] == '\0') {
+        /* cwd is root - just use path as-is */
+        if (strlen(path) >= out_size) {
+            return -1;
+        }
+        strcpy(out, path);
+    } else {
+        /* cwd is like "/bin" - combine cwd + "/" + path */
+        const char *cwd_no_slash = (cwd[0] == '/') ? cwd + 1 : cwd;
+        size_t cwd_len = strlen(cwd_no_slash);
+        size_t path_len = strlen(path);
+
+        if (cwd_len + 1 + path_len >= out_size) {
+            return -1;  /* Path too long */
+        }
+
+        strcpy(out, cwd_no_slash);
+        out[cwd_len] = '/';
+        strcpy(out + cwd_len + 1, path);
+    }
 
     return 0;
 }
@@ -43,17 +87,15 @@ int vfs_resolve_path(const char *path, const char *cwd, char *out, size_t out_si
 /*
  * vfs_resolve_executable - Resolve path to an executable.
  *
- * If path has no slashes, prepends "bin/" to search in /bin.
+ * If path has no slashes (bare command name), prepends "bin/".
+ * Otherwise resolves as a normal path using vfs_resolve_path.
  */
 int vfs_resolve_executable(const char *path, const char *cwd, char *out, size_t out_size) {
     if (path == NULL || out == NULL || out_size == 0) {
         return -1;
     }
 
-    /* Strip leading "/" and "./" */
-    if (path[0] == '/') {
-        path++;
-    }
+    /* Strip "./" prefix */
     if (path[0] == '.' && path[1] == '/') {
         path += 2;
     }
@@ -68,22 +110,17 @@ int vfs_resolve_executable(const char *path, const char *cwd, char *out, size_t 
     }
 
     if (!has_slash) {
-        /* No slash - prepend "bin/" */
-        if (strlen(path) + 5 >= out_size) {  /* 5 = strlen("bin/") + 1 */
+        /* Bare command name - prepend "bin/" */
+        if (strlen(path) + 5 >= out_size) {
             return -1;
         }
         strcpy(out, "bin/");
         strcat(out, path);
-    } else {
-        /* Has slash - use as-is */
-        if (strlen(path) >= out_size) {
-            return -1;
-        }
-        strcpy(out, path);
+        return 0;
     }
 
-    (void)cwd;  /* TODO: Handle relative paths */
-    return 0;
+    /* Has slash - resolve as normal path */
+    return vfs_resolve_path(path, cwd, out, out_size);
 }
 
 /*

@@ -85,19 +85,19 @@ void vmm_free_user_address_space(uint64_t pml4_phys) {
     uint64_t *pml4 = phys_to_virt(pml4_phys);
     
     // Only walk user-space (entries 0-255)
-    for (int i = 0; i < 256; i++) {
+    for (int i = 0; i < PAGE_TABLE_ENTRIES_USER; i++) {
         if (!(pml4[i] & PTE_PRESENT)) continue;
         
         uint64_t *pdpt = phys_to_virt(pml4[i] & PTE_ADDR_MASK);
-        for (int j = 0; j < 512; j++) {
+        for (int j = 0; j < PAGE_TABLE_ENTRIES; j++) {
             if (!(pdpt[j] & PTE_PRESENT)) continue;
             
             uint64_t *pd = phys_to_virt(pdpt[j] & PTE_ADDR_MASK);
-            for (int k = 0; k < 512; k++) {
+            for (int k = 0; k < PAGE_TABLE_ENTRIES; k++) {
                 if (!(pd[k] & PTE_PRESENT)) continue;
                 
                 uint64_t *pt = phys_to_virt(pd[k] & PTE_ADDR_MASK);
-                for (int l = 0; l < 512; l++) {
+                for (int l = 0; l < PAGE_TABLE_ENTRIES; l++) {
                     if (pt[l] & PTE_PRESENT) {
                         pmm_free(pt[l] & PTE_ADDR_MASK);  // Free data page
                     }

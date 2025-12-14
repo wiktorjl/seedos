@@ -97,60 +97,17 @@ struct kernel_dirent {
 static int64_t sys_open(uint64_t path_ptr, uint64_t flags) {
     const char *path = (const char *)path_ptr;
 
-    // 1. Validate user pointer
     if (!vmm_validate_user_range((const void *)path_ptr, 1)) {
-        puts("Error: Invalid user path pointer\n");
         return -1;
     }
 
-    // 2. Build full path (handle relative paths using cwd)
-    char full_path[256];
-    const char *cwd = process_get_cwd();
-
-    /* Strip "./" prefix if present */
-    if (path[0] == '.' && path[1] == '/') {
-        path += 2;
+    /* Resolve path (handles ./, absolute, relative) */
+    char full_path[PATH_MAX];
+    if (vfs_resolve_path(path, process_get_cwd(), full_path, sizeof(full_path)) != 0) {
+        return -1;
     }
 
-    /* Handle special paths "." and ".." */
-    if (strcmp(path, ".") == 0 || path[0] == '\0') {
-        /* "." or empty means current directory */
-        if (cwd[0] == '/' && cwd[1] == '\0') {
-            full_path[0] = '\0';  /* Root = empty for tarfs */
-        } else {
-            /* Skip leading slash */
-            strncpy(full_path, cwd + 1, sizeof(full_path) - 1);
-            full_path[sizeof(full_path) - 1] = '\0';
-        }
-    } else if (path[0] == '/') {
-        /* Absolute path - skip leading slash for tarfs */
-        strncpy(full_path, path + 1, sizeof(full_path) - 1);
-        full_path[sizeof(full_path) - 1] = '\0';
-    } else {
-        /* Relative path - prepend cwd */
-        size_t cwd_len = strlen(cwd);
-
-        if (cwd_len == 1 && cwd[0] == '/') {
-            /* cwd is root - just use path as-is */
-            strncpy(full_path, path, sizeof(full_path) - 1);
-            full_path[sizeof(full_path) - 1] = '\0';
-        } else {
-            /* cwd is like "/bin" - need to combine */
-            /* Skip leading slash from cwd for tarfs */
-            const char *cwd_no_slash = (cwd[0] == '/') ? cwd + 1 : cwd;
-            size_t cwd_no_slash_len = strlen(cwd_no_slash);
-
-            if (cwd_no_slash_len + 1 + strlen(path) < sizeof(full_path)) {
-                strcpy(full_path, cwd_no_slash);
-                full_path[cwd_no_slash_len] = '/';
-                strcpy(full_path + cwd_no_slash_len + 1, path);
-            } else {
-                return -1;  /* Path too long */
-            }
-        }
-    }
-
-    // 3. Get current process fd_table
+    /* Get current process fd_table */
     struct fd_table *fdt = process_get_fd_table();
 
     // 4. Allocate fd
@@ -441,42 +398,10 @@ static int64_t sys_stat(uint64_t path_ptr, uint64_t buf_ptr) {
         return -1;
     }
 
-    /* Strip "./" prefix if present */
-    if (path[0] == '.' && path[1] == '/') {
-        path += 2;
-    }
-
-    /* Resolve path (handle "." and relative paths) */
-    char full_path[256];
-    const char *cwd = process_get_cwd();
-
-    if (strcmp(path, ".") == 0 || path[0] == '\0') {
-        /* "." or empty means current directory */
-        if (cwd[0] == '/' && cwd[1] == '\0') {
-            full_path[0] = '\0';  /* Root */
-        } else {
-            strncpy(full_path, cwd + 1, sizeof(full_path) - 1);
-            full_path[sizeof(full_path) - 1] = '\0';
-        }
-    } else if (path[0] == '/') {
-        /* Absolute path */
-        strncpy(full_path, path + 1, sizeof(full_path) - 1);
-        full_path[sizeof(full_path) - 1] = '\0';
-    } else {
-        /* Relative path */
-        if (cwd[0] == '/' && cwd[1] == '\0') {
-            strncpy(full_path, path, sizeof(full_path) - 1);
-            full_path[sizeof(full_path) - 1] = '\0';
-        } else {
-            const char *cwd_no_slash = cwd + 1;
-            size_t cwd_len = strlen(cwd_no_slash);
-            strncpy(full_path, cwd_no_slash, sizeof(full_path) - 1);
-            if (cwd_len < sizeof(full_path) - 2) {
-                full_path[cwd_len] = '/';
-                strncpy(full_path + cwd_len + 1, path, sizeof(full_path) - cwd_len - 2);
-            }
-            full_path[sizeof(full_path) - 1] = '\0';
-        }
+    /* Resolve path (handles ./, absolute, relative) */
+    char full_path[PATH_MAX];
+    if (vfs_resolve_path(path, process_get_cwd(), full_path, sizeof(full_path)) != 0) {
+        return -1;
     }
 
     /* Find file in tarfs */
@@ -774,6 +699,11 @@ static int64_t sys_chdir(uint64_t path_ptr) {
 
     if (tf == NULL) {
         return -1;  /* Path not found */
+    }
+
+    /* Must be a directory */
+    if (!tf->is_dir) {
+        return -1;  /* Not a directory */
     }
 
     /* Build final cwd path with leading slash */

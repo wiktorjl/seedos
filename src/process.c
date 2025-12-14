@@ -162,25 +162,7 @@ int process_load_elf(struct process *p, const void *data, uint64_t size) {
 }
 
 int process_run(struct process *p) {
-    if (p == NULL) {
-        return -1;
-    }
-
-    /* Set up user context for context switch */
-    struct user_context ctx;
-    ctx.pml4 = p->pml4;
-    ctx.entry = p->entry;
-    ctx.stack = p->stack;
-
-    /* Set this process as current before entering userspace */
-    current_process = p;
-    p->state = PROC_RUNNING;
-
-    /* Enter userspace - blocks until sys_exit */
-    context_switch_to_user(&ctx);
-
-    /* Process has exited, return exit code */
-    return last_exit_code;
+    return process_run_with_args(p, 0, NULL);
 }
 
 /*
@@ -295,12 +277,7 @@ void process_destroy(struct process *p) {
     }
 
     /* Mark slot as available */
-     for (int i = 0; i < MAX_PROCESSES; i++) {
-        if (&process_slots[i] == p) {
-            p->state = PROC_UNUSED;
-            break;
-        }
-    }
+    p->state = PROC_UNUSED;
 
     /* Update current_process if needed */
     if (current_process == p) {
@@ -330,7 +307,7 @@ void * process_sbrk(intptr_t increment) {
         return (void *)-1;
     }
 
-    uint64_t old_page = (old_brk - 1) / VMM_PAGE_SIZE;
+    uint64_t old_page = old_brk == USER_HEAP_BASE ? (USER_HEAP_BASE / VMM_PAGE_SIZE) - 1 : (old_brk - 1) / VMM_PAGE_SIZE;
     uint64_t new_page = (new_brk - 1) / VMM_PAGE_SIZE;
 
     /* Allocate new pages if growing */

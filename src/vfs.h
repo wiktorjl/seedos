@@ -47,14 +47,17 @@ struct file_descriptor *vfs_get_fd(struct fd_table *fd_table, int fd);
  * vfs_resolve_path - Normalize a path for filesystem lookup.
  *
  * @path:     User-provided path (absolute or relative)
- * @cwd:      Current working directory (for relative paths)
+ * @cwd:      Current working directory (for relative paths), or NULL for root
  * @out:      Output buffer for resolved path
  * @out_size: Size of output buffer
  *
  * Handles:
- *   - Strips leading "/" (tarfs uses paths without leading slash)
  *   - Strips "./" prefix
- *   - Prepends cwd for relative paths (not yet implemented)
+ *   - "." resolves to current directory
+ *   - Absolute paths: strips leading "/" for tarfs
+ *   - Relative paths: prepends cwd
+ *
+ * Output is in tarfs format (no leading slash).
  *
  * Returns: 0 on success, -1 on error (path too long).
  */
@@ -64,12 +67,12 @@ int vfs_resolve_path(const char *path, const char *cwd, char *out, size_t out_si
  * vfs_resolve_executable - Resolve path to an executable.
  *
  * @path:     User-provided path or program name
- * @cwd:      Current working directory
+ * @cwd:      Current working directory (for relative paths)
  * @out:      Output buffer for resolved path
  * @out_size: Size of output buffer
  *
- * If path has no slashes, prepends "bin/" to search in /bin.
- * Otherwise resolves as a normal path.
+ * If path has no slashes (bare command name like "ls"), prepends "bin/".
+ * Otherwise resolves using vfs_resolve_path.
  *
  * Returns: 0 on success, -1 on error.
  */

@@ -45,7 +45,7 @@ int programs_run_cwd(const char *name, int argc, char **argv, const char *cwd) {
 
     /* Only prepend "bin/" if name is not already a path */
     if (!has_slash) {
-        path[0] = 'b'; path[1] = 'i'; path[2] = 'n'; path[3] = '/';
+        strcpy(path, "bin/"); 
         i = 4;
     }
 
