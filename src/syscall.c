@@ -905,20 +905,23 @@ static int64_t sys_spawn(uint64_t path_ptr, uint64_t argv_ptr) {
     }
 
     /* Build full path - handle relative and absolute paths */
-    char full_path[256];
+    char full_path[256]; // WJL: Path limited to 256 characters? Why not dynamic or unlimited? How does other parts of the kernel handle long paths? How does linux does it?
     const char *cwd = process_get_cwd();
 
     /* Skip leading slash and ./ */
+    // WJL: This is duplicated code from sys_chdir. Should be refactored into a common function. Path manipulation is tricky and should be consistent. And it should not be here or limited to 256 bytes.
     const char *name = path;
     if (name[0] == '/') name++;
     if (name[0] == '.' && name[1] == '/') name += 2;
 
     /* Check if it's a path or just a program name */
+    // WJL: same comment here
     int has_slash = 0;
     for (const char *c = name; *c; c++) {
         if (*c == '/') { has_slash = 1; break; }
     }
 
+    // WJL: Same comment here
     if (!has_slash) {
         /* No slash - prepend "bin/" */
         strcpy(full_path, "bin/");
@@ -928,6 +931,8 @@ static int64_t sys_spawn(uint64_t path_ptr, uint64_t argv_ptr) {
     }
     full_path[sizeof(full_path) - 1] = '\0';
 
+
+    // WJL: this is a syscall and we are dealing with a "specific" file system type - this should be abstracted away to VFS layer
     /* Find program in initrd */
     struct tar_file *file = tar_find(full_path);
     if (file == NULL) {
@@ -953,6 +958,7 @@ static int64_t sys_spawn(uint64_t path_ptr, uint64_t argv_ptr) {
         return -1;
     }
 
+    // WJL: argument handling code should be refactored into a common function
     /* Count and copy argv */
     int argc = 0;
     static char arg_storage[16][64];
@@ -1015,6 +1021,7 @@ static int64_t sys_spawn(uint64_t path_ptr, uint64_t argv_ptr) {
  * Unlike sys_spawn, this returns immediately after starting the child.
  * Use sys_waitpid to wait for the child to complete.
  */
+//WJL: how different is this from sys_spawn? Can we refactor common code into a helper function?
 static int64_t sys_spawn_async(uint64_t path_ptr, uint64_t argv_ptr) {
     const char *path = (const char *)path_ptr;
     char **argv = (char **)argv_ptr;

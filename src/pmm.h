@@ -29,6 +29,7 @@
 
 /* Page size in bytes (4KB). This is the smallest unit we allocate. */
 #define PAGE_SIZE 4096
+#define CODE_PAGE_SIZE PAGE_SIZE
 
 /*
  * pmm_init - Initialize the physical memory manager.

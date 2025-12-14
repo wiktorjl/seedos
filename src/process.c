@@ -149,7 +149,8 @@ int process_load(struct process *p, const void *code, uint32_t len) {
     }
 
     /* Ensure code fits in one page */
-    if (len > PROCESS_STACK_SIZE) {
+    // WJL: Why is this limitation necessary? We can have code larger than one page, so this would fail.
+    if (len > CODE_PAGE_SIZE) {
         return -1;
     }
 
@@ -200,6 +201,7 @@ int process_run(struct process *p) {
     return last_exit_code;
 }
 
+// WJL: comments missing
 int process_run_with_args(struct process *p, int argc, char **argv) {
     if (p == NULL) {
         return -1;
