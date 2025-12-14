@@ -905,7 +905,7 @@ static int64_t sys_spawn(uint64_t path_ptr, uint64_t argv_ptr) {
     }
 
     /* Build full path - handle relative and absolute paths */
-    char full_path[256]; // WJL: Path limited to 256 characters? Why not dynamic or unlimited? How does other parts of the kernel handle long paths? How does linux does it?
+    char full_path[PATH_MAX];
     const char *cwd = process_get_cwd();
 
     /* Skip leading slash and ./ */

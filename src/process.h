@@ -65,7 +65,7 @@ struct process {
     int exit_code;          /* Exit code after process terminates */
     int pid;                /* Process ID */
     struct fd_table fds;    /* File descriptor table */
-    char cwd[256];          /* Current working directory */ // WJL: Should this be part of the process struct? Fells more like VFS or shell responsibility.
+    char cwd[256];          /* Current working directory (per-process, inherited on fork/exec) */
 
     enum process_state state;
 
