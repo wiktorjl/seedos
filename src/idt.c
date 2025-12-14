@@ -346,9 +346,13 @@ void interrupt_handler(struct interrupt_frame *frame) {
         uint8_t irq_number = frame->int_no - IRQ_BASE;
 
         if(irq_number == 0) {
-            pit_handler();  
-        
-            /* Check if interrupted userspace (RPL == 3) */
+            pit_handler();
+
+            /*
+             * Only preempt if we were in userspace (ring 3).
+             * If in kernel (e.g., during syscall), don't preempt - the syscall
+             * will return to userspace normally, and preemption can happen then.
+             */
             if ((frame->cs & RPL_MASK) == RPL_USER) {
                 schedule(frame);
             }

@@ -31,7 +31,7 @@ struct dirent {
 typedef struct {
     int fd;                 /* File descriptor for the directory */
     struct dirent entry;    /* Current entry buffer */
-    char buf[4096];         /* Buffer for getdents */
+    char buf[16384];        /* Buffer for getdents (fits ~58 entries) */
     size_t buf_pos;         /* Current position in buffer */
     size_t buf_len;         /* Bytes in buffer */
 } DIR;

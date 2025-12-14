@@ -32,6 +32,10 @@
 #define __NR_dup     15
 #define __NR_dup2    16
 #define __NR_spawn   17
+#define __NR_spawn_async 18
+#define __NR_waitpid 19
+#define __NR_shutdown 20
+#define __NR_reboot   21
 
 /* Syscall with 0 arguments */
 static inline long __syscall0(long n) {

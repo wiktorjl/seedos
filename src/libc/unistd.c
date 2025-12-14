@@ -61,6 +61,16 @@ unsigned long uptime(void) {
     return __syscall0(__NR_uptime);
 }
 
+void shutdown(void) {
+    __syscall0(__NR_shutdown);
+    __builtin_unreachable();
+}
+
+void reboot(void) {
+    __syscall0(__NR_reboot);
+    __builtin_unreachable();
+}
+
 int access(const char *pathname, int mode) {
     struct stat st;
     if (stat(pathname, &st) < 0) {
@@ -100,6 +110,10 @@ int spawn(const char *path, char *const argv[]) {
     return __syscall2(__NR_spawn, (long)path, (long)argv);
 }
 
+pid_t spawn_async(const char *path, char *const argv[]) {
+    return __syscall2(__NR_spawn_async, (long)path, (long)argv);
+}
+
 /*
  * fork - Create a child process.
  *
@@ -115,16 +129,20 @@ pid_t fork(void) {
 }
 
 /*
- * waitpid - Wait for a child process.
+ * waitpid - Wait for a child process to change state.
  *
- * Since fork() always returns 0, waitpid is never actually called
- * in the normal fork/exec pattern. This stub exists for completeness.
+ * Waits for the specified child process to exit and returns its exit code.
+ * The options parameter is currently ignored (no WNOHANG support yet).
  */
 pid_t waitpid(pid_t pid, int *status, int options) {
-    (void)pid;
     (void)options;
+    int ret = __syscall1(__NR_waitpid, pid);
+    if (ret < 0) {
+        return -1;  /* Error - no such process */
+    }
     if (status) {
-        *status = 0;  /* Exited normally with code 0 */
+        /* Encode exit code in status format: WEXITSTATUS extracts (status >> 8) & 0xff */
+        *status = (ret & 0xff) << 8;
     }
     return pid;
 }

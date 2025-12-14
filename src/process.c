@@ -136,9 +136,10 @@ struct process *process_create(void) {
     p->cwd[0] = '/';
     p->cwd[1] = '\0';
     
-    p->state = PROC_UNUSED;
+    /* Mark process as ready (not UNUSED so slot isn't reused) */
+    p->state = PROC_READY;
 
-    current_process = p;
+    /* Don't change current_process here - only when running */
     return p;
 }
 
@@ -188,11 +189,14 @@ int process_run(struct process *p) {
     ctx.entry = p->entry;
     ctx.stack = p->stack;
 
+    /* Set this process as current before entering userspace */
+    current_process = p;
+    p->state = PROC_RUNNING;
+
     /* Enter userspace - blocks until sys_exit */
     context_switch_to_user(&ctx);
 
     /* Process has exited, return exit code */
-    /* TODO: Capture actual exit code from sys_exit */
     return last_exit_code;
 }
 
@@ -268,11 +272,13 @@ int process_run_with_args(struct process *p, int argc, char **argv) {
     ctx.entry = p->entry;
     ctx.stack = new_stack;
 
+    /* Set this process as current before entering userspace */
+    current_process = p;
+    p->state = PROC_RUNNING;
+
     /* Enter userspace - blocks until sys_exit */
     context_switch_to_user(&ctx);
-    p->state = PROC_RUNNING;
-    sched_add(p);
-    
+
     return last_exit_code;
 }
 
@@ -390,6 +396,21 @@ int process_set_cwd(const char *path) {
     return 0;
 }
 
+int process_set_cwd_for(struct process *p, const char *path) {
+    if (p == NULL || path == NULL) {
+        return -1;
+    }
+
+    /* Copy path to cwd, ensuring null termination */
+    size_t len = strlen(path);
+    if (len >= sizeof(p->cwd)) {
+        return -1;  /* Path too long */
+    }
+
+    strcpy(p->cwd, path);
+    return 0;
+}
+
 /*
  * process_set_current - Set the current running process.
  *
@@ -433,4 +454,20 @@ int process_start(struct process *p) {
 
     sched_add(p);
     return 0;
+}
+
+/*
+ * process_find_by_pid - Find a process by its PID.
+ *
+ * @pid: Process ID to search for
+ *
+ * Returns: Pointer to process struct, or NULL if not found.
+ */
+struct process *process_find_by_pid(int pid) {
+    for (int i = 0; i < MAX_PROCESSES; i++) {
+        if (process_slots[i].state != PROC_UNUSED && process_slots[i].pid == pid) {
+            return &process_slots[i];
+        }
+    }
+    return NULL;
 }

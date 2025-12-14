@@ -71,6 +71,10 @@
   #define SYS_DUP    15  /* Dup: rdi=oldfd -> new fd */
   #define SYS_DUP2   16  /* Dup2: rdi=oldfd, rsi=newfd -> newfd */
   #define SYS_SPAWN  17  /* Spawn: rdi=path, rsi=argv -> exit code */
+  #define SYS_SPAWN_ASYNC 18 /* Spawn async: rdi=path, rsi=argv -> child pid */
+  #define SYS_WAITPID 19  /* Wait for child: rdi=pid -> exit code */
+  #define SYS_SHUTDOWN 20 /* Shutdown: halt the system */
+  #define SYS_REBOOT   21 /* Reboot: restart the system */
 
 
 /* =============================================================================

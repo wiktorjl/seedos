@@ -5,6 +5,11 @@
 #include "vmm.h"
 #include "console.h"
 #include "process.h"
+#include "gdt.h"
+
+/* User segment selectors with RPL=3 */
+#define USER_CS  (GDT_USER_CODE | 3)  /* 0x1B */
+#define USER_SS  (GDT_USER_DATA | 3)  /* 0x23 */
 
 static struct process *ready_queue[MAX_PROCESSES];
 static int ready_count = 0;
@@ -77,15 +82,20 @@ void sched_load_context(struct process *p, struct interrupt_frame *frame) {
     frame->r13 = p->saved_r13;
     frame->r14 = p->saved_r14;
     frame->r15 = p->saved_r15;
+
+    /* Set segment selectors for userspace return */
+    frame->cs = USER_CS;
+    frame->ss = USER_SS;
 }
 
 void schedule(struct interrupt_frame *frame) {
     if (ready_count == 0) return;
 
     struct process *current = process_get_current();
+    int was_running = (current && current->state == PROC_RUNNING);
 
-    /* Save current process context if it's still running */
-    if (current && current->state == PROC_RUNNING) {
+    /* Save current process context if it was actually running */
+    if (was_running) {
         sched_save_context(current, frame);
         current->state = PROC_READY;
     }
@@ -94,7 +104,12 @@ void schedule(struct interrupt_frame *frame) {
     current_index = (current_index + 1) % ready_count;
     struct process *next = ready_queue[current_index];
 
-    if (next != current) {
+    /*
+     * Load context if:
+     * - Switching to a different process, OR
+     * - Current process wasn't running (e.g., starting from kernel idle)
+     */
+    if (next != current || !was_running) {
         /* Load next process context */
         sched_load_context(next, frame);
         next->state = PROC_RUNNING;

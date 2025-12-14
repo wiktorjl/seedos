@@ -34,6 +34,8 @@
 #include "tar.h"
 #include "string.h"
 #include "sched.h"
+#include "memory.h"
+#include "context.h"
 
 /* =============================================================================
  * Structures for stat and getdents syscalls
@@ -566,6 +568,11 @@ static void getdents_callback(const char *name, size_t size, int is_dir, void *c
         name_len--;
     }
 
+    /* Skip empty names, "/" and "./" entries */
+    if (name_len == 0 || strcmp(name, "/") == 0 || strcmp(name, "./") == 0) {
+        return;
+    }
+
     size_t reclen = sizeof(struct kernel_dirent);
 
     /* Check if we have space */
@@ -673,6 +680,12 @@ static int64_t sys_getcwd(uint64_t buf_ptr, uint64_t size) {
 
 /*
  * sys_chdir - Change current working directory.
+ *
+ * Handles:
+ *   /path     - absolute paths
+ *   path      - relative to cwd
+ *   .         - current directory (no-op)
+ *   ..        - parent directory
  */
 static int64_t sys_chdir(uint64_t path_ptr) {
     const char *path = (const char *)path_ptr;
@@ -681,20 +694,81 @@ static int64_t sys_chdir(uint64_t path_ptr) {
         return -1;
     }
 
-    /* Handle root directory specially */
+    /* Handle root directory */
     if (strcmp(path, "/") == 0) {
         process_set_cwd("/");
         return 0;
     }
 
+    /* Handle . (current directory - no change) */
+    if (strcmp(path, ".") == 0) {
+        return 0;
+    }
+
+    /* Build the new path */
+    char new_path[256];
+    const char *cwd = process_get_cwd();
+
+    /* Handle .. (parent directory) */
+    if (strcmp(path, "..") == 0) {
+        /* Copy current cwd */
+        strncpy(new_path, cwd, sizeof(new_path) - 1);
+        new_path[sizeof(new_path) - 1] = '\0';
+
+        /* Find last slash and truncate (but keep at least "/") */
+        size_t len = strlen(new_path);
+        if (len > 1) {
+            /* Find the last slash */
+            char *last_slash = new_path + len - 1;
+            while (last_slash > new_path && *last_slash != '/') {
+                last_slash--;
+            }
+            if (last_slash == new_path) {
+                /* We're at root, stay at root */
+                new_path[1] = '\0';
+            } else {
+                *last_slash = '\0';
+            }
+        }
+        process_set_cwd(new_path);
+        return 0;
+    }
+
+    /* Handle absolute vs relative paths */
+    if (path[0] == '/') {
+        /* Absolute path - use as-is */
+        strncpy(new_path, path, sizeof(new_path) - 1);
+        new_path[sizeof(new_path) - 1] = '\0';
+    } else {
+        /* Relative path - combine with cwd */
+        if (strcmp(cwd, "/") == 0) {
+            new_path[0] = '/';
+            strncpy(new_path + 1, path, sizeof(new_path) - 2);
+            new_path[sizeof(new_path) - 1] = '\0';
+        } else {
+            strncpy(new_path, cwd, sizeof(new_path) - 1);
+            new_path[sizeof(new_path) - 1] = '\0';
+            size_t cwd_len = strlen(new_path);
+            if (cwd_len < sizeof(new_path) - 2) {
+                new_path[cwd_len] = '/';
+                strncpy(new_path + cwd_len + 1, path, sizeof(new_path) - cwd_len - 2);
+                new_path[sizeof(new_path) - 1] = '\0';
+            }
+        }
+    }
+
+    /* Convert path to tarfs format (no leading slash) for lookup */
+    const char *tar_path = new_path;
+    if (tar_path[0] == '/') tar_path++;
+
     /* Verify the path exists (as a directory) */
-    struct tar_file *tf = tar_find(path);
+    struct tar_file *tf = tar_find(tar_path);
     if (tf == NULL) {
         /* Try with trailing slash for directories */
         char path_with_slash[256];
-        size_t len = strlen(path);
+        size_t len = strlen(tar_path);
         if (len < sizeof(path_with_slash) - 2) {
-            strcpy(path_with_slash, path);
+            strcpy(path_with_slash, tar_path);
             path_with_slash[len] = '/';
             path_with_slash[len + 1] = '\0';
             tf = tar_find(path_with_slash);
@@ -705,19 +779,19 @@ static int64_t sys_chdir(uint64_t path_ptr) {
         return -1;  /* Path not found */
     }
 
-    /* Update cwd */
-    char new_cwd[256];
-    new_cwd[0] = '/';
-    strncpy(new_cwd + 1, tf->name, sizeof(new_cwd) - 2);
-    new_cwd[sizeof(new_cwd) - 1] = '\0';
+    /* Build final cwd path with leading slash */
+    char final_cwd[256];
+    final_cwd[0] = '/';
+    strncpy(final_cwd + 1, tf->name, sizeof(final_cwd) - 2);
+    final_cwd[sizeof(final_cwd) - 1] = '\0';
 
     /* Remove trailing slash */
-    size_t len = strlen(new_cwd);
-    if (len > 1 && new_cwd[len - 1] == '/') {
-        new_cwd[len - 1] = '\0';
+    size_t len = strlen(final_cwd);
+    if (len > 1 && final_cwd[len - 1] == '/') {
+        final_cwd[len - 1] = '\0';
     }
 
-    process_set_cwd(new_cwd);
+    process_set_cwd(final_cwd);
     return 0;
 }
 
@@ -873,7 +947,7 @@ static int64_t sys_spawn(uint64_t path_ptr, uint64_t argv_ptr) {
     }
 
     /* Inherit cwd from parent */
-    process_set_cwd(cwd);
+    process_set_cwd_for(child, cwd);
 
     /* Load ELF executable */
     if (process_load_elf(child, file->data, file->size) != 0) {
@@ -907,8 +981,19 @@ static int64_t sys_spawn(uint64_t path_ptr, uint64_t argv_ptr) {
         child_argv[1] = NULL;
     }
 
+    /*
+     * Save parent's saved_kernel_rsp before nested context switch.
+     * This is critical for nested spawns (shell spawns ls, then shell exits).
+     * Without this, the global saved_kernel_rsp gets overwritten and
+     * returning from shell would use the wrong stack.
+     */
+    uint64_t parent_saved_rsp = saved_kernel_rsp;
+
     /* Run child process - this blocks until child calls exit */
     int exit_code = process_run_with_args(child, argc, child_argv);
+
+    /* Restore parent's saved_kernel_rsp for when parent later exits */
+    saved_kernel_rsp = parent_saved_rsp;
 
     /* Clean up child */
     process_destroy(child);
@@ -918,6 +1003,213 @@ static int64_t sys_spawn(uint64_t path_ptr, uint64_t argv_ptr) {
 
     /* Switch back to parent's address space */
     vmm_switch_address_space(parent->pml4);
+
+    return exit_code;
+}
+
+/*
+ * sys_spawn_async - Spawn a program without waiting for it to complete.
+ *
+ * @path_ptr: Path to the program
+ * @argv_ptr: NULL-terminated array of argument strings
+ *
+ * Returns: Child PID on success, or -1 on error.
+ *
+ * Unlike sys_spawn, this returns immediately after starting the child.
+ * Use sys_waitpid to wait for the child to complete.
+ */
+static int64_t sys_spawn_async(uint64_t path_ptr, uint64_t argv_ptr) {
+    const char *path = (const char *)path_ptr;
+    char **argv = (char **)argv_ptr;
+
+    /* Validate path pointer */
+    if (!vmm_validate_user_range((const void *)path_ptr, 1)) {
+        return -1;
+    }
+
+    /* Build full path - handle relative and absolute paths */
+    char full_path[256];
+    const char *cwd = process_get_cwd();
+
+    /* Skip leading slash and ./ */
+    const char *name = path;
+    if (name[0] == '/') name++;
+    if (name[0] == '.' && name[1] == '/') name += 2;
+
+    /* Check if it's a path or just a program name */
+    int has_slash = 0;
+    for (const char *c = name; *c; c++) {
+        if (*c == '/') { has_slash = 1; break; }
+    }
+
+    if (!has_slash) {
+        /* No slash - prepend "bin/" */
+        strcpy(full_path, "bin/");
+        strncpy(full_path + 4, name, sizeof(full_path) - 5);
+    } else {
+        strncpy(full_path, name, sizeof(full_path) - 1);
+    }
+    full_path[sizeof(full_path) - 1] = '\0';
+
+    /* Find program in initrd */
+    struct tar_file *file = tar_find(full_path);
+    if (file == NULL) {
+        return -1;  /* Program not found */
+    }
+
+    /* Create child process */
+    struct process *child = process_create();
+    if (child == NULL) {
+        return -1;  /* Failed to create process */
+    }
+
+    /* Inherit cwd from parent */
+    process_set_cwd_for(child, cwd);
+
+    /* Load ELF executable */
+    if (process_load_elf(child, file->data, file->size) != 0) {
+        process_destroy(child);
+        return -1;
+    }
+
+    /* Count and copy argv */
+    int argc = 0;
+    static char arg_storage[16][64];
+    static char *child_argv[17];
+
+    if (argv != NULL && vmm_validate_user_range((const void *)argv_ptr, 8)) {
+        while (argc < 16 && argv[argc] != NULL) {
+            if (!vmm_validate_user_range(argv[argc], 1)) break;
+            strncpy(arg_storage[argc], argv[argc], 63);
+            arg_storage[argc][63] = '\0';
+            child_argv[argc] = arg_storage[argc];
+            argc++;
+        }
+    }
+    child_argv[argc] = NULL;
+
+    /* If no args provided, use the program name */
+    if (argc == 0) {
+        strncpy(arg_storage[0], path, 63);
+        arg_storage[0][63] = '\0';
+        child_argv[0] = arg_storage[0];
+        argc = 1;
+        child_argv[1] = NULL;
+    }
+
+    /* Set up argc/argv on child's stack (similar to process_run_with_args) */
+    uint8_t *top_page_virt = (uint8_t *)phys_to_virt(child->stack_pages[PROCESS_STACK_PAGES - 1]);
+    uint8_t *stack_top = top_page_virt + 0x1000;
+
+    uint64_t string_user_addrs[16];
+    uint8_t *str_ptr = stack_top;
+
+    for (int i = argc - 1; i >= 0; i--) {
+        size_t len = strlen(child_argv[i]) + 1;
+        str_ptr -= len;
+        memcpy(str_ptr, child_argv[i], len);
+        uint64_t offset_in_page = str_ptr - top_page_virt;
+        string_user_addrs[i] = (USER_STACK_TOP - 0x1000) + offset_in_page;
+    }
+
+    str_ptr = (uint8_t *)((uint64_t)str_ptr & ~7ULL);
+    str_ptr -= 8;
+    *(uint64_t *)str_ptr = 0;  /* NULL terminator */
+
+    for (int i = argc - 1; i >= 0; i--) {
+        str_ptr -= 8;
+        *(uint64_t *)str_ptr = string_user_addrs[i];
+    }
+
+    str_ptr -= 8;
+    *(uint64_t *)str_ptr = (uint64_t)argc;
+
+    uint64_t offset_in_page = str_ptr - top_page_virt;
+    child->stack = (USER_STACK_TOP - 0x1000) + offset_in_page;
+
+    /* Start the child process (non-blocking) */
+    process_start(child);
+
+    /* Return child's PID */
+    return child->pid;
+}
+
+/*
+ * sys_shutdown - Halt the system.
+ *
+ * Disables interrupts and halts the CPU.
+ * Never returns.
+ */
+static void sys_shutdown(void) {
+    puts("\nSystem is shutting down...\n");
+    puts("You may now power off your computer.\n");
+    __asm__ volatile("cli; hlt");
+    /* Never reached */
+    for (;;) {
+        __asm__ volatile("hlt");
+    }
+}
+
+/*
+ * sys_reboot - Reboot the system.
+ *
+ * Sends reset command to the keyboard controller.
+ * Never returns.
+ */
+static void sys_reboot(void) {
+    puts("\nSystem is rebooting...\n");
+
+    /* Wait for keyboard controller to be ready */
+    uint8_t status;
+    do {
+        __asm__ volatile("inb $0x64, %0" : "=a"(status));
+    } while (status & 0x02);
+
+    /* Send reset command to keyboard controller */
+    __asm__ volatile("outb %0, $0x64" : : "a"((uint8_t)0xFE));
+
+    /* If that didn't work, triple fault by loading invalid IDT */
+    __asm__ volatile(
+        "lidt %0\n"
+        "int $3\n"
+        : : "m"(*(uint64_t *)0)
+    );
+
+    /* Should never reach here */
+    for (;;) {
+        __asm__ volatile("hlt");
+    }
+}
+
+/*
+ * sys_waitpid - Wait for a child process to complete.
+ *
+ * @pid: Process ID to wait for
+ *
+ * Returns: Exit code of the child, or -1 on error.
+ */
+static int64_t sys_waitpid(uint64_t pid) {
+    /* Find process by PID */
+    struct process *child = NULL;
+
+    /* Search all process slots for matching PID */
+    extern struct process *process_find_by_pid(int pid);
+    child = process_find_by_pid((int)pid);
+
+    if (child == NULL) {
+        return -1;  /* Process not found */
+    }
+
+    /* Busy-wait until child becomes zombie */
+    /* TODO: Implement proper blocking with PROC_BLOCKED state */
+    while (child->state != PROC_ZOMBIE) {
+        /* Yield CPU - enable interrupts and halt */
+        __asm__ volatile("sti; hlt; cli");
+    }
+
+    /* Get exit code and clean up */
+    int exit_code = child->exit_code;
+    process_destroy(child);
 
     return exit_code;
 }
@@ -1015,6 +1307,24 @@ void syscall_handler(struct syscall_registers *regs) {
 
         case SYS_SPAWN:
             regs->rax = sys_spawn(regs->rdi, regs->rsi);
+            break;
+
+        case SYS_SPAWN_ASYNC:
+            regs->rax = sys_spawn_async(regs->rdi, regs->rsi);
+            break;
+
+        case SYS_WAITPID:
+            regs->rax = sys_waitpid(regs->rdi);
+            break;
+
+        case SYS_SHUTDOWN:
+            sys_shutdown();
+            /* Never returns */
+            break;
+
+        case SYS_REBOOT:
+            sys_reboot();
+            /* Never returns */
             break;
 
         default:

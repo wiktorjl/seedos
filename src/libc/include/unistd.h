@@ -98,6 +98,8 @@ int execve(const char *path, char *const argv[], char *const envp[]);
 
 /* SeedOS extensions */
 unsigned long uptime(void);  /* milliseconds since boot */
+void shutdown(void) __attribute__((noreturn));  /* Halt the system */
+void reboot(void) __attribute__((noreturn));    /* Reboot the system */
 
 /*
  * spawn - Run a program and wait for it to complete.
@@ -106,5 +108,13 @@ unsigned long uptime(void);  /* milliseconds since boot */
  * Returns the program's exit code, or -1 on error.
  */
 int spawn(const char *path, char *const argv[]);
+
+/*
+ * spawn_async - Start a program without waiting for it.
+ *
+ * Returns the child's PID on success, or -1 on error.
+ * Use waitpid() to wait for the child to complete.
+ */
+pid_t spawn_async(const char *path, char *const argv[]);
 
 #endif /* _UNISTD_H */

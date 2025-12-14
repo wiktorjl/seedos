@@ -218,6 +218,15 @@ const char *process_get_cwd(void);
 int process_set_cwd(const char *path);
 
 /**
+ * @brief Set the current working directory of a specific process.
+ *
+ * @param p: The process to modify.
+ * @param path: The new working directory path.
+ * @return 0 on success, -1 on error.
+ */
+int process_set_cwd_for(struct process *p, const char *path);
+
+/**
  * @brief Set the current running process.
  *
  * Used by spawn syscall to switch between parent and child.
@@ -230,5 +239,13 @@ void process_set_current(struct process *p);
 struct process *process_get_current(void);
 
 int process_start(struct process *p);
+
+/**
+ * @brief Find a process by its PID.
+ *
+ * @param pid: Process ID to search for
+ * @return Pointer to process struct, or NULL if not found.
+ */
+struct process *process_find_by_pid(int pid);
 
 #endif /* PROCESS_H */

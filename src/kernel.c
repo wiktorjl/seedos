@@ -41,6 +41,8 @@
 #include "test_framework.h"
 #include "test_all.h"
 #include "tar.h"
+#include "process.h"
+#include "sched.h"
 
 /*
  * Limine bootloader requests.
@@ -170,20 +172,54 @@ void kernel_main(void) {
     vfs_init();
     puts("  vfs       tarfs mounted\n");
 
-    
-    /* Start the shell */
-    shell_init();
+    /* Initialize scheduler */
+    sched_init();
+    puts("  sched     round-robin scheduler\n");
 
-    /* Main loop - feed keyboard input to shell */
-    while (1) {
-        if (keyboard_has_char()) {
-            char c = keyboard_get_char();
-            shell_input(c);
+    /* Load and start /bin/init as the first userspace process */
+    puts("\nStarting init process...\n");
+    {
+        /* Find /bin/init in initrd (tarfs uses "bin/init" without leading slash) */
+        struct tar_file *init_file = tar_find("bin/init");
+        if (init_file == NULL) {
+            puts("[error] /bin/init not found in initrd\n");
+            goto halt;
         }
 
-        /* Halt until next interrupt (saves power) */
-        asm volatile ("hlt");
+        /* Create process and load ELF */
+        struct process *init = process_create();
+        if (init == NULL) {
+            puts("[error] Failed to create init process\n");
+            goto halt;
+        }
+
+        if (process_load_elf(init, init_file->data, init_file->size) != 0) {
+            puts("[error] Failed to load init ELF\n");
+            process_destroy(init);
+            goto halt;
+        }
+
+        puts("  init      PID ");
+        put_dec(init->pid);
+        puts("\n\n");
+
+        /*
+         * Enter userspace via blocking call. This properly builds the
+         * iretq frame for kernel->user transition. Once init is running,
+         * timer interrupts will have proper frames for preemptive scheduling.
+         *
+         * Init manages the system: runs shell, respawns on exit.
+         * We only return here if init itself exits (system shutdown).
+         */
+        char *init_argv[] = { "init", 0 };
+        int init_exit = process_run_with_args(init, 1, init_argv);
+        puts("init exited with code ");
+        put_dec(init_exit);
+        puts("\n");
+        process_destroy(init);
     }
+
+    puts("\nSystem halted.\n");
 
 halt:
     while (1) {

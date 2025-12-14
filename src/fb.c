@@ -436,10 +436,33 @@ static void console_scroll(void) {
     }
 }
 
+/* Forward declaration for cursor drawing */
+static void draw_block_cursor(uint32_t x, uint32_t y, uint32_t color);
+
+/*
+ * fb_hide_cursor - Erase cursor at current position.
+ *
+ * Must be called before moving the cursor to prevent "ghost" cursors.
+ */
+static void fb_hide_cursor(void) {
+    uint32_t x = cursor_column * FONT_WIDTH;
+    uint32_t y = cursor_row * FONT_HEIGHT;
+
+    if (cursor_style == FB_CURSOR_UNDERSCORE) {
+        fb_putchar_at(' ', x, y, console_fg_color, console_bg_color);
+    } else {
+        draw_block_cursor(x, y, console_bg_color);
+    }
+    cursor_blink_visible = 0;
+}
+
 /*
  * fb_console_putc - Output one character to the console.
  */
 void fb_console_putc(char c) {
+    /* Erase cursor at old position before any movement */
+    fb_hide_cursor();
+
     if (c == '\n') {
         /* Newline: move to start of next line */
         cursor_column = 0;
