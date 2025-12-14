@@ -84,7 +84,7 @@ struct process *process_create(void) {
     /* Allocate code page */
     p->code_page = pmm_alloc();
     if (p->code_page == 0) {
-        /* TODO: Free PML4 */
+        vmm_free_user_address_space(p->pml4);
         return NULL;
     }
 
@@ -97,7 +97,7 @@ struct process *process_create(void) {
                 pmm_free(p->stack_pages[j]);
             }
             pmm_free(p->code_page);
-            /* TODO: Free PML4 */
+            vmm_free_user_address_space(p->pml4);
             return NULL;
         }
         p->stack_page_count++;
@@ -110,7 +110,7 @@ struct process *process_create(void) {
             pmm_free(p->stack_pages[i]);
         }
         pmm_free(p->code_page);
-        /* TODO: Free PML4 */
+        vmm_free_user_address_space(p->pml4);
         return NULL;
     }
 
@@ -119,11 +119,11 @@ struct process *process_create(void) {
         uint64_t vaddr = USER_STACK_BASE + (i * 0x1000);
         if (vmm_map_page(p->pml4, vaddr, p->stack_pages[i],
                          PTE_PRESENT | PTE_USER | PTE_WRITABLE) != 0) {
-            /* TODO: Clean up properly */
             for (int j = 0; j < p->stack_page_count; j++) {
                 pmm_free(p->stack_pages[j]);
             }
             pmm_free(p->code_page);
+            vmm_free_user_address_space(p->pml4);
             return NULL;
         }
     }

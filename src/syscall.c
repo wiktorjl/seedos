@@ -33,9 +33,7 @@
 #include "tarfs.h"
 #include "tar.h"
 #include "string.h"
-#include "sched.h"
 #include "memory.h"
-#include "context.h"
 
 /* =============================================================================
  * Structures for stat and getdents syscalls
@@ -196,7 +194,7 @@ static int64_t sys_close(uint64_t fd) {
     }
 
     struct vnode *vn = file_desc->vn;
-    vn->ops->close(vn);  // 3. Get vnode from file_descriptor
+    vn->ops->close(vn);
     vfs_free_fd(fdt, (int)fd);
     return 0;
 }
@@ -282,8 +280,7 @@ static void sys_exit(uint64_t exit_code) {
  *
  * Returns: Number of bytes actually written, or 0 on error.
  *
- * TODO: Validate that buffer points to valid user memory!
- * Currently we trust the user pointer, which is unsafe.
+ * Security: Validates buffer is in user address space before access.
  */
 static uint64_t sys_write(uint64_t fd, uint64_t buffer, uint64_t count) {
     const char *buf = (const char *)buffer;
@@ -1200,8 +1197,7 @@ static int64_t sys_waitpid(uint64_t pid) {
         return -1;  /* Process not found */
     }
 
-    /* Busy-wait until child becomes zombie */
-    /* TODO: Implement proper blocking with PROC_BLOCKED state */
+    /* Busy-wait until child becomes zombie (should use PROC_BLOCKED state) */
     while (child->state != PROC_ZOMBIE) {
         /* Yield CPU - enable interrupts and halt */
         __asm__ volatile("sti; hlt; cli");

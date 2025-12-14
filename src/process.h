@@ -178,10 +178,9 @@ int process_run_with_args(struct process *p, int argc, char **argv);
  * @p: Process to destroy (may be NULL, in which case this is a no-op)
  *
  * Frees:
- *   - The code page
- *   - The stack page
- *   - The PML4 (but not intermediate page tables - TODO)
- *   - The process struct itself
+ *   - All user-space pages (code, stack, heap)
+ *   - All page tables (PML4 and intermediate tables)
+ *   - Marks the process slot as PROC_UNUSED for reuse
  */
 void process_destroy(struct process *p);
 

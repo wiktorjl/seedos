@@ -178,4 +178,16 @@ void vmm_switch_address_space(uint64_t pml4_phys);
  */
 uint64_t vmm_get_kernel_pml4(void);
 
+/*
+ * vmm_get_physical - Get the physical address for a virtual address.
+ *
+ * @pml4_phys: Physical address of the PML4 (address space to query)
+ * @virt:      Virtual address to translate
+ *
+ * Returns: Physical address, or 0 if the page is not mapped.
+ *
+ * Walks the page table hierarchy to find the physical page.
+ */
+uint64_t vmm_get_physical(uint64_t pml4_phys, uint64_t virt);
+
 #endif /* VMM_H */

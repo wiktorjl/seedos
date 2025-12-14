@@ -72,90 +72,61 @@ When `old_brk == USER_HEAP_BASE` (initial state), `old_brk - 1` underflows relat
 
 ## Memory Leaks
 
-### 4. PML4 not freed on allocation failure
+### 4. ~~PML4 not freed on allocation failure~~ FIXED
 **File:** `src/process.c:87, 100, 113, 122`
-**Severity:** Medium
 
-Multiple TODO comments indicate the PML4 is never freed when code/stack allocation fails:
+~~Multiple TODO comments indicate the PML4 is never freed when code/stack allocation fails.~~
 
-```c
-p->pml4 = vmm_create_address_space();
-// ...
-p->code_page = pmm_alloc();
-if (p->code_page == 0) {
-    /* TODO: Free PML4 */  // <-- PML4 leaked!
-    return NULL;
-}
-```
-
-**Fix:** Add `vmm_free_user_address_space(p->pml4);` before each early return. Better yet, use goto-based cleanup pattern.
+**Status:** Fixed - added `vmm_free_user_address_space(p->pml4)` to all error paths.
 
 ---
 
-### 5. Intermediate page tables not freed on process destruction
+### 5. ~~Intermediate page tables not freed on process destruction~~ FIXED
 **File:** `src/process.h:183`
-**Severity:** Low
 
-The comment says: "The PML4 (but not intermediate page tables - TODO)". The `vmm_free_user_address_space()` function does free them now, but the comment is outdated and misleading.
+~~The comment said intermediate page tables weren't freed, but they were.~~
 
-**Fix:** Update the comment in `process.h`.
+**Status:** Fixed - updated comment to accurately describe what is freed.
 
 ---
 
 ## Outdated/Misleading Comments
 
-### 6. TODO says validation is missing, but it exists
+### 6. ~~TODO says validation is missing, but it exists~~ FIXED
 **File:** `src/syscall.c:285-286`
 
-```c
-/* TODO: Validate that buffer points to valid user memory!
- * Currently we trust the user pointer, which is unsafe. */
-```
+~~The outdated TODO claimed user memory wasn't validated, but validation was present.~~
 
-This TODO is outdated - the very next line calls `vmm_validate_user_range()` to validate the buffer. The comment should be removed or updated to reflect what is done.
-
-**Fix:** Remove the TODO or change to explain what validation is performed.
+**Status:** Fixed - updated comment to describe the security measure.
 
 ---
 
-### 7. `process_destroy()` comment claims struct is freed
+### 7. ~~`process_destroy()` comment claims struct is freed~~ FIXED
 **File:** `src/process.h:185`
 
-```c
- *   - The process struct itself
-```
+~~The comment incorrectly claimed the process struct was freed.~~
 
-The process struct is NOT freed - it's a static array slot that gets marked as PROC_UNUSED. The comment is misleading.
-
-**Fix:** Remove "The process struct itself" from the comment.
+**Status:** Fixed - updated comment to say "Marks the process slot as PROC_UNUSED for reuse".
 
 ---
 
 ## Dead Code
 
-### 8. Duplicate include of `sched.h`
-**File:** `src/syscall.c:25, 36`
+### 8. ~~Duplicate include of `sched.h`~~ FIXED
+**File:** `src/syscall.c`
 
-```c
-#include "sched.h"  // line 25
-// ...
-#include "sched.h"  // line 36 - duplicate
-```
+~~Duplicate include of sched.h.~~
 
-**Fix:** Remove line 36.
+**Status:** Fixed - removed duplicate include.
 
 ---
 
-### 9. Duplicate include of `context.h`
-**File:** `src/syscall.c:27, 38`
+### 9. ~~Duplicate include of `context.h`~~ FIXED
+**File:** `src/syscall.c`
 
-```c
-#include "context.h"  // line 27
-// ...
-#include "context.h"  // line 38 - duplicate
-```
+~~Duplicate include of context.h.~~
 
-**Fix:** Remove line 38.
+**Status:** Fixed - removed duplicate include.
 
 ---
 
@@ -215,13 +186,12 @@ This loop compares pointers to find which slot `p` is in, just to mark it unused
 
 ---
 
-### 14. `vmm_get_physical()` exists but not declared in header
-**File:** `src/vmm.c:248`
-**File:** `src/vmm.h` - missing declaration
+### 14. ~~`vmm_get_physical()` exists but not declared in header~~ FIXED
+**File:** `src/vmm.c:248`, `src/vmm.h`
 
-The function is implemented but not declared in `vmm.h`, meaning it can't be used safely from other files without an extern declaration.
+~~The function was implemented but not declared in the header.~~
 
-**Fix:** Add declaration to `vmm.h`.
+**Status:** Fixed - added declaration with doc comment to vmm.h.
 
 ---
 
@@ -447,17 +417,12 @@ Comments exist but should reference the gdt.h constants by name.
 
 ## Useless Comments
 
-### 31. Obvious comments that don't add value
+### 31. ~~Obvious comments that don't add value~~ FIXED
 **File:** `src/syscall.c:199`
 
-```c
-struct vnode *vn = file_desc->vn;
-vn->ops->close(vn);  // 3. Get vnode from file_descriptor
-```
+~~Misleading comment said "Get vnode" but code was closing it.~~
 
-The comment says "Get vnode" but the code is closing it. Also, numbered steps (1, 2, 3) in a function make it read like pseudocode.
-
-**Fix:** Remove or fix misleading comments.
+**Status:** Fixed - removed misleading comment.
 
 ---
 
@@ -521,15 +486,15 @@ The comment explains it, but a named constant would be clearer.
 | Priority | Task | Effort | Impact |
 |----------|------|--------|--------|
 | 1 | Fix `process_load()` size check (bug) | 1 line | Critical |
-| 2 | Remove duplicate includes | 2 lines | Clean |
-| 3 | Remove outdated TODO in syscall.c:285 | 2 lines | Clarity |
+| ~~2~~ | ~~Remove duplicate includes~~ | ~~2 lines~~ | ~~DONE~~ |
+| ~~3~~ | ~~Remove outdated TODO in syscall.c:285~~ | ~~2 lines~~ | ~~DONE~~ |
 | 4 | Fix `programs.c` string building | 1 line | Readability |
 | 5 | Remove redundant loop in process_destroy | 4 lines | Simplicity |
-| 6 | Add `vmm_get_physical()` to vmm.h | 1 line | Correctness |
-| 7 | Update misleading comment in process.h:183 | 1 line | Accuracy |
+| ~~6~~ | ~~Add `vmm_get_physical()` to vmm.h~~ | ~~1 line~~ | ~~DONE~~ |
+| ~~7~~ | ~~Update misleading comment in process.h:183~~ | ~~1 line~~ | ~~DONE~~ |
 | 8 | Use KERNEL_PML4_START instead of 256 | 1 line | Consistency |
 | 9 | Make static arg buffers local in syscalls | ~10 lines | Thread safety |
-| 10 | Add PML4 cleanup on process_create failure | ~4 lines | Memory leak |
+| ~~10~~ | ~~Add PML4 cleanup on process_create failure~~ | ~~~4 lines~~ | ~~DONE~~ |
 
 ---
 
