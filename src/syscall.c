@@ -22,6 +22,7 @@
 #include "syscall.h"
 #include "console.h"
 #include "process.h"
+#include "sched.h"
 #include "vmm.h"
 #include "context.h"
 #include "pit.h"
@@ -32,6 +33,7 @@
 #include "tarfs.h"
 #include "tar.h"
 #include "string.h"
+#include "sched.h"
 
 /* =============================================================================
  * Structures for stat and getdents syscalls
@@ -257,6 +259,8 @@ static void sys_exit(uint64_t exit_code) {
 
     /* Save the exit code in the process structure */
     process_set_exit_code(exit_code);
+
+    sched_remove(process_get_current());
 
     /*
      * Return to where context_save_kernel_state() was called.

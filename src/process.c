@@ -30,8 +30,6 @@ static struct process *current_process = NULL;
 
 static int next_pid = 1;
 
-static int slot_in_use[2] = {0, 0};
-
 static int last_exit_code = 0;
 
 int process_get_exit_code() {
@@ -53,7 +51,7 @@ struct process *process_create(void) {
     /* Find a free slot */
     int slot = -1;
      for (int i = 0; i < MAX_PROCESSES; i++) {
-        if (!slot_in_use[i]) {
+        if (process_slots[i].state == PROC_UNUSED) {
             slot = i;
             break;
         }
@@ -140,7 +138,6 @@ struct process *process_create(void) {
     
     p->state = PROC_UNUSED;
 
-    slot_in_use[slot] = 1;
     current_process = p;
     return p;
 }
@@ -273,7 +270,9 @@ int process_run_with_args(struct process *p, int argc, char **argv) {
 
     /* Enter userspace - blocks until sys_exit */
     context_switch_to_user(&ctx);
-
+    p->state = PROC_RUNNING;
+    sched_add(p);
+    
     return last_exit_code;
 }
 
@@ -296,7 +295,7 @@ void process_destroy(struct process *p) {
     /* Mark slot as available */
      for (int i = 0; i < MAX_PROCESSES; i++) {
         if (&process_slots[i] == p) {
-            slot_in_use[i] = 0;
+            p->state = PROC_UNUSED;
             break;
         }
     }
@@ -306,7 +305,7 @@ void process_destroy(struct process *p) {
         /* Find another active process, or set to NULL */
         current_process = NULL;
         for (int i = 0; i < MAX_PROCESSES; i++) {
-            if (slot_in_use[i]) {
+            if (process_slots[i].state != PROC_UNUSED) {
                 current_process = &process_slots[i];
                 break;
             }
