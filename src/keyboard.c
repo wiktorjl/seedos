@@ -41,6 +41,8 @@
 #include "keyboard.h"
 #include "pic.h"
 #include "io.h"
+#include "process.h"
+#include "sched.h"
 
 /* =============================================================================
  * PS/2 Controller I/O Ports
@@ -250,5 +252,36 @@ size_t keyboard_read(char *buf, size_t len) {
         }
         buf[bytes_read++] = c;
     }
-    return bytes_read;  
+    return bytes_read;
+}
+
+/*
+ * keyboard_wait - Block until keyboard input is available.
+ *
+ * This uses a simple polling approach with hlt to reduce CPU usage.
+ * The process remains in the scheduler but yields via hlt until
+ * keyboard data becomes available.
+ *
+ * Note: This doesn't fully remove the process from scheduling - it's
+ * a cooperative yield. For full blocking I/O, we'd need deeper
+ * integration with the scheduler's context switching.
+ */
+void keyboard_wait(void) {
+    /* Fast path: data already available */
+    if (keyboard_has_char()) {
+        return;
+    }
+
+    /*
+     * Wait for keyboard input.
+     * sti;hlt is atomic on x86 - the interrupt is guaranteed to fire
+     * after hlt begins, preventing a race where we enable interrupts,
+     * the interrupt fires immediately, and we then halt forever.
+     */
+    while (!keyboard_has_char()) {
+        __asm__ volatile("sti; hlt; cli");
+    }
+
+    /* Re-enable interrupts before returning */
+    __asm__ volatile("sti");
 }

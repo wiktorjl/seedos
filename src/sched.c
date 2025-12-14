@@ -11,6 +11,20 @@
 #define USER_CS  (GDT_USER_CODE | 3)  /* 0x1B */
 #define USER_SS  (GDT_USER_DATA | 3)  /* 0x23 */
 
+/*
+ * Interrupt-safe critical sections.
+ * Save flags, disable interrupts, restore flags when done.
+ */
+static inline uint64_t irq_save(void) {
+    uint64_t flags;
+    __asm__ volatile("pushfq; pop %0; cli" : "=r"(flags) :: "memory");
+    return flags;
+}
+
+static inline void irq_restore(uint64_t flags) {
+    __asm__ volatile("push %0; popfq" :: "r"(flags) : "memory");
+}
+
 static struct process *ready_queue[MAX_PROCESSES];
 static int ready_count = 0;
 static int current_index = -1;
@@ -21,12 +35,18 @@ void sched_init(void) {
 }
 
 void sched_add(struct process *p) {
-    if (ready_count >= MAX_PROCESSES) return;
+    uint64_t flags = irq_save();
+    if (ready_count >= MAX_PROCESSES) {
+        irq_restore(flags);
+        return;
+    }
     ready_queue[ready_count++] = p;
     p->state = PROC_READY;
+    irq_restore(flags);
 }
 
 void sched_remove(struct process *p) {
+    uint64_t flags = irq_save();
     for (int i = 0; i < ready_count; i++) {
         if (ready_queue[i] == p) {
             /* Shift remaining entries */
@@ -37,9 +57,11 @@ void sched_remove(struct process *p) {
             if (current_index >= ready_count) {
                 current_index = ready_count - 1;
             }
+            irq_restore(flags);
             return;
         }
     }
+    irq_restore(flags);
 }
 
 void sched_save_context(struct process *p, struct interrupt_frame *frame) {
@@ -128,22 +150,41 @@ void sched_yield(void) {
 void sched_block_on_pid(struct process *p, int pid) {
     if (p == NULL) return;
 
-    /* Remove from ready queue */
-    sched_remove(p);
-
+    uint64_t flags = irq_save();
+    /* Remove from ready queue (sched_remove handles its own locking, but
+     * we need atomicity for the whole block operation) */
+    for (int i = 0; i < ready_count; i++) {
+        if (ready_queue[i] == p) {
+            for (int j = i; j < ready_count - 1; j++) {
+                ready_queue[j] = ready_queue[j + 1];
+            }
+            ready_count--;
+            if (current_index >= ready_count) {
+                current_index = ready_count - 1;
+            }
+            break;
+        }
+    }
     /* Mark as blocked and record what we're waiting for */
     p->state = PROC_BLOCKED;
     p->wait_pid = pid;
+    irq_restore(flags);
 }
 
 void sched_wake_waiters(int pid) {
+    uint64_t flags = irq_save();
     /* Find any process blocked waiting for this PID */
     struct process *waiter = process_find_blocked_on_pid(pid);
 
     if (waiter != NULL) {
         /* Wake up the waiter */
         waiter->wait_pid = 0;
-        sched_add(waiter);  /* Sets state to PROC_READY */
+        /* Inline sched_add to avoid nested locking */
+        if (ready_count < MAX_PROCESSES) {
+            ready_queue[ready_count++] = waiter;
+            waiter->state = PROC_READY;
+        }
     }
+    irq_restore(flags);
 }
 

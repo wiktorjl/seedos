@@ -92,4 +92,12 @@ char keyboard_get_char(void);
 
 size_t keyboard_read(char *buf, size_t len);
 
+/*
+ * keyboard_wait - Block until keyboard input is available.
+ *
+ * Blocks the current process until at least one character is in the buffer.
+ * Uses proper interrupt-safe synchronization.
+ */
+void keyboard_wait(void);
+
 #endif /* KEYBOARD_H */

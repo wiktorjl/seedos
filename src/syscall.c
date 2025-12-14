@@ -318,13 +318,13 @@ static uint64_t sys_read(uint64_t fd, uint64_t buffer, uint64_t count) {
         /* Read characters until we get a newline */
         input_pos = 0;
         while (1) {
-            /* Wait for a character */
+            /* Wait for a character - block if none available */
             char c = 0;
             while (c == 0) {
                 size_t n = keyboard_read(&c, 1);
                 if (n == 0) {
-                    /* No input yet - enable interrupts and wait */
-                    __asm__ volatile ("sti; hlt; cli");
+                    /* Block until keyboard input available */
+                    keyboard_wait();
                     c = 0;
                 }
             }
