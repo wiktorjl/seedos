@@ -9,6 +9,14 @@
 /* Pool of vnodes (no malloc in kernel) */
 static struct vnode vnode_pool[MAX_VNODES];
 
+/* Synthetic root directory entry (not in TAR archive) */
+static struct tar_file tar_root = {
+    .name = "",
+    .data = NULL,
+    .size = 0,
+    .is_dir = 1
+};
+
 /* 
 * tarfs_read - Read from a TAR file.
 *
@@ -72,10 +80,16 @@ static const struct vnode_ops tarfs_ops = {
 * Returns: vnode pointer, or NULL if not found
 */
 struct vnode *tarfs_open(const char *path) {
-    struct tar_file *tf = tar_find(path);
+    struct tar_file *tf;
 
-    if (tf == NULL) {
-        return NULL;
+    /* Handle root directory specially (empty path or "/") */
+    if (path == NULL || path[0] == '\0' || (path[0] == '/' && path[1] == '\0')) {
+        tf = &tar_root;
+    } else {
+        tf = tar_find(path);
+        if (tf == NULL) {
+            return NULL;
+        }
     }
 
     for (int i = 0; i < MAX_VNODES; i++) {

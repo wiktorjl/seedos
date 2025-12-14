@@ -35,6 +35,13 @@ void _exit(int status) __attribute__((noreturn));
 /* Memory management */
 void *sbrk(long increment);
 
+/* Working directory */
+char *getcwd(char *buf, size_t size);
+int chdir(const char *path);
+
+/* Terminal */
+int isatty(int fd);
+
 /* SeedOS extensions */
 unsigned long uptime(void);  /* milliseconds since boot */
 

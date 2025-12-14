@@ -34,6 +34,19 @@ void *sbrk(long increment) {
     return (void *)__syscall1(__NR_sbrk, increment);
 }
 
+char *getcwd(char *buf, size_t size) {
+    long ret = __syscall2(__NR_getcwd, (long)buf, size);
+    return (ret == -1) ? (char *)0 : buf;
+}
+
+int chdir(const char *path) {
+    return __syscall1(__NR_chdir, (long)path);
+}
+
+int isatty(int fd) {
+    return __syscall1(__NR_isatty, fd);
+}
+
 unsigned long uptime(void) {
     return __syscall0(__NR_uptime);
 }

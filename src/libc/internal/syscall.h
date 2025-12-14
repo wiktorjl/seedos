@@ -14,15 +14,21 @@
 #define _LIBC_INTERNAL_SYSCALL_H
 
 /* Syscall numbers (must match kernel's syscall.h) */
-#define __NR_exit   0
-#define __NR_write  1
-#define __NR_read   2
-#define __NR_getpid 3
-#define __NR_uptime 4
-#define __NR_sbrk   5
-#define __NR_open   6
-#define __NR_close  7
-#define __NR_lseek  8
+#define __NR_exit     0
+#define __NR_write    1
+#define __NR_read     2
+#define __NR_getpid   3
+#define __NR_uptime   4
+#define __NR_sbrk     5
+#define __NR_open     6
+#define __NR_close    7
+#define __NR_lseek    8
+#define __NR_stat     9
+#define __NR_fstat   10
+#define __NR_getdents 11
+#define __NR_getcwd  12
+#define __NR_chdir   13
+#define __NR_isatty  14
 
 /* Syscall with 0 arguments */
 static inline long __syscall0(long n) {

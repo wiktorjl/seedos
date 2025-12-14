@@ -53,15 +53,21 @@
  * These numbers are placed in RAX before executing INT 0x80.
  * =============================================================================
  */
-  #define SYS_EXIT   0  /* Exit process: rdi=exit_code */
-  #define SYS_WRITE  1  /* Write: rdi=fd, rsi=buffer, rdx=count -> bytes written */
-  #define SYS_READ   2  /* Read: rdi=fd, rsi=buffer, rdx=count -> bytes read */
-  #define SYS_GETPID 3  /* Get process ID: -> pid */
-  #define SYS_UPTIME 4  /* Get uptime in seconds: -> uptime */
-  #define SYS_SBRK   5  /* Change data segment size: rdi=increment -> old top */
-  #define SYS_OPEN   6  /* Open file: rdi=path, rsi=flags -> fd */
-  #define SYS_CLOSE  7  /* Close file: rdi=fd -> 0 on success */
-  #define SYS_LSEEK  8  /* Seek: rdi=fd, rsi=offset, rdx=whence -> new position */
+  #define SYS_EXIT    0  /* Exit process: rdi=exit_code */
+  #define SYS_WRITE   1  /* Write: rdi=fd, rsi=buffer, rdx=count -> bytes written */
+  #define SYS_READ    2  /* Read: rdi=fd, rsi=buffer, rdx=count -> bytes read */
+  #define SYS_GETPID  3  /* Get process ID: -> pid */
+  #define SYS_UPTIME  4  /* Get uptime in seconds: -> uptime */
+  #define SYS_SBRK    5  /* Change data segment size: rdi=increment -> old top */
+  #define SYS_OPEN    6  /* Open file: rdi=path, rsi=flags -> fd */
+  #define SYS_CLOSE   7  /* Close file: rdi=fd -> 0 on success */
+  #define SYS_LSEEK   8  /* Seek: rdi=fd, rsi=offset, rdx=whence -> new position */
+  #define SYS_STAT    9  /* Stat: rdi=path, rsi=buf -> 0 on success */
+  #define SYS_FSTAT  10  /* Fstat: rdi=fd, rsi=buf -> 0 on success */
+  #define SYS_GETDENTS 11 /* Getdents: rdi=fd, rsi=buf, rdx=count -> bytes read */
+  #define SYS_GETCWD 12  /* Getcwd: rdi=buf, rsi=size -> buf or NULL */
+  #define SYS_CHDIR  13  /* Chdir: rdi=path -> 0 on success */
+  #define SYS_ISATTY 14  /* Isatty: rdi=fd -> 1 if tty, 0 otherwise */
 
 
 /* =============================================================================

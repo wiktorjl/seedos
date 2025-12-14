@@ -51,6 +51,7 @@ struct process {
     int exit_code;          /* Exit code after process terminates */
     int pid;                /* Process ID */
     struct fd_table fds;    /* File descriptor table */
+    char cwd[256];          /* Current working directory */
 };
 
 void *process_sbrk(int64_t increment);
@@ -174,5 +175,20 @@ void process_destroy(struct process *p);
  * @note The returned pointer should not be freed by the caller.
  */
 struct fd_table *process_get_fd_table(void);
+
+/**
+ * @brief Get the current working directory of the current process.
+ *
+ * @return Pointer to the cwd string (null-terminated).
+ */
+const char *process_get_cwd(void);
+
+/**
+ * @brief Set the current working directory of the current process.
+ *
+ * @param path: The new working directory path.
+ * @return 0 on success, -1 on error.
+ */
+int process_set_cwd(const char *path);
 
 #endif /* PROCESS_H */

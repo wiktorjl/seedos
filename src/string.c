@@ -94,6 +94,15 @@ char *strncpy(char *dest, const char *src, uint64_t n) {
 }
 
 /*
+ * strcpy - Copy string from src to dest.
+ */
+char *strcpy(char *dest, const char *src) {
+    char *d = dest;
+    while ((*d++ = *src++));
+    return dest;
+}
+
+/*
  * parse_hex - Parse a hexadecimal number from a string.
  *
  * Accepts with or without "0x" prefix.

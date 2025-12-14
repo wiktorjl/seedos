@@ -112,6 +112,10 @@ struct process *process_create(void) {
     struct fd_table empty_fdt = {0};
     p->fds = empty_fdt;
 
+    /* Initialize current working directory to root */
+    p->cwd[0] = '/';
+    p->cwd[1] = '\0';
+
     process_in_use = 1;
     return p;
 }
@@ -316,4 +320,26 @@ struct fd_table *process_get_fd_table(void) {
         return NULL;
     }
     return &current_process.fds;
+}
+
+const char *process_get_cwd(void) {
+    if (!process_in_use) {
+        return "/";
+    }
+    return current_process.cwd;
+}
+
+int process_set_cwd(const char *path) {
+    if (!process_in_use || path == NULL) {
+        return -1;
+    }
+
+    /* Copy path to cwd, ensuring null termination */
+    size_t len = strlen(path);
+    if (len >= sizeof(current_process.cwd)) {
+        return -1;  /* Path too long */
+    }
+
+    strcpy(current_process.cwd, path);
+    return 0;
 }

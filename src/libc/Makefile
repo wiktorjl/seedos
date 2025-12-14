@@ -22,7 +22,7 @@ CFLAGS = -ffreestanding       \
          -I.
 
 # Source files
-SRCS = stdio.c stdlib.c string.c ctype.c unistd.c fcntl.c errno.c
+SRCS = stdio.c stdlib.c string.c ctype.c unistd.c fcntl.c errno.c stat.c dirent.c
 OBJS = $(SRCS:.c=.o)
 
 # Output
@@ -46,6 +46,8 @@ ctype.o: include/ctype.h
 unistd.o: include/unistd.h include/stddef.h internal/syscall.h
 fcntl.o: include/fcntl.h internal/syscall.h
 errno.o: include/errno.h
+stat.o: include/sys/stat.h internal/syscall.h
+dirent.o: include/dirent.h include/stdlib.h include/fcntl.h include/unistd.h internal/syscall.h
 
 clean:
 	rm -f $(OBJS) $(TARGET)
