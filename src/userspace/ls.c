@@ -7,7 +7,7 @@
  * Usage:
  *   ls           - List current directory
  *   ls /bin      - List /bin directory
- *   ls -l        - Long format (not yet implemented)
+ *   ls -l        - Long format
  */
 
 #include <stdio.h>
@@ -18,6 +18,7 @@
 
 int main(int argc, char **argv) {
     const char *path = ".";
+    const char *display_path = ".";
     int long_format = 0;
 
     /* Parse arguments */
@@ -26,30 +27,14 @@ int main(int argc, char **argv) {
             long_format = 1;
         } else {
             path = argv[i];
+            display_path = argv[i];
         }
     }
 
-    /* If path is ".", use current working directory */
-    char cwd[256];
-    if (strcmp(path, ".") == 0) {
-        if (getcwd(cwd, sizeof(cwd)) != NULL) {
-            /* For root, we need to list with empty prefix */
-            if (strcmp(cwd, "/") == 0) {
-                path = "";
-            } else {
-                /* Skip leading slash for tarfs */
-                path = cwd + 1;
-            }
-        }
-    } else if (path[0] == '/') {
-        /* Skip leading slash for tarfs */
-        path = path + 1;
-    }
-
+    /* Let the kernel handle path resolution - just pass it through */
     DIR *dir = opendir(path);
     if (dir == NULL) {
-        printf("ls: cannot access '%s': No such file or directory\n",
-               argc > 1 ? argv[1] : ".");
+        printf("ls: cannot access '%s': No such file or directory\n", display_path);
         return 1;
     }
 

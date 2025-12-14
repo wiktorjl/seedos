@@ -36,7 +36,13 @@ extern int errno;
 #define ENOSPC  28   /* No space left on device */
 #define ESPIPE  29   /* Illegal seek */
 #define EROFS   30   /* Read-only file system */
+#define EMLINK  31   /* Too many links */
 #define EPIPE   32   /* Broken pipe */
+#define EDOM    33   /* Math argument out of domain */
+#define ERANGE  34   /* Math result out of range */
 #define ENOSYS  38   /* Function not implemented */
+#define ELOOP   40   /* Too many symbolic links */
+#define ENAMETOOLONG 36 /* File name too long */
+#define EXDEV   18   /* Cross-device link */
 
 #endif /* _ERRNO_H */

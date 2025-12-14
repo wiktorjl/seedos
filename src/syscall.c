@@ -28,6 +28,7 @@
 #include <stdint.h>
 #include "keyboard.h"
 #include "vfs.h"
+#include "serial.h"
 #include "tarfs.h"
 #include "tar.h"
 #include "string.h"
@@ -77,9 +78,10 @@ struct kernel_dirent {
 #define DT_REG     8   /* Regular file */
 #define DT_DIR     4   /* Directory */
 
-/* File descriptor for standard output (stdout) */
+/* Standard file descriptors */
+#define FD_STDIN  0
 #define FD_STDOUT 1
-#define FD_STDIN 0
+#define FD_STDERR 2
 
 /* Error return value for syscalls */
 #define SYSCALL_ERROR ((uint64_t)-1)
@@ -101,16 +103,29 @@ static int64_t sys_open(uint64_t path_ptr, uint64_t flags) {
 
     // 2. Build full path (handle relative paths using cwd)
     char full_path[256];
-    if (path[0] == '/') {
+    const char *cwd = process_get_cwd();
+
+    /* Strip "./" prefix if present */
+    if (path[0] == '.' && path[1] == '/') {
+        path += 2;
+    }
+
+    /* Handle special paths "." and ".." */
+    if (strcmp(path, ".") == 0 || path[0] == '\0') {
+        /* "." or empty means current directory */
+        if (cwd[0] == '/' && cwd[1] == '\0') {
+            full_path[0] = '\0';  /* Root = empty for tarfs */
+        } else {
+            /* Skip leading slash */
+            strncpy(full_path, cwd + 1, sizeof(full_path) - 1);
+            full_path[sizeof(full_path) - 1] = '\0';
+        }
+    } else if (path[0] == '/') {
         /* Absolute path - skip leading slash for tarfs */
         strncpy(full_path, path + 1, sizeof(full_path) - 1);
         full_path[sizeof(full_path) - 1] = '\0';
-    } else if (path[0] == '\0') {
-        /* Empty path = root */
-        full_path[0] = '\0';
     } else {
         /* Relative path - prepend cwd */
-        const char *cwd = process_get_cwd();
         size_t cwd_len = strlen(cwd);
 
         if (cwd_len == 1 && cwd[0] == '/') {
@@ -267,13 +282,18 @@ static void sys_exit(uint64_t exit_code) {
 static uint64_t sys_write(uint64_t fd, uint64_t buffer, uint64_t count) {
     const char *buf = (const char *)buffer;
 
+    /* Writing 0 bytes is a no-op */
+    if (count == 0) {
+        return 0;
+    }
+
     if (!vmm_validate_user_range((const void *)buffer, count)) {
         puts("Error: Invalid user buffer address\n");
         return 0;
     }
 
-    /* Only stdout is supported for now */
-    if (fd != FD_STDOUT) {
+    /* Support stdout and stderr - both go to console */
+    if (fd != FD_STDOUT && fd != FD_STDERR) {
         return 0;
     }
 
@@ -288,15 +308,93 @@ static uint64_t sys_write(uint64_t fd, uint64_t buffer, uint64_t count) {
 static uint64_t sys_read(uint64_t fd, uint64_t buffer, uint64_t count) {
     char *buf = (char *)buffer;
 
+    /* Reading 0 bytes is a no-op */
+    if (count == 0) {
+        return 0;
+    }
+
     if (!vmm_validate_user_range((const void *)buffer, count)) {
         puts("Error: Invalid user buffer address\n");
         return 0;
     }
 
     if (fd == FD_STDIN) {
-        /* Read available chars (returns actual count, may be 0) */
-        size_t bytes_read = keyboard_read(buf, count);
-        return bytes_read;
+        /*
+         * Canonical (line-buffered) mode for stdin:
+         * - Echo characters as they're typed
+         * - Handle backspace locally
+         * - Buffer until newline, then return the whole line
+         * - Preserve remaining data for subsequent reads
+         */
+        static char line_buffer[256];
+        static size_t line_len = 0;   /* Total chars in completed line */
+        static size_t line_read = 0;  /* Chars already returned to caller */
+        static size_t input_pos = 0;  /* Position while building current line */
+
+        /* If we have remaining data from previous line, return that first */
+        if (line_read < line_len) {
+            size_t remaining = line_len - line_read;
+            size_t to_copy = remaining < count ? remaining : count;
+            memcpy(buf, line_buffer + line_read, to_copy);
+            line_read += to_copy;
+
+            /* If line fully consumed, reset for next line */
+            if (line_read >= line_len) {
+                line_len = 0;
+                line_read = 0;
+            }
+            return to_copy;
+        }
+
+        /* Read characters until we get a newline */
+        input_pos = 0;
+        while (1) {
+            /* Wait for a character */
+            char c = 0;
+            while (c == 0) {
+                size_t n = keyboard_read(&c, 1);
+                if (n == 0) {
+                    /* No input yet - enable interrupts and wait */
+                    __asm__ volatile ("sti; hlt; cli");
+                    c = 0;
+                }
+            }
+
+            if (c == '\n' || c == '\r') {
+                /* Newline - echo it and complete the line */
+                putc('\n');
+                line_buffer[input_pos++] = '\n';
+                line_len = input_pos;
+                line_read = 0;
+
+                /* Return as much as requested */
+                size_t to_copy = line_len < count ? line_len : count;
+                memcpy(buf, line_buffer, to_copy);
+                line_read = to_copy;
+
+                /* If line fully consumed, reset */
+                if (line_read >= line_len) {
+                    line_len = 0;
+                    line_read = 0;
+                }
+                return to_copy;
+            } else if (c == '\b' || c == 127) {
+                /* Backspace - remove last character if any */
+                if (input_pos > 0) {
+                    input_pos--;
+                    putc('\b');
+                    putc(' ');
+                    putc('\b');
+                }
+            } else if (c >= 32 && c < 127) {
+                /* Printable character - add to buffer if room */
+                if (input_pos < sizeof(line_buffer) - 1) {
+                    line_buffer[input_pos++] = c;
+                    putc(c);  /* Echo */
+                }
+            }
+            /* Ignore other control characters */
+        }
     } else {
         struct fd_table *fdt = process_get_fd_table();
         struct file_descriptor *file_desc = vfs_get_fd(fdt, (int)fd);
@@ -340,10 +438,55 @@ static int64_t sys_stat(uint64_t path_ptr, uint64_t buf_ptr) {
         return -1;
     }
 
+    /* Strip "./" prefix if present */
+    if (path[0] == '.' && path[1] == '/') {
+        path += 2;
+    }
+
+    /* Resolve path (handle "." and relative paths) */
+    char full_path[256];
+    const char *cwd = process_get_cwd();
+
+    if (strcmp(path, ".") == 0 || path[0] == '\0') {
+        /* "." or empty means current directory */
+        if (cwd[0] == '/' && cwd[1] == '\0') {
+            full_path[0] = '\0';  /* Root */
+        } else {
+            strncpy(full_path, cwd + 1, sizeof(full_path) - 1);
+            full_path[sizeof(full_path) - 1] = '\0';
+        }
+    } else if (path[0] == '/') {
+        /* Absolute path */
+        strncpy(full_path, path + 1, sizeof(full_path) - 1);
+        full_path[sizeof(full_path) - 1] = '\0';
+    } else {
+        /* Relative path */
+        if (cwd[0] == '/' && cwd[1] == '\0') {
+            strncpy(full_path, path, sizeof(full_path) - 1);
+            full_path[sizeof(full_path) - 1] = '\0';
+        } else {
+            const char *cwd_no_slash = cwd + 1;
+            size_t cwd_len = strlen(cwd_no_slash);
+            strncpy(full_path, cwd_no_slash, sizeof(full_path) - 1);
+            if (cwd_len < sizeof(full_path) - 2) {
+                full_path[cwd_len] = '/';
+                strncpy(full_path + cwd_len + 1, path, sizeof(full_path) - cwd_len - 2);
+            }
+            full_path[sizeof(full_path) - 1] = '\0';
+        }
+    }
+
     /* Find file in tarfs */
-    struct tar_file *tf = tar_find(path);
-    if (tf == NULL) {
-        return -1;  /* File not found */
+    struct tar_file *tf;
+    if (full_path[0] == '\0') {
+        /* Root directory - use synthetic entry */
+        static struct tar_file root_entry = { .name = "", .is_dir = 1, .size = 0 };
+        tf = &root_entry;
+    } else {
+        tf = tar_find(full_path);
+        if (tf == NULL) {
+            return -1;  /* File not found */
+        }
     }
 
     /* Fill in stat buffer */
@@ -667,6 +810,114 @@ static int64_t sys_dup2(uint64_t oldfd, uint64_t newfd) {
     return (int64_t)newfd;
 }
 
+/*
+ * sys_spawn - Run a program and wait for it to complete.
+ *
+ * @path_ptr: Path to the program (e.g., "/bin/hello" or "hello")
+ * @argv_ptr: NULL-terminated array of argument strings
+ *
+ * Returns: Exit code of the program, or -1 on error.
+ *
+ * This is like system() in C - runs a program and waits for completion.
+ */
+static int64_t sys_spawn(uint64_t path_ptr, uint64_t argv_ptr) {
+    const char *path = (const char *)path_ptr;
+    char **argv = (char **)argv_ptr;
+
+    /* Validate path pointer */
+    if (!vmm_validate_user_range((const void *)path_ptr, 1)) {
+        return -1;
+    }
+
+    /* Build full path - handle relative and absolute paths */
+    char full_path[256];
+    const char *cwd = process_get_cwd();
+
+    /* Skip leading slash and ./ */
+    const char *name = path;
+    if (name[0] == '/') name++;
+    if (name[0] == '.' && name[1] == '/') name += 2;
+
+    /* Check if it's a path or just a program name */
+    int has_slash = 0;
+    for (const char *c = name; *c; c++) {
+        if (*c == '/') { has_slash = 1; break; }
+    }
+
+    if (!has_slash) {
+        /* No slash - prepend "bin/" */
+        strcpy(full_path, "bin/");
+        strncpy(full_path + 4, name, sizeof(full_path) - 5);
+    } else {
+        strncpy(full_path, name, sizeof(full_path) - 1);
+    }
+    full_path[sizeof(full_path) - 1] = '\0';
+
+    /* Find program in initrd */
+    struct tar_file *file = tar_find(full_path);
+    if (file == NULL) {
+        return -1;  /* Program not found */
+    }
+
+    /* Save parent process */
+    struct process *parent = process_get_current();
+
+    /* Create child process */
+    struct process *child = process_create();
+    if (child == NULL) {
+        return -1;  /* Failed to create process */
+    }
+
+    /* Inherit cwd from parent */
+    process_set_cwd(cwd);
+
+    /* Load ELF executable */
+    if (process_load_elf(child, file->data, file->size) != 0) {
+        process_destroy(child);
+        process_set_current(parent);
+        return -1;
+    }
+
+    /* Count and copy argv */
+    int argc = 0;
+    static char arg_storage[16][64];
+    static char *child_argv[17];
+
+    if (argv != NULL && vmm_validate_user_range((const void *)argv_ptr, 8)) {
+        while (argc < 16 && argv[argc] != NULL) {
+            if (!vmm_validate_user_range(argv[argc], 1)) break;
+            strncpy(arg_storage[argc], argv[argc], 63);
+            arg_storage[argc][63] = '\0';
+            child_argv[argc] = arg_storage[argc];
+            argc++;
+        }
+    }
+    child_argv[argc] = NULL;
+
+    /* If no args provided, use the program name */
+    if (argc == 0) {
+        strncpy(arg_storage[0], path, 63);
+        arg_storage[0][63] = '\0';
+        child_argv[0] = arg_storage[0];
+        argc = 1;
+        child_argv[1] = NULL;
+    }
+
+    /* Run child process - this blocks until child calls exit */
+    int exit_code = process_run_with_args(child, argc, child_argv);
+
+    /* Clean up child */
+    process_destroy(child);
+
+    /* Restore parent as current process */
+    process_set_current(parent);
+
+    /* Switch back to parent's address space */
+    vmm_switch_address_space(parent->pml4);
+
+    return exit_code;
+}
+
 /* =============================================================================
  * Syscall Dispatcher
  * =============================================================================
@@ -756,6 +1007,10 @@ void syscall_handler(struct syscall_registers *regs) {
 
         case SYS_DUP2:
             regs->rax = sys_dup2(regs->rdi, regs->rsi);
+            break;
+
+        case SYS_SPAWN:
+            regs->rax = sys_spawn(regs->rdi, regs->rsi);
             break;
 
         default:

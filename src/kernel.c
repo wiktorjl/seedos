@@ -84,9 +84,8 @@ int verify_bootloader_info(struct limine_memmap_response **memmap, uint64_t *hhd
 /* Print kernel banner */
 void print_banner(void) {
     puts("\n");
-    puts("===========================================\n");
-    puts("    SeedOS - A Simple Educational Kernel\n");
-    puts("===========================================\n");
+    puts("  SeedOS v0.1\n");
+    puts("  A Simple Educational Kernel\n");
     puts("\n");
 }
 
@@ -122,64 +121,54 @@ void kernel_main(void) {
 
     /* Initialize kernel subsystems */
     pmm_init(memmap, hhdm_offset);
-    puts("\n[ok] pmm\n");
-    puts("    Total RAM: ");
+    puts("  pmm       ");
     put_dec(pmm_get_usable_pages() * 4 / 1024);
-    puts(" MB\n");
-    puts("    Free RAM: ");
+    puts(" MB usable, ");
     put_dec(pmm_get_free_pages() * 4 / 1024);
-    puts(" MB\n");
-    puts("    Bitmap: ");
-    put_dec((pmm_get_total_pages() + 7) / 8 / 1024);
-    puts(" KB (tracking ");
-    put_dec(pmm_get_total_pages() * 4 / 1024);
-    puts(" MB address space)\n");
+    puts(" MB free\n");
 
     gdt_init();
-    puts("[ok] gdt\n");
+    puts("  gdt       kernel/user segments, tss\n");
 
     vmm_init(hhdm_offset);
-    puts("[ok] vmm\n");
-    puts("    HHDM Offset: ");
+    puts("  vmm       4-level paging, hhdm @ ");
     put_hex(hhdm_offset);
     puts("\n");
 
     idt_init();
-    puts("[ok] idt\n");
+    puts("  idt       48 handlers + syscall\n");
 
     pic_init();
-    puts("[ok] pic\n");
+    puts("  pic       irq 32-47\n");
 
     keyboard_init();
-    puts("[ok] keyboard\n");
+    puts("  keyboard  ps/2\n");
 
     pit_init();
-    puts("[ok] pit\n");
+    puts("  pit       100 Hz timer\n");
 
     /* Initialize test framework and register all tests */
     test_framework_init(memmap, hhdm_offset);
     test_register_all();
-    puts("[ok] tests: ");
+    puts("  tests     ");
     put_dec(MAX_TESTS);
     puts(" slots\n");
 
     asm volatile ("sti");
 
-    puts("\n");
-
     struct limine_module_response *mod = module_request.response;
     if (mod && mod->module_count > 0) {
         struct limine_file *initrd = mod->modules[0];
         tar_init(initrd->address, initrd->size);
-        puts("[ok] initrd: ");
+        puts("  initrd    ");
         put_dec(tar_get_file_count());
         puts(" files\n");
     } else {
-        puts("[warn] no initrd\n");
+        puts("  initrd    [not found]\n");
     }
 
     vfs_init();
-    puts("[ok] vfs\n");
+    puts("  vfs       tarfs mounted\n");
 
     
     /* Start the shell */

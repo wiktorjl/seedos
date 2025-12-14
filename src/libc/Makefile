@@ -22,7 +22,7 @@ CFLAGS = -ffreestanding       \
          -I.
 
 # Source files
-SRCS = stdio.c stdlib.c string.c ctype.c unistd.c fcntl.c errno.c stat.c dirent.c
+SRCS = stdio.c stdlib.c string.c ctype.c unistd.c fcntl.c errno.c stat.c dirent.c stubs.c env.c
 OBJS = $(SRCS:.c=.o)
 
 # Output

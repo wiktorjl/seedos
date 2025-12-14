@@ -170,3 +170,81 @@ char *strdup(const char *s) {
     }
     return new;
 }
+
+/* Returns length of initial segment of s consisting of chars in accept */
+size_t strspn(const char *s, const char *accept) {
+    size_t count = 0;
+    const char *p;
+    while (*s) {
+        for (p = accept; *p; p++) {
+            if (*s == *p) break;
+        }
+        if (!*p) break;  /* char not in accept */
+        s++;
+        count++;
+    }
+    return count;
+}
+
+/* Returns length of initial segment of s not containing chars in reject */
+size_t strcspn(const char *s, const char *reject) {
+    size_t count = 0;
+    const char *p;
+    while (*s) {
+        for (p = reject; *p; p++) {
+            if (*s == *p) return count;
+        }
+        s++;
+        count++;
+    }
+    return count;
+}
+
+/* Returns pointer to first occurrence in s of any char from accept */
+char *strpbrk(const char *s, const char *accept) {
+    while (*s) {
+        const char *p = accept;
+        while (*p) {
+            if (*s == *p) return (char *)s;
+            p++;
+        }
+        s++;
+    }
+    return NULL;
+}
+
+/* strtok - split string into tokens */
+static char *strtok_save;
+
+char *strtok(char *str, const char *delim) {
+    char *end;
+
+    if (str != NULL) {
+        strtok_save = str;
+    }
+
+    if (strtok_save == NULL) {
+        return NULL;
+    }
+
+    /* Skip leading delimiters */
+    strtok_save += strspn(strtok_save, delim);
+    if (*strtok_save == '\0') {
+        strtok_save = NULL;
+        return NULL;
+    }
+
+    /* Find end of token */
+    end = strtok_save + strcspn(strtok_save, delim);
+    if (*end == '\0') {
+        char *token = strtok_save;
+        strtok_save = NULL;
+        return token;
+    }
+
+    /* Terminate token and advance */
+    *end = '\0';
+    char *token = strtok_save;
+    strtok_save = end + 1;
+    return token;
+}

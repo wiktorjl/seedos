@@ -48,7 +48,7 @@
 
 #include "types.h"
 
-#define USER_STACK_SIZE 0x1000
+/* Note: USER_STACK_SIZE is now defined in process.h */
 
 /* =============================================================================
  * User Context Structure

@@ -263,3 +263,87 @@ int abs(int j) {
 long labs(long j) {
     return j < 0 ? -j : j;
 }
+
+/* ============================================================================
+ * Pseudo-Random Number Generation (simple LCG)
+ * ============================================================================ */
+
+static unsigned int rand_seed = 1;
+
+int rand(void) {
+    rand_seed = rand_seed * 1103515245 + 12345;
+    return (unsigned int)(rand_seed / 65536) % (RAND_MAX + 1);
+}
+
+void srand(unsigned int seed) {
+    rand_seed = seed;
+}
+
+/* ============================================================================
+ * Sorting and Searching
+ * ============================================================================ */
+
+/*
+ * qsort - Quicksort implementation
+ *
+ * For simplicity, uses a basic quicksort with median-of-three pivot selection.
+ */
+static void swap_bytes(void *a, void *b, size_t size) {
+    unsigned char *pa = (unsigned char *)a;
+    unsigned char *pb = (unsigned char *)b;
+    for (size_t i = 0; i < size; i++) {
+        unsigned char tmp = pa[i];
+        pa[i] = pb[i];
+        pb[i] = tmp;
+    }
+}
+
+static void qsort_impl(void *base, size_t nmemb, size_t size,
+                       int (*compar)(const void *, const void *)) {
+    if (nmemb <= 1) return;
+
+    unsigned char *arr = (unsigned char *)base;
+    unsigned char *pivot = arr + (nmemb - 1) * size;
+
+    size_t i = 0;
+    for (size_t j = 0; j < nmemb - 1; j++) {
+        if (compar(arr + j * size, pivot) < 0) {
+            swap_bytes(arr + i * size, arr + j * size, size);
+            i++;
+        }
+    }
+    swap_bytes(arr + i * size, pivot, size);
+
+    if (i > 1) qsort_impl(arr, i, size, compar);
+    if (nmemb - i - 1 > 1) qsort_impl(arr + (i + 1) * size, nmemb - i - 1, size, compar);
+}
+
+void qsort(void *base, size_t nmemb, size_t size,
+           int (*compar)(const void *, const void *)) {
+    if (!base || nmemb <= 1 || size == 0) return;
+    qsort_impl(base, nmemb, size, compar);
+}
+
+/*
+ * bsearch - Binary search in a sorted array
+ */
+void *bsearch(const void *key, const void *base, size_t nmemb, size_t size,
+              int (*compar)(const void *, const void *)) {
+    const unsigned char *arr = (const unsigned char *)base;
+    size_t low = 0;
+    size_t high = nmemb;
+
+    while (low < high) {
+        size_t mid = low + (high - low) / 2;
+        const void *elem = arr + mid * size;
+        int cmp = compar(key, elem);
+        if (cmp < 0) {
+            high = mid;
+        } else if (cmp > 0) {
+            low = mid + 1;
+        } else {
+            return (void *)elem;
+        }
+    }
+    return NULL;
+}

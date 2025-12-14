@@ -16,23 +16,20 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* Page size for stack allocation */
-#define PROCESS_STACK_SIZE 0x1000
+/* Note: PROCESS_STACK_SIZE and PROCESS_STACK_PAGES are defined in process.h */
 
 /*
  * Static process storage.
  *
- * For simplicity, we use a single static process struct rather than
- * dynamic allocation. This limits us to one process at a time, but
- * avoids the need for a kernel heap allocator.
- *
- * TODO: Support multiple processes with proper allocation.
+ * We support two process slots: one for the main process and one for
+ * spawned child processes. This allows a shell to run programs.
  */
-static struct process current_process;
+static struct process process_slots[2];
+static struct process *current_process = NULL;
 
 static int next_pid = 1;
 
-static int process_in_use = 0;
+static int slot_in_use[2] = {0, 0};
 
 static int last_exit_code = 0;
 
@@ -45,28 +42,38 @@ void process_set_exit_code(int code) {
 }
 
 int process_get_pid(void) {
-    if (!process_in_use) {
+    if (current_process == NULL) {
         return -1;
     }
-    return current_process.pid;
+    return current_process->pid;
 }
 
 struct process *process_create(void) {
-    /* Only one process at a time for now */
-    if (process_in_use) {
-        return NULL;
+    /* Find a free slot */
+    int slot = -1;
+    for (int i = 0; i < 2; i++) {
+        if (!slot_in_use[i]) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0) {
+        return NULL;  /* No free slots */
     }
 
-    struct process *p = &current_process;
+    struct process *p = &process_slots[slot];
 
     /* Initialize to zero */
     p->pml4 = 0;
     p->code_page = 0;
-    p->stack_page = 0;
+    p->stack_page_count = 0;
+    for (int i = 0; i < PROCESS_STACK_PAGES; i++) {
+        p->stack_pages[i] = 0;
+    }
     p->entry = USER_CODE_BASE;
-    p->stack = USER_STACK_BASE + PROCESS_STACK_SIZE;
+    p->stack = USER_STACK_TOP;  /* RSP starts at top of stack */
     p->exit_code = 0;
-    p->pid = next_pid++; 
+    p->pid = next_pid++;
     p->brk = USER_HEAP_BASE;
 
     /* Create new address space (PML4 with kernel mappings) */
@@ -82,30 +89,44 @@ struct process *process_create(void) {
         return NULL;
     }
 
-    /* Allocate stack page */
-    p->stack_page = pmm_alloc();
-    if (p->stack_page == 0) {
-        pmm_free(p->code_page);
-        /* TODO: Free PML4 */
-        return NULL;
+    /* Allocate stack pages (64KB = 16 pages) */
+    for (int i = 0; i < PROCESS_STACK_PAGES; i++) {
+        p->stack_pages[i] = pmm_alloc();
+        if (p->stack_pages[i] == 0) {
+            /* Free already allocated pages */
+            for (int j = 0; j < i; j++) {
+                pmm_free(p->stack_pages[j]);
+            }
+            pmm_free(p->code_page);
+            /* TODO: Free PML4 */
+            return NULL;
+        }
+        p->stack_page_count++;
     }
 
     /* Map code page at USER_CODE_BASE */
     if (vmm_map_page(p->pml4, USER_CODE_BASE, p->code_page,
                      PTE_PRESENT | PTE_USER | PTE_WRITABLE) != 0) {
-        pmm_free(p->stack_page);
+        for (int i = 0; i < p->stack_page_count; i++) {
+            pmm_free(p->stack_pages[i]);
+        }
         pmm_free(p->code_page);
         /* TODO: Free PML4 */
         return NULL;
     }
 
-    /* Map stack page at USER_STACK_BASE */
-    if (vmm_map_page(p->pml4, USER_STACK_BASE, p->stack_page,
-                     PTE_PRESENT | PTE_USER | PTE_WRITABLE) != 0) {
-        pmm_free(p->stack_page);
-        pmm_free(p->code_page);
-        /* TODO: Free PML4 and unmap code page */
-        return NULL;
+    /* Map all stack pages contiguously from USER_STACK_BASE */
+    for (int i = 0; i < PROCESS_STACK_PAGES; i++) {
+        uint64_t vaddr = USER_STACK_BASE + (i * 0x1000);
+        if (vmm_map_page(p->pml4, vaddr, p->stack_pages[i],
+                         PTE_PRESENT | PTE_USER | PTE_WRITABLE) != 0) {
+            /* TODO: Clean up properly */
+            for (int j = 0; j < p->stack_page_count; j++) {
+                pmm_free(p->stack_pages[j]);
+            }
+            pmm_free(p->code_page);
+            return NULL;
+        }
     }
 
     /* Initialize file descriptor table */
@@ -116,7 +137,8 @@ struct process *process_create(void) {
     p->cwd[0] = '/';
     p->cwd[1] = '\0';
 
-    process_in_use = 1;
+    slot_in_use[slot] = 1;
+    current_process = p;
     return p;
 }
 
@@ -183,7 +205,7 @@ int process_run_with_args(struct process *p, int argc, char **argv) {
      * Set up argc/argv on the user stack.
      *
      * Stack layout (high to low):
-     *   [argv strings]    <- at top of stack page
+     *   [argv strings]    <- at top of stack
      *   [NULL]            <- argv terminator
      *   [argv[n-1] ptr]
      *   ...
@@ -191,9 +213,9 @@ int process_run_with_args(struct process *p, int argc, char **argv) {
      *   [argc]            <- RSP points here
      */
 
-    /* Get kernel-accessible pointer to stack page */
-    uint8_t *stack_virt = (uint8_t *)phys_to_virt(p->stack_page);
-    uint8_t *stack_top = stack_virt + PROCESS_STACK_SIZE;
+    /* Get kernel-accessible pointer to top stack page (last page in array) */
+    uint8_t *top_page_virt = (uint8_t *)phys_to_virt(p->stack_pages[PROCESS_STACK_PAGES - 1]);
+    uint8_t *stack_top = top_page_virt + 0x1000;  /* End of top page = USER_STACK_TOP */
 
     /* Step 1: Copy strings to top of stack (high addresses, working down) */
     uint64_t string_user_addrs[32];  /* Max 32 arguments */
@@ -214,8 +236,9 @@ int process_run_with_args(struct process *p, int argc, char **argv) {
         memcpy(str_ptr, argv[i], len);
 
         /* Calculate user-space address of this string */
-        uint64_t offset = str_ptr - stack_virt;
-        string_user_addrs[i] = USER_STACK_BASE + offset;
+        /* str_ptr is in the top page, which maps to USER_STACK_TOP - 0x1000 to USER_STACK_TOP */
+        uint64_t offset_in_page = str_ptr - top_page_virt;
+        string_user_addrs[i] = (USER_STACK_TOP - 0x1000) + offset_in_page;
     }
 
     /* Step 2: Align to 8 bytes for pointer array */
@@ -236,7 +259,8 @@ int process_run_with_args(struct process *p, int argc, char **argv) {
     *(uint64_t *)str_ptr = (uint64_t)argc;
 
     /* Calculate new user RSP */
-    uint64_t new_stack = USER_STACK_BASE + (str_ptr - stack_virt);
+    uint64_t offset_in_page = str_ptr - top_page_virt;
+    uint64_t new_stack = (USER_STACK_TOP - 0x1000) + offset_in_page;
 
     /* Set up user context for context switch */
     struct user_context ctx;
@@ -256,24 +280,44 @@ void process_destroy(struct process *p) {
     }
 
     if (p->pml4 != 0) {
-        // pmm_free(p->pml4);
         vmm_free_user_address_space(p->pml4);
         p->pml4 = 0;
         p->code_page = 0;
-        p->stack_page = 0;
+        /* Clear stack pages */
+        for (int i = 0; i < PROCESS_STACK_PAGES; i++) {
+            p->stack_pages[i] = 0;
+        }
+        p->stack_page_count = 0;
     }
 
-    /* Mark as available */
-    process_in_use = 0;
+    /* Mark slot as available */
+    for (int i = 0; i < 2; i++) {
+        if (&process_slots[i] == p) {
+            slot_in_use[i] = 0;
+            break;
+        }
+    }
+
+    /* Update current_process if needed */
+    if (current_process == p) {
+        /* Find another active process, or set to NULL */
+        current_process = NULL;
+        for (int i = 0; i < 2; i++) {
+            if (slot_in_use[i]) {
+                current_process = &process_slots[i];
+                break;
+            }
+        }
+    }
 }
 
 
 void * process_sbrk(intptr_t increment) {
-    if (!process_in_use) {
+    if (current_process == NULL) {
         return (void *)-1;
     }
 
-    struct process *p = &current_process;
+    struct process *p = current_process;
     uint64_t old_brk = p->brk;
     uint64_t new_brk = old_brk + increment;
 
@@ -316,30 +360,46 @@ void * process_sbrk(intptr_t increment) {
 }
 
 struct fd_table *process_get_fd_table(void) {
-    if (!process_in_use) {
+    if (current_process == NULL) {
         return NULL;
     }
-    return &current_process.fds;
+    return &current_process->fds;
 }
 
 const char *process_get_cwd(void) {
-    if (!process_in_use) {
+    if (current_process == NULL) {
         return "/";
     }
-    return current_process.cwd;
+    return current_process->cwd;
 }
 
 int process_set_cwd(const char *path) {
-    if (!process_in_use || path == NULL) {
+    if (current_process == NULL || path == NULL) {
         return -1;
     }
 
     /* Copy path to cwd, ensuring null termination */
     size_t len = strlen(path);
-    if (len >= sizeof(current_process.cwd)) {
+    if (len >= sizeof(current_process->cwd)) {
         return -1;  /* Path too long */
     }
 
-    strcpy(current_process.cwd, path);
+    strcpy(current_process->cwd, path);
     return 0;
+}
+
+/*
+ * process_set_current - Set the current running process.
+ *
+ * Used by spawn syscall to switch between parent and child.
+ */
+void process_set_current(struct process *p) {
+    current_process = p;
+}
+
+/*
+ * process_get_current - Get the current running process.
+ */
+struct process *process_get_current(void) {
+    return current_process;
 }

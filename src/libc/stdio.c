@@ -409,10 +409,35 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap) {
             format++;
         }
 
-        /* Parse width */
+        /* Parse width - can be * for dynamic width */
         int width = 0;
-        while (*format >= '0' && *format <= '9') {
-            width = width * 10 + (*format++ - '0');
+        if (*format == '*') {
+            width = va_arg(ap, int);
+            if (width < 0) {
+                left_align = 1;
+                width = -width;
+            }
+            format++;
+        } else {
+            while (*format >= '0' && *format <= '9') {
+                width = width * 10 + (*format++ - '0');
+            }
+        }
+
+        /* Parse precision */
+        int precision = -1;  /* -1 means not specified */
+        if (*format == '.') {
+            format++;
+            if (*format == '*') {
+                precision = va_arg(ap, int);
+                if (precision < 0) precision = 0;
+                format++;
+            } else {
+                precision = 0;
+                while (*format >= '0' && *format <= '9') {
+                    precision = precision * 10 + (*format++ - '0');
+                }
+            }
         }
 
         /* Parse length modifier */
@@ -478,6 +503,11 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap) {
                 if (!s) s = "(null)";
                 size_t slen = strlen(s);
 
+                /* Apply precision - limit string length */
+                if (precision >= 0 && (size_t)precision < slen) {
+                    slen = (size_t)precision;
+                }
+
                 /* Right padding for left align */
                 if (!left_align) {
                     while (width > (int)slen) {
@@ -486,8 +516,9 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap) {
                     }
                 }
 
-                while (*s) {
-                    PUT(*s++);
+                /* Print string up to slen characters */
+                for (size_t i = 0; i < slen; i++) {
+                    PUT(s[i]);
                 }
 
                 /* Left padding for right align */

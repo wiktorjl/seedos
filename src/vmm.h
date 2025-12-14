@@ -94,7 +94,8 @@
  * Code at low address, stack at high address (grows down).
  */
 #define USER_CODE_BASE   0x400000ULL       /* Where user code is loaded */
-#define USER_STACK_BASE  0x7FFFFF000ULL    /* Base of user stack page */
+#define USER_STACK_BASE  0x7FFFF0000ULL    /* Base of user stack (64KB below 0x800000000) */
+#define USER_STACK_TOP   0x800000000ULL    /* Top of user stack (RSP starts here) */
 #define USER_HEAP_BASE   0x500000ULL       /* Where user heap starts */
 /* =============================================================================
  * VMM API Functions

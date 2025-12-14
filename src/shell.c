@@ -186,7 +186,6 @@ static void cmd_run(const char *arg) {
     }
 
     /* Run the program with arguments and current working directory */
-    puts("\n");
     int exit_code = programs_run_cwd(prog_path, argc, argv, cwd);
     last_exit_code = exit_code;
 
@@ -664,10 +663,8 @@ static void execute_command(void) {
  */
 void shell_init(void) {
     puts("\n");
-    puts("========================================\n");
-    puts("       Seed OS Shell v0.1\n");
     puts("  Type 'help' for available commands\n");
-    puts("========================================\n");
+    puts("\n");
     shell_prompt();
 }
 

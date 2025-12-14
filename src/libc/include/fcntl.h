@@ -25,4 +25,7 @@
 /* Open a file */
 int open(const char *pathname, int flags, ...);
 
+/* Create a file (equivalent to open with O_CREAT|O_WRONLY|O_TRUNC) */
+int creat(const char *pathname, int mode);
+
 #endif /* _FCNTL_H */

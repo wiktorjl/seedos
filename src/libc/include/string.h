@@ -37,4 +37,15 @@ size_t strlen(const char *s);
 /* String duplication (requires malloc) */
 char *strdup(const char *s);
 
+/* Token parsing */
+char *strtok(char *str, const char *delim);
+
+/* Error strings */
+char *strerror(int errnum);
+
+/* Span functions */
+size_t strspn(const char *s, const char *accept);
+size_t strcspn(const char *s, const char *reject);
+char *strpbrk(const char *s, const char *accept);
+
 #endif /* _STRING_H */

@@ -35,6 +35,10 @@
 #include "vfs.h"
 #include "types.h"
 
+/* Stack configuration: 64KB (16 pages) */
+#define PROCESS_STACK_PAGES 16
+#define PROCESS_STACK_SIZE  (PROCESS_STACK_PAGES * 0x1000)
+
 /*
  * struct process - Represents a user process.
  *
@@ -44,7 +48,8 @@
 struct process {
     uint64_t pml4;          /* Physical address of PML4 (address space root) */
     uint64_t code_page;     /* Physical address of code page */
-    uint64_t stack_page;    /* Physical address of stack page */
+    uint64_t stack_pages[PROCESS_STACK_PAGES]; /* Physical addresses of stack pages */
+    int stack_page_count;   /* Number of allocated stack pages */
     uint64_t entry;         /* Entry point virtual address */
     uint64_t brk;           /* Current break address for sbrk() */
     uint64_t stack;         /* Initial stack pointer */
@@ -190,5 +195,17 @@ const char *process_get_cwd(void);
  * @return 0 on success, -1 on error.
  */
 int process_set_cwd(const char *path);
+
+/**
+ * @brief Set the current running process.
+ *
+ * Used by spawn syscall to switch between parent and child.
+ */
+void process_set_current(struct process *p);
+
+/**
+ * @brief Get the current running process.
+ */
+struct process *process_get_current(void);
 
 #endif /* PROCESS_H */

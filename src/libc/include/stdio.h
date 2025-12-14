@@ -77,6 +77,7 @@ void rewind(FILE *stream);
 int feof(FILE *stream);
 int ferror(FILE *stream);
 void clearerr(FILE *stream);
+void perror(const char *s);
 
 /* Utility */
 int fileno(FILE *stream);
@@ -92,5 +93,9 @@ int vprintf(const char *format, va_list ap);
 int vfprintf(FILE *stream, const char *format, va_list ap);
 int vsprintf(char *str, const char *format, va_list ap);
 int vsnprintf(char *str, size_t size, const char *format, va_list ap);
+
+/* File operations (stubs) */
+int rename(const char *oldpath, const char *newpath);
+int remove(const char *pathname);
 
 #endif /* _STDIO_H */
