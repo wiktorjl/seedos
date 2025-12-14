@@ -7,16 +7,16 @@
  *
  * Process Lifecycle:
  *
- *   1. process_create()  - Allocate address space and memory pages
- *   2. process_load()    - Copy program binary into address space
- *   3. process_run()     - Execute until sys_exit (blocks)
- *   4. process_destroy() - Free all allocated resources
+ *   1. process_create()   - Allocate address space and memory pages
+ *   2. process_load_elf() - Load ELF executable into address space
+ *   3. process_run()      - Execute until sys_exit (blocks)
+ *   4. process_destroy()  - Free all allocated resources
  *
  * Example Usage:
  *
  *   struct process *p = process_create();
  *   if (p) {
- *       process_load(p, binary_code, binary_len);
+ *       process_load_elf(p, elf_data, elf_size);
  *       int exit_code = process_run(p);
  *       process_destroy(p);
  *   }
@@ -103,22 +103,6 @@ void process_set_exit_code(int code);
  * Note: The returned process must be freed with process_destroy().
  */
 struct process *process_create(void);
-
-/*
- * process_load - Load raw binary code into the process address space.
- *
- * @p:    Process to load into (must have been created with process_create)
- * @code: Pointer to the binary code
- * @len:  Length of the binary code in bytes
- *
- * Copies the binary code to the process's code page. The code will
- * be visible at USER_CODE_BASE when the process runs.
- *
- * Returns: 0 on success, -1 on failure.
- *
- * Note: Prefer process_load_elf() for loading ELF executables.
- */
-int process_load(struct process *p, const void *code, uint32_t len);
 
 /*
  * process_load_elf - Load an ELF executable into the process address space.

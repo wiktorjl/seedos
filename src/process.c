@@ -143,24 +143,6 @@ struct process *process_create(void) {
     return p;
 }
 
-int process_load(struct process *p, const void *code, uint32_t len) {
-    if (p == NULL || code == NULL) {
-        return -1;
-    }
-
-    /* Ensure code fits in one page */
-    // WJL: Why is this limitation necessary? We can have code larger than one page, so this would fail.
-    if (len > CODE_PAGE_SIZE) {
-        return -1;
-    }
-
-    /* Copy code to the code page via HHDM */
-    void *code_virt = phys_to_virt(p->code_page);
-    memcpy(code_virt, code, len);
-
-    return 0;
-}
-
 int process_load_elf(struct process *p, const void *data, uint64_t size) {
     if (p == NULL || data == NULL) {
         return -1;
@@ -201,60 +183,67 @@ int process_run(struct process *p) {
     return last_exit_code;
 }
 
-// WJL: comments missing
 int process_run_with_args(struct process *p, int argc, char **argv) {
     if (p == NULL) {
         return -1;
     }
 
     /*
-     * Set up argc/argv on the user stack.
+     * Set up argc/argv on the user stack per x86-64 ABI.
      *
-     * Stack layout (high to low):
-     *   [argv strings]    <- at top of stack
-     *   [NULL]            <- argv terminator
-     *   [argv[n-1] ptr]
-     *   ...
-     *   [argv[0] ptr]
-     *   [argc]            <- RSP points here
+     * The C runtime (_start) expects this layout when entering main():
+     *
+     *   High addresses (stack top)
+     *   ┌─────────────────────┐
+     *   │ "arg2\0"            │  <- argv strings (copied here)
+     *   │ "arg1\0"            │
+     *   │ "prog\0"            │
+     *   ├─────────────────────┤
+     *   │ NULL                │  <- argv terminator
+     *   │ ptr to "arg2"       │  <- argv[2]
+     *   │ ptr to "arg1"       │  <- argv[1]
+     *   │ ptr to "prog"       │  <- argv[0]
+     *   ├─────────────────────┤
+     *   │ argc (3)            │  <- RSP points here on entry
+     *   └─────────────────────┘
+     *   Low addresses
+     *
+     * _start pops argc into rdi, computes argv pointer in rsi, calls main(argc, argv).
      */
 
     /* Get kernel-accessible pointer to top stack page (last page in array) */
     uint8_t *top_page_virt = (uint8_t *)phys_to_virt(p->stack_pages[PROCESS_STACK_PAGES - 1]);
     uint8_t *stack_top = top_page_virt + 0x1000;  /* End of top page = USER_STACK_TOP */
 
-    /* Step 1: Copy strings to top of stack (high addresses, working down) */
-    uint64_t string_user_addrs[32];  /* Max 32 arguments */
+    /* Step 1: Copy argument strings to top of stack, working downward */
+    uint64_t string_user_addrs[32];  /* Track user-space address of each string */
     if (argc > 32) {
-        argc = 32;
+        argc = 32;  /* Silently truncate - consider returning error */
     }
 
     uint8_t *str_ptr = stack_top;
     for (int i = argc - 1; i >= 0; i--) {
-        /* Calculate string length including null terminator */
         size_t len = 0;
         const char *s = argv[i];
         while (s[len]) len++;
         len++;  /* Include null terminator */
 
-        /* Move pointer down and copy string */
         str_ptr -= len;
         memcpy(str_ptr, argv[i], len);
 
-        /* Calculate user-space address of this string */
-        /* str_ptr is in the top page, which maps to USER_STACK_TOP - 0x1000 to USER_STACK_TOP */
+        /* Convert kernel pointer to user-space address */
         uint64_t offset_in_page = str_ptr - top_page_virt;
         string_user_addrs[i] = (USER_STACK_TOP - 0x1000) + offset_in_page;
     }
 
-    /* Step 2: Align to 8 bytes for pointer array */
+    /* Step 2: Align stack to 8 bytes for pointer array */
     str_ptr = (uint8_t *)((uint64_t)str_ptr & ~7ULL);
 
-    /* Step 3: Push NULL terminator for argv */
+    /* Step 3: Push NULL terminator for argv array */
     str_ptr -= 8;
     *(uint64_t *)str_ptr = 0;
 
-    /* Step 4: Push argv pointers (in reverse order so argv[0] is at lowest address) */
+    /* Step 4: Push argv pointers in reverse order (argv[0] at lowest address) */
     for (int i = argc - 1; i >= 0; i--) {
         str_ptr -= 8;
         *(uint64_t *)str_ptr = string_user_addrs[i];
@@ -264,7 +253,7 @@ int process_run_with_args(struct process *p, int argc, char **argv) {
     str_ptr -= 8;
     *(uint64_t *)str_ptr = (uint64_t)argc;
 
-    /* Calculate new user RSP */
+    /* Calculate final user RSP from kernel pointer */
     uint64_t offset_in_page = str_ptr - top_page_virt;
     uint64_t new_stack = (USER_STACK_TOP - 0x1000) + offset_in_page;
 
