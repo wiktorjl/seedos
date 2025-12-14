@@ -84,8 +84,8 @@ void shell_prompt(void);
  *
  * Typical usage in main loop:
  *
- *   while (1) {
- *       if (keyboard_has_char()) {
+ *   while(1) {
+ *       if(keyboard_has_char()) {
  *           shell_input(keyboard_get_char());
  *       }
  *   }

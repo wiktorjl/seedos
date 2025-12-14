@@ -70,7 +70,7 @@ void console_init(void) {
  */
 void puts(const char *s) {
     serial_puts(s);
-    if (framebuffer_ready) {
+    if(framebuffer_ready) {
         fb_console_puts(s);
     }
 }
@@ -80,7 +80,7 @@ void puts(const char *s) {
  */
 void putc(char c) {
     serial_putc(c);
-    if (framebuffer_ready) {
+    if(framebuffer_ready) {
         fb_console_putc(c);
     }
 }
@@ -95,14 +95,14 @@ void put_hex(uint64_t value) {
     serial_put_hex(value);
 
     /* Output to framebuffer if ready */
-    if (framebuffer_ready) {
+    if(framebuffer_ready) {
         /* Buffer: "0x" + 16 digits + null terminator */
         char hex_buffer[19];
         hex_buffer[0] = '0';
         hex_buffer[1] = 'x';
 
         /* Convert each nibble to a hex digit, from most to least significant */
-        for (int i = 0; i < HEX64_DIGIT_COUNT; i++) {
+        for(int i = 0; i < HEX64_DIGIT_COUNT; i++) {
             int shift = HEX64_TOP_NIBBLE_SHIFT - i * BITS_PER_HEX_DIGIT;
             int digit = (value >> shift) & HEX_DIGIT_MASK;
             hex_buffer[2 + i] = (digit < 10) ? ('0' + digit) : ('a' + digit - 10);
@@ -123,9 +123,9 @@ void put_dec(uint64_t value) {
     serial_put_dec(value);
 
     /* Output to framebuffer if ready */
-    if (framebuffer_ready) {
+    if(framebuffer_ready) {
         /* Special case for zero */
-        if (value == 0) {
+        if(value == 0) {
             fb_console_putc('0');
             return;
         }
@@ -136,7 +136,7 @@ void put_dec(uint64_t value) {
         dec_buffer[pos] = '\0';
 
         /* Extract digits from least to most significant */
-        while (value > 0) {
+        while(value > 0) {
             dec_buffer[--pos] = '0' + (value % DECIMAL_BASE);
             value /= DECIMAL_BASE;
         }

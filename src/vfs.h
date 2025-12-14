@@ -12,6 +12,10 @@
 
 #define O_RDONLY    0
 
+#define MAX_PATH 256
+#define MAX_ARGS 16
+#define MAX_ARG_LEN 64
+
 struct vnode_ops;
 
 struct vnode {

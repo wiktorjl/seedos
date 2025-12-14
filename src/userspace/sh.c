@@ -25,19 +25,19 @@ static int parse_line(char *line, char **argv) {
     int argc = 0;
     char *p = line;
 
-    while (*p && argc < MAX_ARGS - 1) {
+    while(*p && argc < MAX_ARGS - 1) {
         /* Skip whitespace */
-        while (*p == ' ' || *p == '\t') p++;
-        if (*p == '\0' || *p == '\n') break;
+        while(*p == ' ' || *p == '\t') p++;
+        if(*p == '\0' || *p == '\n') break;
 
         /* Start of argument */
         argv[argc++] = p;
 
         /* Find end of argument */
-        while (*p && *p != ' ' && *p != '\t' && *p != '\n') p++;
+        while(*p && *p != ' ' && *p != '\t' && *p != '\n') p++;
 
         /* Null-terminate argument */
-        if (*p) {
+        if(*p) {
             *p = '\0';
             p++;
         }
@@ -54,16 +54,16 @@ static int run_program(int argc, char **argv) {
 
     /* If path contains '/', use as-is */
     int has_slash = 0;
-    for (const char *p = argv[0]; *p; p++) {
-        if (*p == '/') {
+    for(const char *p = argv[0]; *p; p++) {
+        if(*p == '/') {
             has_slash = 1;
             break;
         }
     }
 
-    if (has_slash) {
+    if(has_slash) {
         strcpy(path, argv[0]);
-    } else {
+    }else {
         /* Try /bin/<name> */
         strcpy(path, "/bin/");
         strcat(path, argv[0]);
@@ -71,7 +71,7 @@ static int run_program(int argc, char **argv) {
 
     /* Run the program (blocking) */
     int exit_code = spawn(path, argv);
-    if (exit_code < 0) {
+    if(exit_code < 0) {
         printf("sh: %s: not found\n", argv[0]);
         return -1;
     }
@@ -90,9 +90,9 @@ int main(int argc, char **argv) {
     printf("SeedOS Shell\n");
     printf("Type 'exit' to quit\n\n");
 
-    while (1) {
+    while(1) {
         /* Get current directory for prompt */
-        if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        if(getcwd(cwd, sizeof(cwd)) == NULL) {
             strcpy(cwd, "?");
         }
 
@@ -100,36 +100,36 @@ int main(int argc, char **argv) {
         printf("%s $ ", cwd);
 
         /* Read a line */
-        if (fgets(line, sizeof(line), stdin) == NULL) {
+        if(fgets(line, sizeof(line), stdin) == NULL) {
             continue;
         }
 
         /* Remove trailing newline */
         size_t len = strlen(line);
-        if (len > 0 && line[len-1] == '\n') {
+        if(len > 0 && line[len-1] == '\n') {
             line[len-1] = '\0';
         }
 
         /* Skip empty lines */
-        if (line[0] == '\0') {
+        if(line[0] == '\0') {
             continue;
         }
 
         /* Parse the line */
         int nargs = parse_line(line, args);
-        if (nargs == 0) {
+        if(nargs == 0) {
             continue;
         }
 
         /* Built-in: exit */
-        if (strcmp(args[0], "exit") == 0) {
+        if(strcmp(args[0], "exit") == 0) {
             break;
         }
 
         /* Built-in: cd */
-        if (strcmp(args[0], "cd") == 0) {
+        if(strcmp(args[0], "cd") == 0) {
             const char *dir = (nargs > 1) ? args[1] : "/";
-            if (chdir(dir) != 0) {
+            if(chdir(dir) != 0) {
                 printf("cd: %s: no such directory\n", dir);
             }
             continue;

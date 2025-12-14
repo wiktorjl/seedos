@@ -13,14 +13,14 @@
 
 int elf_validate(const void *data, uint64_t size) {
     /* Need at least the ELF header */
-    if (size < sizeof(Elf64_Ehdr)) {
+    if(size < sizeof(Elf64_Ehdr)) {
         return -1;
     }
 
     const Elf64_Ehdr *ehdr = (const Elf64_Ehdr *)data;
 
     /* Check magic number */
-    if (ehdr->e_ident[EI_MAG0] != ELFMAG0 ||
+    if(ehdr->e_ident[EI_MAG0] != ELFMAG0 ||
         ehdr->e_ident[EI_MAG1] != ELFMAG1 ||
         ehdr->e_ident[EI_MAG2] != ELFMAG2 ||
         ehdr->e_ident[EI_MAG3] != ELFMAG3) {
@@ -28,33 +28,33 @@ int elf_validate(const void *data, uint64_t size) {
     }
 
     /* Check 64-bit */
-    if (ehdr->e_ident[EI_CLASS] != ELFCLASS64) {
+    if(ehdr->e_ident[EI_CLASS] != ELFCLASS64) {
         return -1;
     }
 
     /* Check little-endian */
-    if (ehdr->e_ident[EI_DATA] != ELFDATA2LSB) {
+    if(ehdr->e_ident[EI_DATA] != ELFDATA2LSB) {
         return -1;
     }
 
     /* Check executable type */
-    if (ehdr->e_type != ET_EXEC) {
+    if(ehdr->e_type != ET_EXEC) {
         return -1;
     }
 
     /* Check x86-64 architecture */
-    if (ehdr->e_machine != EM_X86_64) {
+    if(ehdr->e_machine != EM_X86_64) {
         return -1;
     }
 
     /* Check program headers exist */
-    if (ehdr->e_phoff == 0 || ehdr->e_phnum == 0) {
+    if(ehdr->e_phoff == 0 || ehdr->e_phnum == 0) {
         return -1;
     }
 
     /* Check program headers are within file */
     uint64_t ph_end = ehdr->e_phoff + (ehdr->e_phnum * ehdr->e_phentsize);
-    if (ph_end > size) {
+    if(ph_end > size) {
         return -1;
     }
 
@@ -75,7 +75,7 @@ static int load_segment(const Elf64_Phdr *ph, const uint8_t *file_base,
                         uint64_t pml4) {
     /* Determine page flags */
     uint64_t flags = PTE_PRESENT | PTE_USER;
-    if (ph->p_flags & PF_W) {
+    if(ph->p_flags & PF_W) {
         flags |= PTE_WRITABLE;
     }
 
@@ -90,10 +90,10 @@ static int load_segment(const Elf64_Phdr *ph, const uint8_t *file_base,
     uint64_t file_size = ph->p_filesz;
 
     /* Map and populate each page */
-    for (uint64_t vaddr = page_start; vaddr < page_end; vaddr += VMM_PAGE_SIZE) {
+    for(uint64_t vaddr = page_start; vaddr < page_end; vaddr += VMM_PAGE_SIZE) {
         /* Allocate physical page */
         uint64_t phys = pmm_alloc();
-        if (phys == 0) {
+        if(phys == 0) {
             return -1;
         }
 
@@ -112,7 +112,7 @@ static int load_segment(const Elf64_Phdr *ph, const uint8_t *file_base,
         uint64_t data_end = seg_start + file_size;
 
         /* Find overlap between page and file data */
-        if (page_vaddr_end > data_start && page_vaddr_start < data_end) {
+        if(page_vaddr_end > data_start && page_vaddr_start < data_end) {
             /* There is overlap - calculate copy bounds */
             uint64_t copy_start = (page_vaddr_start > data_start) ?
                                    page_vaddr_start : data_start;
@@ -131,7 +131,7 @@ static int load_segment(const Elf64_Phdr *ph, const uint8_t *file_base,
         }
 
         /* Map the page into the process address space */
-        if (vmm_map_page(pml4, vaddr, phys, flags) != 0) {
+        if(vmm_map_page(pml4, vaddr, phys, flags) != 0) {
             pmm_free(phys);
             return -1;
         }
@@ -142,7 +142,7 @@ static int load_segment(const Elf64_Phdr *ph, const uint8_t *file_base,
 
 int elf_load(const void *data, uint64_t size, uint64_t pml4, uint64_t *entry_out) {
     /* Validate first */
-    if (elf_validate(data, size) != 0) {
+    if(elf_validate(data, size) != 0) {
         return -1;
     }
 
@@ -153,26 +153,26 @@ int elf_load(const void *data, uint64_t size, uint64_t pml4, uint64_t *entry_out
     const Elf64_Phdr *phdr = (const Elf64_Phdr *)(file_base + ehdr->e_phoff);
 
     /* Process each program header */
-    for (uint16_t i = 0; i < ehdr->e_phnum; i++) {
+    for(uint16_t i = 0; i < ehdr->e_phnum; i++) {
         const Elf64_Phdr *ph = &phdr[i];
 
         /* Only load PT_LOAD segments */
-        if (ph->p_type != PT_LOAD) {
+        if(ph->p_type != PT_LOAD) {
             continue;
         }
 
         /* Skip empty segments */
-        if (ph->p_memsz == 0) {
+        if(ph->p_memsz == 0) {
             continue;
         }
 
         /* Validate segment is within file */
-        if (ph->p_filesz > 0 && ph->p_offset + ph->p_filesz > size) {
+        if(ph->p_filesz > 0 && ph->p_offset + ph->p_filesz > size) {
             return -1;
         }
 
         /* Load this segment */
-        if (load_segment(ph, file_base, pml4) != 0) {
+        if(load_segment(ph, file_base, pml4) != 0) {
             return -1;
         }
     }

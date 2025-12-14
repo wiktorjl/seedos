@@ -15,7 +15,7 @@
  * Example Usage:
  *
  *   struct process *p = process_create();
- *   if (p) {
+ *   if(p) {
  *       process_load_elf(p, elf_data, elf_size);
  *       int exit_code = process_run(p);
  *       process_destroy(p);
@@ -72,7 +72,7 @@ struct process {
     char cwd[256];          /* Current working directory (per-process, inherited on fork/exec) */
 
     enum process_state state;
-    int wait_pid;           /* PID this process is waiting for (if PROC_BLOCKED) */
+    int wait_pid;           /* PID this process is waiting for(if PROC_BLOCKED) */
 
      /* Saved CPU context for preemption */
      uint64_t saved_rip;

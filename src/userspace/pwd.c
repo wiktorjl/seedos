@@ -13,7 +13,7 @@ int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
-    if (getcwd(buf, sizeof(buf)) == NULL) {
+    if(getcwd(buf, sizeof(buf)) == NULL) {
         fprintf(stderr, "pwd: cannot get current directory\n");
         return 1;
     }

@@ -171,11 +171,11 @@ void keyboard_handler(void) {
      * Handle shift key press/release.
      * We track shift state separately because it modifies other keys.
      */
-    if (scancode == SCANCODE_LEFT_SHIFT || scancode == SCANCODE_RIGHT_SHIFT) {
+    if(scancode == SCANCODE_LEFT_SHIFT || scancode == SCANCODE_RIGHT_SHIFT) {
         shift_held = 1;
         return;
     }
-    if (scancode == SCANCODE_LEFT_SHIFT_UP || scancode == SCANCODE_RIGHT_SHIFT_UP) {
+    if(scancode == SCANCODE_LEFT_SHIFT_UP || scancode == SCANCODE_RIGHT_SHIFT_UP) {
         shift_held = 0;
         return;
     }
@@ -184,7 +184,7 @@ void keyboard_handler(void) {
      * Ignore key release events (except shift, handled above).
      * Release scancodes have the high bit set.
      */
-    if (scancode & SCANCODE_RELEASE_BIT) {
+    if(scancode & SCANCODE_RELEASE_BIT) {
         return;
     }
 
@@ -193,10 +193,10 @@ void keyboard_handler(void) {
      * Use shifted table if shift is held, normal table otherwise.
      */
     char ascii = 0;
-    if (scancode < SCANCODE_TABLE_SIZE) {
-        if (shift_held) {
+    if(scancode < SCANCODE_TABLE_SIZE) {
+        if(shift_held) {
             ascii = scancode_to_ascii_shifted[scancode];
-        } else {
+        }else {
             ascii = scancode_to_ascii_normal[scancode];
         }
     }
@@ -205,9 +205,9 @@ void keyboard_handler(void) {
      * Add character to buffer if it's printable.
      * Silently drop if buffer is full (better than blocking in IRQ handler).
      */
-    if (ascii != 0) {
+    if(ascii != 0) {
         int next_write_pos = (buffer_write_pos + 1) % INPUT_BUFFER_SIZE;
-        if (next_write_pos != buffer_read_pos) {  /* Not full */
+        if(next_write_pos != buffer_read_pos) {  /* Not full */
             input_buffer[buffer_write_pos] = ascii;
             buffer_write_pos = next_write_pos;
         }
@@ -231,7 +231,7 @@ int keyboard_has_char(void) {
  */
 char keyboard_get_char(void) {
     /* Check if buffer is empty */
-    if (buffer_read_pos == buffer_write_pos) {
+    if(buffer_read_pos == buffer_write_pos) {
         return 0;
     }
 
@@ -245,9 +245,9 @@ char keyboard_get_char(void) {
 size_t keyboard_read(char *buf, size_t len) {
     size_t bytes_read = 0;
 
-    while (bytes_read < len) {
+    while(bytes_read < len) {
         char c = keyboard_get_char();
-        if (c == 0) {
+        if(c == 0) {
             break;  /* No more characters available */
         }
         buf[bytes_read++] = c;
@@ -268,7 +268,7 @@ size_t keyboard_read(char *buf, size_t len) {
  */
 void keyboard_wait(void) {
     /* Fast path: data already available */
-    if (keyboard_has_char()) {
+    if(keyboard_has_char()) {
         return;
     }
 
@@ -278,7 +278,7 @@ void keyboard_wait(void) {
      * after hlt begins, preventing a race where we enable interrupts,
      * the interrupt fires immediately, and we then halt forever.
      */
-    while (!keyboard_has_char()) {
+    while(!keyboard_has_char()) {
         __asm__ volatile("sti; hlt; cli");
     }
 

@@ -22,13 +22,13 @@ int main(int argc, char **argv) {
     hours %= 24;
 
     printf("up ");
-    if (days > 0) {
+    if(days > 0) {
         printf("%lu day%s, ", days, days == 1 ? "" : "s");
     }
-    if (hours > 0) {
+    if(hours > 0) {
         printf("%lu hour%s, ", hours, hours == 1 ? "" : "s");
     }
-    if (minutes > 0) {
+    if(minutes > 0) {
         printf("%lu minute%s, ", minutes, minutes == 1 ? "" : "s");
     }
     printf("%lu second%s\n", seconds, seconds == 1 ? "" : "s");

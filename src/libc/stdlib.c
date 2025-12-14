@@ -31,7 +31,7 @@ struct block_header {
 static struct block_header *free_list = NULL;
 
 void *malloc(size_t size) {
-    if (size == 0) {
+    if(size == 0) {
         return NULL;
     }
 
@@ -41,15 +41,15 @@ void *malloc(size_t size) {
     struct block_header *prev = NULL;
     struct block_header *curr = free_list;
 
-    while (curr) {
-        if (curr->free && curr->size >= size) {
+    while(curr) {
+        if(curr->free && curr->size >= size) {
             /* Found a fit - mark as allocated */
             curr->free = 0;
 
             /* Remove from free list */
-            if (prev) {
+            if(prev) {
                 prev->next = curr->next;
-            } else {
+            }else {
                 free_list = curr->next;
             }
 
@@ -62,7 +62,7 @@ void *malloc(size_t size) {
     /* No free block found - extend heap with sbrk */
     size_t total = HEADER_SIZE + size;
     struct block_header *block = (struct block_header *)__syscall1(__NR_sbrk, total);
-    if (block == (void *)-1) {
+    if(block == (void *)-1) {
         return NULL;
     }
 
@@ -75,14 +75,14 @@ void *malloc(size_t size) {
 }
 
 void free(void *ptr) {
-    if (!ptr) {
+    if(!ptr) {
         return;
     }
 
     struct block_header *block = (struct block_header *)ptr - 1;
 
     /* Validate block */
-    if (block->magic != BLOCK_MAGIC) {
+    if(block->magic != BLOCK_MAGIC) {
         return;  /* Invalid pointer - silently ignore */
     }
 
@@ -95,17 +95,17 @@ void free(void *ptr) {
 void *calloc(size_t nmemb, size_t size) {
     size_t total = nmemb * size;
     void *ptr = malloc(total);
-    if (ptr) {
+    if(ptr) {
         memset(ptr, 0, total);
     }
     return ptr;
 }
 
 void *realloc(void *ptr, size_t size) {
-    if (!ptr) {
+    if(!ptr) {
         return malloc(size);
     }
-    if (size == 0) {
+    if(size == 0) {
         free(ptr);
         return NULL;
     }
@@ -113,18 +113,18 @@ void *realloc(void *ptr, size_t size) {
     struct block_header *block = (struct block_header *)ptr - 1;
 
     /* Validate block */
-    if (block->magic != BLOCK_MAGIC) {
+    if(block->magic != BLOCK_MAGIC) {
         return NULL;
     }
 
     /* If already big enough, return same pointer */
-    if (block->size >= size) {
+    if(block->size >= size) {
         return ptr;
     }
 
     /* Allocate new block and copy */
     void *new_ptr = malloc(size);
-    if (new_ptr) {
+    if(new_ptr) {
         memcpy(new_ptr, ptr, block->size);
         free(ptr);
     }
@@ -153,20 +153,20 @@ int atoi(const char *nptr) {
     int sign = 1;
 
     /* Skip whitespace */
-    while (isspace(*nptr)) {
+    while(isspace(*nptr)) {
         nptr++;
     }
 
     /* Handle sign */
-    if (*nptr == '-') {
+    if(*nptr == '-') {
         sign = -1;
         nptr++;
-    } else if (*nptr == '+') {
+    }else if(*nptr == '+') {
         nptr++;
     }
 
     /* Parse digits */
-    while (isdigit(*nptr)) {
+    while(isdigit(*nptr)) {
         result = result * 10 + (*nptr - '0');
         nptr++;
     }
@@ -188,51 +188,51 @@ long strtol(const char *nptr, char **endptr, int base) {
     const char *start = nptr;
 
     /* Skip whitespace */
-    while (isspace(*nptr)) {
+    while(isspace(*nptr)) {
         nptr++;
     }
 
     /* Handle sign */
-    if (*nptr == '-') {
+    if(*nptr == '-') {
         sign = -1;
         nptr++;
-    } else if (*nptr == '+') {
+    }else if(*nptr == '+') {
         nptr++;
     }
 
     /* Handle base prefix */
-    if (base == 0) {
-        if (*nptr == '0') {
+    if(base == 0) {
+        if(*nptr == '0') {
             nptr++;
-            if (*nptr == 'x' || *nptr == 'X') {
+            if(*nptr == 'x' || *nptr == 'X') {
                 base = 16;
                 nptr++;
-            } else {
+            }else {
                 base = 8;
             }
-        } else {
+        }else {
             base = 10;
         }
-    } else if (base == 16) {
-        if (*nptr == '0' && (*(nptr + 1) == 'x' || *(nptr + 1) == 'X')) {
+    }else if(base == 16) {
+        if(*nptr == '0' && (*(nptr + 1) == 'x' || *(nptr + 1) == 'X')) {
             nptr += 2;
         }
     }
 
     /* Parse digits */
-    while (*nptr) {
+    while(*nptr) {
         int digit;
-        if (isdigit(*nptr)) {
+        if(isdigit(*nptr)) {
             digit = *nptr - '0';
-        } else if (*nptr >= 'a' && *nptr <= 'z') {
+        }else if(*nptr >= 'a' && *nptr <= 'z') {
             digit = *nptr - 'a' + 10;
-        } else if (*nptr >= 'A' && *nptr <= 'Z') {
+        }else if(*nptr >= 'A' && *nptr <= 'Z') {
             digit = *nptr - 'A' + 10;
-        } else {
+        }else {
             break;
         }
 
-        if (digit >= base) {
+        if(digit >= base) {
             break;
         }
 
@@ -240,7 +240,7 @@ long strtol(const char *nptr, char **endptr, int base) {
         nptr++;
     }
 
-    if (endptr) {
+    if(endptr) {
         *endptr = (char *)(nptr == start ? start : nptr);
     }
 
@@ -291,7 +291,7 @@ void srand(unsigned int seed) {
 static void swap_bytes(void *a, void *b, size_t size) {
     unsigned char *pa = (unsigned char *)a;
     unsigned char *pb = (unsigned char *)b;
-    for (size_t i = 0; i < size; i++) {
+    for(size_t i = 0; i < size; i++) {
         unsigned char tmp = pa[i];
         pa[i] = pb[i];
         pb[i] = tmp;
@@ -300,27 +300,27 @@ static void swap_bytes(void *a, void *b, size_t size) {
 
 static void qsort_impl(void *base, size_t nmemb, size_t size,
                        int (*compar)(const void *, const void *)) {
-    if (nmemb <= 1) return;
+    if(nmemb <= 1) return;
 
     unsigned char *arr = (unsigned char *)base;
     unsigned char *pivot = arr + (nmemb - 1) * size;
 
     size_t i = 0;
-    for (size_t j = 0; j < nmemb - 1; j++) {
-        if (compar(arr + j * size, pivot) < 0) {
+    for(size_t j = 0; j < nmemb - 1; j++) {
+        if(compar(arr + j * size, pivot) < 0) {
             swap_bytes(arr + i * size, arr + j * size, size);
             i++;
         }
     }
     swap_bytes(arr + i * size, pivot, size);
 
-    if (i > 1) qsort_impl(arr, i, size, compar);
-    if (nmemb - i - 1 > 1) qsort_impl(arr + (i + 1) * size, nmemb - i - 1, size, compar);
+    if(i > 1) qsort_impl(arr, i, size, compar);
+    if(nmemb - i - 1 > 1) qsort_impl(arr + (i + 1) * size, nmemb - i - 1, size, compar);
 }
 
 void qsort(void *base, size_t nmemb, size_t size,
            int (*compar)(const void *, const void *)) {
-    if (!base || nmemb <= 1 || size == 0) return;
+    if(!base || nmemb <= 1 || size == 0) return;
     qsort_impl(base, nmemb, size, compar);
 }
 
@@ -333,15 +333,15 @@ void *bsearch(const void *key, const void *base, size_t nmemb, size_t size,
     size_t low = 0;
     size_t high = nmemb;
 
-    while (low < high) {
+    while(low < high) {
         size_t mid = low + (high - low) / 2;
         const void *elem = arr + mid * size;
         int cmp = compar(key, elem);
-        if (cmp < 0) {
+        if(cmp < 0) {
             high = mid;
-        } else if (cmp > 0) {
+        }else if(cmp > 0) {
             low = mid + 1;
-        } else {
+        }else {
             return (void *)elem;
         }
     }

@@ -54,8 +54,8 @@ static int _file_pool_used[FOPEN_MAX];
 
 /* Allocate a FILE from the pool */
 static FILE *alloc_file(void) {
-    for (int i = 0; i < FOPEN_MAX; i++) {
-        if (!_file_pool_used[i]) {
+    for(int i = 0; i < FOPEN_MAX; i++) {
+        if(!_file_pool_used[i]) {
             _file_pool_used[i] = 1;
             memset(&_file_pool[i], 0, sizeof(FILE));
             return &_file_pool[i];
@@ -66,8 +66,8 @@ static FILE *alloc_file(void) {
 
 /* Free a FILE back to the pool */
 static void free_file(FILE *fp) {
-    for (int i = 0; i < FOPEN_MAX; i++) {
-        if (&_file_pool[i] == fp) {
+    for(int i = 0; i < FOPEN_MAX; i++) {
+        if(&_file_pool[i] == fp) {
             _file_pool_used[i] = 0;
             return;
         }
@@ -79,32 +79,32 @@ FILE *fopen(const char *path, const char *mode) {
     int file_flags = 0;
 
     /* Parse mode string */
-    if (mode[0] == 'r') {
+    if(mode[0] == 'r') {
         flags = O_RDONLY;
         file_flags = _F_READ;
-    } else if (mode[0] == 'w') {
+    }else if(mode[0] == 'w') {
         flags = O_WRONLY | O_CREAT | O_TRUNC;
         file_flags = _F_WRITE;
-    } else if (mode[0] == 'a') {
+    }else if(mode[0] == 'a') {
         flags = O_WRONLY | O_CREAT | O_APPEND;
         file_flags = _F_WRITE;
-    } else {
+    }else {
         return NULL;
     }
 
     /* Check for '+' (read/write) */
-    if (mode[1] == '+' || (mode[1] && mode[2] == '+')) {
+    if(mode[1] == '+' || (mode[1] && mode[2] == '+')) {
         flags = O_RDWR | (flags & ~(O_RDONLY | O_WRONLY));
         file_flags = _F_READ | _F_WRITE;
     }
 
     int fd = open(path, flags);
-    if (fd < 0) {
+    if(fd < 0) {
         return NULL;
     }
 
     FILE *fp = alloc_file();
-    if (!fp) {
+    if(!fp) {
         close(fd);
         return NULL;
     }
@@ -120,7 +120,7 @@ FILE *fopen(const char *path, const char *mode) {
 }
 
 int fclose(FILE *stream) {
-    if (!stream) {
+    if(!stream) {
         return EOF;
     }
 
@@ -128,7 +128,7 @@ int fclose(FILE *stream) {
     fflush(stream);
 
     /* Free allocated buffer */
-    if (stream->flags & _F_ALLOC) {
+    if(stream->flags & _F_ALLOC) {
         free(stream->buf);
     }
 
@@ -141,14 +141,14 @@ int fclose(FILE *stream) {
 }
 
 int fflush(FILE *stream) {
-    if (!stream) {
+    if(!stream) {
         return 0;  /* Flush all - not implemented */
     }
 
     /* Flush write buffer */
-    if ((stream->flags & _F_WRITE) && stream->bufpos > 0) {
+    if((stream->flags & _F_WRITE) && stream->bufpos > 0) {
         ssize_t written = write(stream->fd, stream->buf, stream->bufpos);
-        if (written < 0) {
+        if(written < 0) {
             stream->flags |= _F_ERR;
             return EOF;
         }
@@ -159,20 +159,20 @@ int fflush(FILE *stream) {
 }
 
 int fgetc(FILE *stream) {
-    if (!stream || !(stream->flags & _F_READ)) {
+    if(!stream || !(stream->flags & _F_READ)) {
         return EOF;
     }
 
-    if (stream->flags & _F_EOF) {
+    if(stream->flags & _F_EOF) {
         return EOF;
     }
 
     unsigned char c;
     ssize_t n = read(stream->fd, &c, 1);
-    if (n <= 0) {
-        if (n == 0) {
+    if(n <= 0) {
+        if(n == 0) {
             stream->flags |= _F_EOF;
-        } else {
+        }else {
             stream->flags |= _F_ERR;
         }
         return EOF;
@@ -186,21 +186,21 @@ int getc(FILE *stream) {
 }
 
 char *fgets(char *s, int size, FILE *stream) {
-    if (!s || size <= 0 || !stream) {
+    if(!s || size <= 0 || !stream) {
         return NULL;
     }
 
     int i = 0;
-    while (i < size - 1) {
+    while(i < size - 1) {
         int c = fgetc(stream);
-        if (c == EOF) {
-            if (i == 0) {
+        if(c == EOF) {
+            if(i == 0) {
                 return NULL;  /* EOF at start */
             }
             break;
         }
         s[i++] = (char)c;
-        if (c == '\n') {
+        if(c == '\n') {
             break;
         }
     }
@@ -210,13 +210,13 @@ char *fgets(char *s, int size, FILE *stream) {
 }
 
 int fputc(int c, FILE *stream) {
-    if (!stream || !(stream->flags & _F_WRITE)) {
+    if(!stream || !(stream->flags & _F_WRITE)) {
         return EOF;
     }
 
     unsigned char ch = (unsigned char)c;
     ssize_t n = write(stream->fd, &ch, 1);
-    if (n != 1) {
+    if(n != 1) {
         stream->flags |= _F_ERR;
         return EOF;
     }
@@ -225,13 +225,13 @@ int fputc(int c, FILE *stream) {
 }
 
 int fputs(const char *s, FILE *stream) {
-    if (!s || !stream) {
+    if(!s || !stream) {
         return EOF;
     }
 
     size_t len = strlen(s);
     ssize_t n = write(stream->fd, s, len);
-    if (n < 0) {
+    if(n < 0) {
         stream->flags |= _F_ERR;
         return EOF;
     }
@@ -240,20 +240,20 @@ int fputs(const char *s, FILE *stream) {
 }
 
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
-    if (!ptr || !stream || size == 0 || nmemb == 0) {
+    if(!ptr || !stream || size == 0 || nmemb == 0) {
         return 0;
     }
 
-    if (!(stream->flags & _F_READ)) {
+    if(!(stream->flags & _F_READ)) {
         return 0;
     }
 
     size_t total = size * nmemb;
     ssize_t n = read(stream->fd, ptr, total);
-    if (n <= 0) {
-        if (n == 0) {
+    if(n <= 0) {
+        if(n == 0) {
             stream->flags |= _F_EOF;
-        } else {
+        }else {
             stream->flags |= _F_ERR;
         }
         return 0;
@@ -263,17 +263,17 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
 }
 
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
-    if (!ptr || !stream || size == 0 || nmemb == 0) {
+    if(!ptr || !stream || size == 0 || nmemb == 0) {
         return 0;
     }
 
-    if (!(stream->flags & _F_WRITE)) {
+    if(!(stream->flags & _F_WRITE)) {
         return 0;
     }
 
     size_t total = size * nmemb;
     ssize_t n = write(stream->fd, ptr, total);
-    if (n < 0) {
+    if(n < 0) {
         stream->flags |= _F_ERR;
         return 0;
     }
@@ -282,7 +282,7 @@ size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
 }
 
 int fseek(FILE *stream, long offset, int whence) {
-    if (!stream) {
+    if(!stream) {
         return -1;
     }
 
@@ -290,7 +290,7 @@ int fseek(FILE *stream, long offset, int whence) {
     fflush(stream);
 
     off_t ret = lseek(stream->fd, offset, whence);
-    if (ret < 0) {
+    if(ret < 0) {
         return -1;
     }
 
@@ -303,7 +303,7 @@ int fseek(FILE *stream, long offset, int whence) {
 }
 
 long ftell(FILE *stream) {
-    if (!stream) {
+    if(!stream) {
         return -1;
     }
 
@@ -311,7 +311,7 @@ long ftell(FILE *stream) {
 }
 
 void rewind(FILE *stream) {
-    if (stream) {
+    if(stream) {
         fseek(stream, 0, SEEK_SET);
         clearerr(stream);
     }
@@ -326,7 +326,7 @@ int ferror(FILE *stream) {
 }
 
 void clearerr(FILE *stream) {
-    if (stream) {
+    if(stream) {
         stream->flags &= ~(_F_EOF | _F_ERR);
     }
 }
@@ -344,7 +344,7 @@ int putchar(int c) {
 }
 
 int puts(const char *s) {
-    if (fputs(s, stdout) == EOF) {
+    if(fputs(s, stdout) == EOF) {
         return EOF;
     }
     return fputc('\n', stdout);
@@ -364,19 +364,19 @@ static int format_unsigned(char *buf, unsigned long n, int base, int uppercase) 
     char tmp[24];
     int i = 0;
 
-    if (n == 0) {
+    if(n == 0) {
         buf[0] = '0';
         return 1;
     }
 
-    while (n > 0) {
+    while(n > 0) {
         tmp[i++] = digits[n % base];
         n /= base;
     }
 
     int len = i;
     int j = 0;
-    while (i > 0) {
+    while(i > 0) {
         buf[j++] = tmp[--i];
     }
     return len;
@@ -387,12 +387,12 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap) {
 
     /* Helper macro to add a character */
     #define PUT(c) do { \
-        if (pos < size - 1) str[pos] = (c); \
+        if(pos < size - 1) str[pos] = (c); \
         pos++; \
     } while(0)
 
-    while (*format) {
-        if (*format != '%') {
+    while(*format) {
+        if(*format != '%') {
             PUT(*format++);
             continue;
         }
@@ -403,38 +403,38 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap) {
         int zero_pad = 0;
         int left_align = 0;
 
-        while (*format == '0' || *format == '-') {
-            if (*format == '0') zero_pad = 1;
-            if (*format == '-') left_align = 1;
+        while(*format == '0' || *format == '-') {
+            if(*format == '0') zero_pad = 1;
+            if(*format == '-') left_align = 1;
             format++;
         }
 
         /* Parse width - can be * for dynamic width */
         int width = 0;
-        if (*format == '*') {
+        if(*format == '*') {
             width = va_arg(ap, int);
-            if (width < 0) {
+            if(width < 0) {
                 left_align = 1;
                 width = -width;
             }
             format++;
-        } else {
-            while (*format >= '0' && *format <= '9') {
+        }else {
+            while(*format >= '0' && *format <= '9') {
                 width = width * 10 + (*format++ - '0');
             }
         }
 
         /* Parse precision */
         int precision = -1;  /* -1 means not specified */
-        if (*format == '.') {
+        if(*format == '.') {
             format++;
-            if (*format == '*') {
+            if(*format == '*') {
                 precision = va_arg(ap, int);
-                if (precision < 0) precision = 0;
+                if(precision < 0) precision = 0;
                 format++;
-            } else {
+            }else {
                 precision = 0;
-                while (*format >= '0' && *format <= '9') {
+                while(*format >= '0' && *format <= '9') {
                     precision = precision * 10 + (*format++ - '0');
                 }
             }
@@ -442,10 +442,10 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap) {
 
         /* Parse length modifier */
         int is_long = 0;
-        if (*format == 'l') {
+        if(*format == 'l') {
             is_long = 1;
             format++;
-            if (*format == 'l') {
+            if(*format == 'l') {
                 format++;  /* ll treated same as l for simplicity */
             }
         }
@@ -456,11 +456,11 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap) {
         int is_negative = 0;
         char pad_char = (zero_pad && !left_align) ? '0' : ' ';
 
-        switch (*format++) {
+        switch(*format++) {
             case 'd':
             case 'i': {
                 long val = is_long ? va_arg(ap, long) : va_arg(ap, int);
-                if (val < 0) {
+                if(val < 0) {
                     is_negative = 1;
                     val = -val;
                 }
@@ -500,30 +500,30 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap) {
 
             case 's': {
                 const char *s = va_arg(ap, const char *);
-                if (!s) s = "(null)";
+                if(!s) s = "(null)";
                 size_t slen = strlen(s);
 
                 /* Apply precision - limit string length */
-                if (precision >= 0 && (size_t)precision < slen) {
+                if(precision >= 0 && (size_t)precision < slen) {
                     slen = (size_t)precision;
                 }
 
                 /* Right padding for left align */
-                if (!left_align) {
-                    while (width > (int)slen) {
+                if(!left_align) {
+                    while(width > (int)slen) {
                         PUT(' ');
                         width--;
                     }
                 }
 
                 /* Print string up to slen characters */
-                for (size_t i = 0; i < slen; i++) {
+                for(size_t i = 0; i < slen; i++) {
                     PUT(s[i]);
                 }
 
                 /* Left padding for right align */
-                if (left_align) {
-                    while (width > (int)slen) {
+                if(left_align) {
+                    while(width > (int)slen) {
                         PUT(' ');
                         width--;
                     }
@@ -553,24 +553,24 @@ int vsnprintf(char *str, size_t size, const char *format, va_list ap) {
         int padding = (width > total_len) ? width - total_len : 0;
 
         /* Left-aligned: content first, then padding */
-        if (left_align) {
-            if (is_negative) PUT('-');
-            for (int i = 0; i < len; i++) PUT(buf[i]);
-            while (padding--) PUT(' ');
-        } else {
+        if(left_align) {
+            if(is_negative) PUT('-');
+            for(int i = 0; i < len; i++) PUT(buf[i]);
+            while(padding--) PUT(' ');
+        }else {
             /* Right-aligned: padding, then content */
-            if (pad_char == '0' && is_negative) {
+            if(pad_char == '0' && is_negative) {
                 PUT('-');
                 is_negative = 0;
             }
-            while (padding--) PUT(pad_char);
-            if (is_negative) PUT('-');
-            for (int i = 0; i < len; i++) PUT(buf[i]);
+            while(padding--) PUT(pad_char);
+            if(is_negative) PUT('-');
+            for(int i = 0; i < len; i++) PUT(buf[i]);
         }
     }
 
     /* Null-terminate */
-    if (size > 0) {
+    if(size > 0) {
         str[pos < size ? pos : size - 1] = '\0';
     }
 
@@ -603,7 +603,7 @@ int vfprintf(FILE *stream, const char *format, va_list ap) {
     char buf[1024];
     int len = vsnprintf(buf, sizeof(buf), format, ap);
     int to_write = len < (int)sizeof(buf) - 1 ? len : (int)sizeof(buf) - 1;
-    if (stream) {
+    if(stream) {
         fwrite(buf, 1, to_write, stream);
     }
     return len;

@@ -85,7 +85,7 @@ int keyboard_has_char(void);
  * This is non-blocking. Use keyboard_has_char() first to check
  * if input is available, or use a loop:
  *
- *   while (!keyboard_has_char()) { }
+ *   while(!keyboard_has_char()) { }
  *   char c = keyboard_get_char();
  */
 char keyboard_get_char(void);

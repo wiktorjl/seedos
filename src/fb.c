@@ -298,7 +298,7 @@ int fb_init(void *fb_response_ptr) {
     struct limine_framebuffer_response *response = fb_response_ptr;
 
     /* Validate response */
-    if (response == NULL || response->framebuffer_count < 1) {
+    if(response == NULL || response->framebuffer_count < 1) {
         return -1;
     }
 
@@ -313,7 +313,7 @@ int fb_init(void *fb_response_ptr) {
     framebuffer_bpp = fb->bpp;
 
     /* We only support 32-bit color (simplest to work with) */
-    if (framebuffer_bpp != 32) {
+    if(framebuffer_bpp != 32) {
         return -1;
     }
 
@@ -337,8 +337,8 @@ uint32_t fb_get_height(void) {
  * fb_clear - Fill entire screen with one color.
  */
 void fb_clear(uint32_t color) {
-    for (uint32_t y = 0; y < framebuffer_height; y++) {
-        for (uint32_t x = 0; x < framebuffer_width; x++) {
+    for(uint32_t y = 0; y < framebuffer_height; y++) {
+        for(uint32_t x = 0; x < framebuffer_width; x++) {
             fb_putpixel(x, y, color);
         }
     }
@@ -352,7 +352,7 @@ void fb_clear(uint32_t color) {
  */
 void fb_putpixel(uint32_t x, uint32_t y, uint32_t color) {
     /* Bounds check - silently ignore out-of-bounds coordinates */
-    if (x >= framebuffer_width || y >= framebuffer_height) {
+    if(x >= framebuffer_width || y >= framebuffer_height) {
         return;
     }
 
@@ -371,7 +371,7 @@ void fb_putpixel(uint32_t x, uint32_t y, uint32_t color) {
  */
 void fb_putchar_at(char c, uint32_t x, uint32_t y, uint32_t fg, uint32_t bg) {
     /* Clamp to printable ASCII range */
-    if (c < FONT_FIRST_CHAR || c > FONT_LAST_CHAR) {
+    if(c < FONT_FIRST_CHAR || c > FONT_LAST_CHAR) {
         c = '?';
     }
 
@@ -379,11 +379,11 @@ void fb_putchar_at(char c, uint32_t x, uint32_t y, uint32_t fg, uint32_t bg) {
     const uint8_t *glyph = font_8x16[c - FONT_FIRST_CHAR];
 
     /* Draw each row of the character */
-    for (int row = 0; row < FONT_HEIGHT; row++) {
+    for(int row = 0; row < FONT_HEIGHT; row++) {
         uint8_t row_bits = glyph[row];
 
         /* Draw each pixel in the row */
-        for (int col = 0; col < FONT_WIDTH; col++) {
+        for(int col = 0; col < FONT_WIDTH; col++) {
             /* Test bit from left to right (bit 7 = leftmost) */
             uint32_t pixel_color = (row_bits & (0x80 >> col)) ? fg : bg;
             fb_putpixel(x + col, y + row, pixel_color);
@@ -424,13 +424,13 @@ static void console_scroll(void) {
     uint32_t bytes_to_copy = (framebuffer_height - FONT_HEIGHT) * framebuffer_pitch;
 
     /* Copy all rows up (simple byte-by-byte copy) */
-    for (uint32_t i = 0; i < bytes_to_copy; i++) {
+    for(uint32_t i = 0; i < bytes_to_copy; i++) {
         dst[i] = src[i];
     }
 
     /* Clear the last row (fill with background color) */
-    for (uint32_t y = framebuffer_height - FONT_HEIGHT; y < framebuffer_height; y++) {
-        for (uint32_t x = 0; x < framebuffer_width; x++) {
+    for(uint32_t y = framebuffer_height - FONT_HEIGHT; y < framebuffer_height; y++) {
+        for(uint32_t x = 0; x < framebuffer_width; x++) {
             fb_putpixel(x, y, console_bg_color);
         }
     }
@@ -448,9 +448,9 @@ static void fb_hide_cursor(void) {
     uint32_t x = cursor_column * FONT_WIDTH;
     uint32_t y = cursor_row * FONT_HEIGHT;
 
-    if (cursor_style == FB_CURSOR_UNDERSCORE) {
+    if(cursor_style == FB_CURSOR_UNDERSCORE) {
         fb_putchar_at(' ', x, y, console_fg_color, console_bg_color);
-    } else {
+    }else {
         draw_block_cursor(x, y, console_bg_color);
     }
     cursor_blink_visible = 0;
@@ -463,26 +463,26 @@ void fb_console_putc(char c) {
     /* Erase cursor at old position before any movement */
     fb_hide_cursor();
 
-    if (c == '\n') {
+    if(c == '\n') {
         /* Newline: move to start of next line */
         cursor_column = 0;
         cursor_row++;
-    } else if (c == '\r') {
+    }else if(c == '\r') {
         /* Carriage return: move to start of current line */
         cursor_column = 0;
-    } else if (c == '\b') {
+    }else if(c == '\b') {
         /* Backspace: move back and erase character */
-        if (cursor_column > 0) {
+        if(cursor_column > 0) {
             cursor_column--;
             fb_putchar_at(' ',
                          cursor_column * FONT_WIDTH,
                          cursor_row * FONT_HEIGHT,
                          console_fg_color, console_bg_color);
         }
-    } else if (c == '\t') {
+    }else if(c == '\t') {
         /* Tab: advance to next tab stop (8-column intervals) */
         cursor_column = (cursor_column + TAB_WIDTH) & ~(TAB_WIDTH - 1);
-    } else {
+    }else {
         /* Regular character: draw and advance cursor */
         fb_putchar_at(c,
                      cursor_column * FONT_WIDTH,
@@ -492,13 +492,13 @@ void fb_console_putc(char c) {
     }
 
     /* Handle line wrap */
-    if (cursor_column >= console_columns) {
+    if(cursor_column >= console_columns) {
         cursor_column = 0;
         cursor_row++;
     }
 
     /* Handle scroll if we've gone past the bottom */
-    if (cursor_row >= console_rows) {
+    if(cursor_row >= console_rows) {
         console_scroll();
         cursor_row = console_rows - 1;
     }
@@ -508,7 +508,7 @@ void fb_console_putc(char c) {
  * fb_console_puts - Output a string to the console.
  */
 void fb_console_puts(const char *s) {
-    while (*s) {
+    while(*s) {
         fb_console_putc(*s++);
     }
 }
@@ -526,8 +526,8 @@ void fb_console_clear(void) {
  * draw_block_cursor - Draw a solid block cursor at the given position.
  */
 static void draw_block_cursor(uint32_t x, uint32_t y, uint32_t color) {
-    for (int row = 0; row < FONT_HEIGHT; row++) {
-        for (int col = 0; col < FONT_WIDTH; col++) {
+    for(int row = 0; row < FONT_HEIGHT; row++) {
+        for(int col = 0; col < FONT_WIDTH; col++) {
             fb_putpixel(x + col, y + row, color);
         }
     }
@@ -552,12 +552,12 @@ int fb_get_cursor_style(void) {
  */
 void fb_cursor_blink_tick(uint64_t current_ticks) {
     /* Only blink if framebuffer is initialized */
-    if (framebuffer_address == NULL) {
+    if(framebuffer_address == NULL) {
         return;
     }
 
     /* Check if it's time to toggle */
-    if (current_ticks - cursor_last_blink >= CURSOR_BLINK_RATE) {
+    if(current_ticks - cursor_last_blink >= CURSOR_BLINK_RATE) {
         cursor_blink_visible = !cursor_blink_visible;
         cursor_last_blink = current_ticks;
 
@@ -566,18 +566,18 @@ void fb_cursor_blink_tick(uint64_t current_ticks) {
         uint32_t y = cursor_row * FONT_HEIGHT;
 
         /* Draw or erase cursor based on style */
-        if (cursor_style == FB_CURSOR_UNDERSCORE) {
+        if(cursor_style == FB_CURSOR_UNDERSCORE) {
             /* Underscore cursor */
-            if (cursor_blink_visible) {
+            if(cursor_blink_visible) {
                 fb_putchar_at('_', x, y, console_fg_color, console_bg_color);
-            } else {
+            }else {
                 fb_putchar_at(' ', x, y, console_fg_color, console_bg_color);
             }
-        } else {
+        }else {
             /* Block cursor (default) */
-            if (cursor_blink_visible) {
+            if(cursor_blink_visible) {
                 draw_block_cursor(x, y, console_fg_color);
-            } else {
+            }else {
                 draw_block_cursor(x, y, console_bg_color);
             }
         }

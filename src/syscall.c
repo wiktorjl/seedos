@@ -72,7 +72,7 @@ struct kernel_dirent {
     uint64_t d_off;       /* Offset to next entry */
     uint16_t d_reclen;    /* Length of this record */
     uint8_t  d_type;      /* File type */
-    char     d_name[256]; /* Filename (null-terminated) */
+    char     d_name[MAX_PATH]; /* Filename (null-terminated) */
 };
 
 /* d_type values */
@@ -97,13 +97,13 @@ struct kernel_dirent {
 static int64_t sys_open(uint64_t path_ptr, uint64_t flags) {
     const char *path = (const char *)path_ptr;
 
-    if (!vmm_validate_user_range((const void *)path_ptr, 1)) {
+    if(!vmm_validate_user_range((const void *)path_ptr, 1)) {
         return -1;
     }
 
     /* Resolve path (handles ./, absolute, relative) */
     char full_path[PATH_MAX];
-    if (vfs_resolve_path(path, process_get_cwd(), full_path, sizeof(full_path)) != 0) {
+    if(vfs_resolve_path(path, process_get_cwd(), full_path, sizeof(full_path)) != 0) {
         return -1;
     }
 
@@ -112,14 +112,14 @@ static int64_t sys_open(uint64_t path_ptr, uint64_t flags) {
 
     // 4. Allocate fd
     int fd = vfs_alloc_fd(fdt);
-    if (fd == -1) {
+    if(fd == -1) {
         return -1;  // No free file descriptors
     }
 
     // 5. Open vnode
     struct vnode *vn = tarfs_open(full_path);
 
-    if (vn == NULL) {
+    if(vn == NULL) {
         vfs_free_fd(fdt, fd);
         return -1;  // File not found
     }
@@ -176,7 +176,7 @@ static int64_t sys_lseek(uint64_t fd, int64_t offset, uint64_t whence) {
         return -1;  // fd not in use
     }
     int64_t new_pos;
-    switch (whence) {
+    switch(whence) {
         case 0:  // SEEK_SET
             new_pos = offset;
             break;
@@ -252,22 +252,22 @@ static uint64_t sys_write(uint64_t fd, uint64_t buffer, uint64_t count) {
     const char *buf = (const char *)buffer;
 
     /* Writing 0 bytes is a no-op */
-    if (count == 0) {
+    if(count == 0) {
         return 0;
     }
 
-    if (!vmm_validate_user_range((const void *)buffer, count)) {
+    if(!vmm_validate_user_range((const void *)buffer, count)) {
         puts("Error: Invalid user buffer address\n");
         return 0;
     }
 
     /* Support stdout and stderr - both go to console */
-    if (fd != FD_STDOUT && fd != FD_STDERR) {
+    if(fd != FD_STDOUT && fd != FD_STDERR) {
         return 0;
     }
 
     /* Write each byte to the console */
-    for (uint64_t i = 0; i < count; i++) {
+    for(uint64_t i = 0; i < count; i++) {
         putc(buf[i]);
     }
 
@@ -278,16 +278,16 @@ static uint64_t sys_read(uint64_t fd, uint64_t buffer, uint64_t count) {
     char *buf = (char *)buffer;
 
     /* Reading 0 bytes is a no-op */
-    if (count == 0) {
+    if(count == 0) {
         return 0;
     }
 
-    if (!vmm_validate_user_range((const void *)buffer, count)) {
+    if(!vmm_validate_user_range((const void *)buffer, count)) {
         puts("Error: Invalid user buffer address\n");
         return 0;
     }
 
-    if (fd == FD_STDIN) {
+    if(fd == FD_STDIN) {
         /*
          * Canonical (line-buffered) mode for stdin:
          * - Echo characters as they're typed
@@ -301,14 +301,14 @@ static uint64_t sys_read(uint64_t fd, uint64_t buffer, uint64_t count) {
         static size_t input_pos = 0;  /* Position while building current line */
 
         /* If we have remaining data from previous line, return that first */
-        if (line_read < line_len) {
+        if(line_read < line_len) {
             size_t remaining = line_len - line_read;
             size_t to_copy = remaining < count ? remaining : count;
             memcpy(buf, line_buffer + line_read, to_copy);
             line_read += to_copy;
 
             /* If line fully consumed, reset for next line */
-            if (line_read >= line_len) {
+            if(line_read >= line_len) {
                 line_len = 0;
                 line_read = 0;
             }
@@ -317,19 +317,19 @@ static uint64_t sys_read(uint64_t fd, uint64_t buffer, uint64_t count) {
 
         /* Read characters until we get a newline */
         input_pos = 0;
-        while (1) {
+        while(1) {
             /* Wait for a character - block if none available */
             char c = 0;
-            while (c == 0) {
+            while(c == 0) {
                 size_t n = keyboard_read(&c, 1);
-                if (n == 0) {
+                if(n == 0) {
                     /* Block until keyboard input available */
                     keyboard_wait();
                     c = 0;
                 }
             }
 
-            if (c == '\n' || c == '\r') {
+            if(c == '\n' || c == '\r') {
                 /* Newline - echo it and complete the line */
                 putc('\n');
                 line_buffer[input_pos++] = '\n';
@@ -342,29 +342,29 @@ static uint64_t sys_read(uint64_t fd, uint64_t buffer, uint64_t count) {
                 line_read = to_copy;
 
                 /* If line fully consumed, reset */
-                if (line_read >= line_len) {
+                if(line_read >= line_len) {
                     line_len = 0;
                     line_read = 0;
                 }
                 return to_copy;
-            } else if (c == '\b' || c == 127) {
+            }else if(c == '\b' || c == 127) {
                 /* Backspace - remove last character if any */
-                if (input_pos > 0) {
+                if(input_pos > 0) {
                     input_pos--;
                     putc('\b');
                     putc(' ');
                     putc('\b');
                 }
-            } else if (c >= 32 && c < 127) {
+            }else if(c >= 32 && c < 127) {
                 /* Printable character - add to buffer if room */
-                if (input_pos < sizeof(line_buffer) - 1) {
+                if(input_pos < sizeof(line_buffer) - 1) {
                     line_buffer[input_pos++] = c;
                     putc(c);  /* Echo */
                 }
             }
             /* Ignore other control characters */
         }
-    } else {
+    }else {
         struct fd_table *fdt = process_get_fd_table();
         struct file_descriptor *file_desc = vfs_get_fd(fdt, (int)fd);
         if( file_desc == NULL) {
@@ -400,28 +400,28 @@ static int64_t sys_stat(uint64_t path_ptr, uint64_t buf_ptr) {
     struct kernel_stat *buf = (struct kernel_stat *)buf_ptr;
 
     /* Validate pointers */
-    if (!vmm_validate_user_range((const void *)path_ptr, 1)) {
+    if(!vmm_validate_user_range((const void *)path_ptr, 1)) {
         return -1;
     }
-    if (!vmm_validate_user_range((const void *)buf_ptr, sizeof(struct kernel_stat))) {
+    if(!vmm_validate_user_range((const void *)buf_ptr, sizeof(struct kernel_stat))) {
         return -1;
     }
 
     /* Resolve path (handles ./, absolute, relative) */
     char full_path[PATH_MAX];
-    if (vfs_resolve_path(path, process_get_cwd(), full_path, sizeof(full_path)) != 0) {
+    if(vfs_resolve_path(path, process_get_cwd(), full_path, sizeof(full_path)) != 0) {
         return -1;
     }
 
     /* Find file in tarfs */
     struct tar_file *tf;
-    if (full_path[0] == '\0') {
+    if(full_path[0] == '\0') {
         /* Root directory - use synthetic entry */
         static struct tar_file root_entry = { .name = "", .is_dir = 1, .size = 0 };
         tf = &root_entry;
-    } else {
+    }else {
         tf = tar_find(full_path);
-        if (tf == NULL) {
+        if(tf == NULL) {
             return -1;  /* File not found */
         }
     }
@@ -447,18 +447,18 @@ static int64_t sys_stat(uint64_t path_ptr, uint64_t buf_ptr) {
 static int64_t sys_fstat(uint64_t fd, uint64_t buf_ptr) {
     struct kernel_stat *buf = (struct kernel_stat *)buf_ptr;
 
-    if (!vmm_validate_user_range((const void *)buf_ptr, sizeof(struct kernel_stat))) {
+    if(!vmm_validate_user_range((const void *)buf_ptr, sizeof(struct kernel_stat))) {
         return -1;
     }
 
-    if (fd >= MAX_FDS) {
+    if(fd >= MAX_FDS) {
         return -1;
     }
 
     struct fd_table *fdt = process_get_fd_table();
     struct file_descriptor *file_desc = vfs_get_fd(fdt, (int)fd);
 
-    if (file_desc == NULL) {
+    if(file_desc == NULL) {
         return -1;
     }
 
@@ -495,19 +495,19 @@ static void getdents_callback(const char *name, size_t size, int is_dir, void *c
     /* Calculate entry size (fixed-size for simplicity) */
     size_t name_len = strlen(name);
     /* Remove trailing slash from directory names */
-    if (name_len > 0 && name[name_len - 1] == '/') {
+    if(name_len > 0 && name[name_len - 1] == '/') {
         name_len--;
     }
 
     /* Skip empty names, "/" and "./" entries */
-    if (name_len == 0 || strcmp(name, "/") == 0 || strcmp(name, "./") == 0) {
+    if(name_len == 0 || strcmp(name, "/") == 0 || strcmp(name, "./") == 0) {
         return;
     }
 
     size_t reclen = sizeof(struct kernel_dirent);
 
     /* Check if we have space */
-    if (ctx->bytes_written + reclen > ctx->buf_size) {
+    if(ctx->bytes_written + reclen > ctx->buf_size) {
         return;  /* No more space */
     }
 
@@ -519,7 +519,7 @@ static void getdents_callback(const char *name, size_t size, int is_dir, void *c
     ent->d_type = is_dir ? DT_DIR : DT_REG;
 
     /* Copy name without trailing slash */
-    if (name_len >= sizeof(ent->d_name)) {
+    if(name_len >= sizeof(ent->d_name)) {
         name_len = sizeof(ent->d_name) - 1;
     }
     memcpy(ent->d_name, name, name_len);
@@ -537,40 +537,40 @@ static void getdents_callback(const char *name, size_t size, int is_dir, void *c
  * Uses file position to track if we've already returned entries.
  */
 static int64_t sys_getdents(uint64_t fd, uint64_t buf_ptr, uint64_t count) {
-    if (!vmm_validate_user_range((const void *)buf_ptr, count)) {
+    if(!vmm_validate_user_range((const void *)buf_ptr, count)) {
         return -1;
     }
 
-    if (fd >= MAX_FDS) {
+    if(fd >= MAX_FDS) {
         return -1;
     }
 
     struct fd_table *fdt = process_get_fd_table();
     struct file_descriptor *file_desc = vfs_get_fd(fdt, (int)fd);
 
-    if (file_desc == NULL) {
+    if(file_desc == NULL) {
         return -1;
     }
 
     struct vnode *vn = file_desc->vn;
-    if (vn->type != VNODE_DIR) {
+    if(vn->type != VNODE_DIR) {
         return -1;  /* Not a directory */
     }
 
     /* Use position to track if we've already read the directory */
-    if (file_desc->position != 0) {
+    if(file_desc->position != 0) {
         return 0;  /* Already read, return EOF */
     }
 
     struct tar_file *tf = (struct tar_file *)vn->fs_data;
 
     /* Get directory path (remove trailing slash for matching) */
-    char dir_path[256];
+    char dir_path[MAX_PATH];
     strncpy(dir_path, tf->name, sizeof(dir_path) - 1);
     dir_path[sizeof(dir_path) - 1] = '\0';
 
     size_t len = strlen(dir_path);
-    if (len > 0 && dir_path[len - 1] == '/') {
+    if(len > 0 && dir_path[len - 1] == '/') {
         dir_path[len - 1] = '\0';
     }
 
@@ -594,14 +594,14 @@ static int64_t sys_getdents(uint64_t fd, uint64_t buf_ptr, uint64_t count) {
  * sys_getcwd - Get current working directory.
  */
 static int64_t sys_getcwd(uint64_t buf_ptr, uint64_t size) {
-    if (!vmm_validate_user_range((const void *)buf_ptr, size)) {
+    if(!vmm_validate_user_range((const void *)buf_ptr, size)) {
         return -1;
     }
 
     const char *cwd = process_get_cwd();
     size_t cwd_len = strlen(cwd) + 1;
 
-    if (cwd_len > size) {
+    if(cwd_len > size) {
         return -1;  /* Buffer too small */
     }
 
@@ -621,43 +621,43 @@ static int64_t sys_getcwd(uint64_t buf_ptr, uint64_t size) {
 static int64_t sys_chdir(uint64_t path_ptr) {
     const char *path = (const char *)path_ptr;
 
-    if (!vmm_validate_user_range((const void *)path_ptr, 1)) {
+    if(!vmm_validate_user_range((const void *)path_ptr, 1)) {
         return -1;
     }
 
     /* Handle root directory */
-    if (strcmp(path, "/") == 0) {
+    if(strcmp(path, "/") == 0) {
         process_set_cwd("/");
         return 0;
     }
 
     /* Handle . (current directory - no change) */
-    if (strcmp(path, ".") == 0) {
+    if(strcmp(path, ".") == 0) {
         return 0;
     }
 
     /* Build the new path */
-    char new_path[256];
+    char new_path[MAX_PATH];
     const char *cwd = process_get_cwd();
 
     /* Handle .. (parent directory) */
-    if (strcmp(path, "..") == 0) {
+    if(strcmp(path, "..") == 0) {
         /* Copy current cwd */
         strncpy(new_path, cwd, sizeof(new_path) - 1);
         new_path[sizeof(new_path) - 1] = '\0';
 
         /* Find last slash and truncate (but keep at least "/") */
         size_t len = strlen(new_path);
-        if (len > 1) {
+        if(len > 1) {
             /* Find the last slash */
             char *last_slash = new_path + len - 1;
-            while (last_slash > new_path && *last_slash != '/') {
+            while(last_slash > new_path && *last_slash != '/') {
                 last_slash--;
             }
-            if (last_slash == new_path) {
+            if(last_slash == new_path) {
                 /* We're at root, stay at root */
                 new_path[1] = '\0';
-            } else {
+            }else {
                 *last_slash = '\0';
             }
         }
@@ -666,21 +666,21 @@ static int64_t sys_chdir(uint64_t path_ptr) {
     }
 
     /* Handle absolute vs relative paths */
-    if (path[0] == '/') {
+    if(path[0] == '/') {
         /* Absolute path - use as-is */
         strncpy(new_path, path, sizeof(new_path) - 1);
         new_path[sizeof(new_path) - 1] = '\0';
-    } else {
+    }else {
         /* Relative path - combine with cwd */
-        if (strcmp(cwd, "/") == 0) {
+        if(strcmp(cwd, "/") == 0) {
             new_path[0] = '/';
             strncpy(new_path + 1, path, sizeof(new_path) - 2);
             new_path[sizeof(new_path) - 1] = '\0';
-        } else {
+        }else {
             strncpy(new_path, cwd, sizeof(new_path) - 1);
             new_path[sizeof(new_path) - 1] = '\0';
             size_t cwd_len = strlen(new_path);
-            if (cwd_len < sizeof(new_path) - 2) {
+            if(cwd_len < sizeof(new_path) - 2) {
                 new_path[cwd_len] = '/';
                 strncpy(new_path + cwd_len + 1, path, sizeof(new_path) - cwd_len - 2);
                 new_path[sizeof(new_path) - 1] = '\0';
@@ -690,15 +690,15 @@ static int64_t sys_chdir(uint64_t path_ptr) {
 
     /* Convert path to tarfs format (no leading slash) for lookup */
     const char *tar_path = new_path;
-    if (tar_path[0] == '/') tar_path++;
+    if(tar_path[0] == '/') tar_path++;
 
     /* Verify the path exists (as a directory) */
     struct tar_file *tf = tar_find(tar_path);
-    if (tf == NULL) {
+    if(tf == NULL) {
         /* Try with trailing slash for directories */
-        char path_with_slash[256];
+        char path_with_slash[MAX_PATH];
         size_t len = strlen(tar_path);
-        if (len < sizeof(path_with_slash) - 2) {
+        if(len < sizeof(path_with_slash) - 2) {
             strcpy(path_with_slash, tar_path);
             path_with_slash[len] = '/';
             path_with_slash[len + 1] = '\0';
@@ -706,24 +706,24 @@ static int64_t sys_chdir(uint64_t path_ptr) {
         }
     }
 
-    if (tf == NULL) {
+    if(tf == NULL) {
         return -1;  /* Path not found */
     }
 
     /* Must be a directory */
-    if (!tf->is_dir) {
+    if(!tf->is_dir) {
         return -1;  /* Not a directory */
     }
 
     /* Build final cwd path with leading slash */
-    char final_cwd[256];
+    char final_cwd[MAX_PATH];
     final_cwd[0] = '/';
     strncpy(final_cwd + 1, tf->name, sizeof(final_cwd) - 2);
     final_cwd[sizeof(final_cwd) - 1] = '\0';
 
     /* Remove trailing slash */
     size_t len = strlen(final_cwd);
-    if (len > 1 && final_cwd[len - 1] == '/') {
+    if(len > 1 && final_cwd[len - 1] == '/') {
         final_cwd[len - 1] = '\0';
     }
 
@@ -736,7 +736,7 @@ static int64_t sys_chdir(uint64_t path_ptr) {
  */
 static int64_t sys_isatty(uint64_t fd) {
     /* stdin, stdout, stderr are terminals */
-    if (fd == 0 || fd == 1 || fd == 2) {
+    if(fd == 0 || fd == 1 || fd == 2) {
         return 1;
     }
     return 0;
@@ -748,20 +748,20 @@ static int64_t sys_isatty(uint64_t fd) {
  * Returns the lowest available fd that is a copy of oldfd.
  */
 static int64_t sys_dup(uint64_t oldfd) {
-    if (oldfd >= MAX_FDS) {
+    if(oldfd >= MAX_FDS) {
         return -1;
     }
 
     struct fd_table *fdt = process_get_fd_table();
     struct file_descriptor *old_desc = vfs_get_fd(fdt, (int)oldfd);
 
-    if (old_desc == NULL) {
+    if(old_desc == NULL) {
         return -1;  /* oldfd not open */
     }
 
     /* Find lowest available fd */
     int newfd = vfs_alloc_fd(fdt);
-    if (newfd < 0) {
+    if(newfd < 0) {
         return -1;  /* No free fd */
     }
 
@@ -783,16 +783,16 @@ static int64_t sys_dup(uint64_t oldfd) {
  * If oldfd == newfd, just return newfd.
  */
 static int64_t sys_dup2(uint64_t oldfd, uint64_t newfd) {
-    if (oldfd >= MAX_FDS || newfd >= MAX_FDS) {
+    if(oldfd >= MAX_FDS || newfd >= MAX_FDS) {
         return -1;
     }
 
     /* If oldfd == newfd, just return newfd */
-    if (oldfd == newfd) {
+    if(oldfd == newfd) {
         /* But first verify oldfd is valid */
         struct fd_table *fdt = process_get_fd_table();
         struct file_descriptor *old_desc = vfs_get_fd(fdt, (int)oldfd);
-        if (old_desc == NULL) {
+        if(old_desc == NULL) {
             return -1;
         }
         return (int64_t)newfd;
@@ -801,13 +801,13 @@ static int64_t sys_dup2(uint64_t oldfd, uint64_t newfd) {
     struct fd_table *fdt = process_get_fd_table();
     struct file_descriptor *old_desc = vfs_get_fd(fdt, (int)oldfd);
 
-    if (old_desc == NULL) {
+    if(old_desc == NULL) {
         return -1;  /* oldfd not open */
     }
 
     /* If newfd is open, close it first */
     struct file_descriptor *new_desc = vfs_get_fd(fdt, (int)newfd);
-    if (new_desc != NULL) {
+    if(new_desc != NULL) {
         /* Close newfd */
         new_desc->vn->ops->close(new_desc->vn);
         vfs_free_fd(fdt, (int)newfd);
@@ -847,9 +847,9 @@ static int spawn_copy_argv(struct process *p, char **argv, uint64_t argv_ptr,
                            const char *path, int *argc_out) {
     int argc = 0;
 
-    if (argv != NULL && vmm_validate_user_range((const void *)argv_ptr, 8)) {
-        while (argc < EXEC_MAX_ARGS && argv[argc] != NULL) {
-            if (!vmm_validate_user_range(argv[argc], 1)) break;
+    if(argv != NULL && vmm_validate_user_range((const void *)argv_ptr, 8)) {
+        while(argc < EXEC_MAX_ARGS && argv[argc] != NULL) {
+            if(!vmm_validate_user_range(argv[argc], 1)) break;
             strncpy(p->exec_args[argc], argv[argc], EXEC_MAX_ARG_LEN - 1);
             p->exec_args[argc][EXEC_MAX_ARG_LEN - 1] = '\0';
             p->exec_argv[argc] = p->exec_args[argc];
@@ -859,7 +859,7 @@ static int spawn_copy_argv(struct process *p, char **argv, uint64_t argv_ptr,
     p->exec_argv[argc] = NULL;
 
     /* If no args provided, use the program path as argv[0] */
-    if (argc == 0) {
+    if(argc == 0) {
         strncpy(p->exec_args[0], path, EXEC_MAX_ARG_LEN - 1);
         p->exec_args[0][EXEC_MAX_ARG_LEN - 1] = '\0';
         p->exec_argv[0] = p->exec_args[0];
@@ -885,26 +885,26 @@ static int spawn_create_child(uint64_t path_ptr, const char *cwd,
     const char *path = (const char *)path_ptr;
 
     /* Validate path pointer */
-    if (!vmm_validate_user_range((const void *)path_ptr, 1)) {
+    if(!vmm_validate_user_range((const void *)path_ptr, 1)) {
         return -1;
     }
 
     /* Resolve executable path */
     char full_path[PATH_MAX];
-    if (vfs_resolve_executable(path, cwd, full_path, sizeof(full_path)) != 0) {
+    if(vfs_resolve_executable(path, cwd, full_path, sizeof(full_path)) != 0) {
         return -1;
     }
 
     /* Look up executable via VFS */
     const void *data;
     size_t size;
-    if (vfs_lookup_executable(full_path, &data, &size) != 0) {
+    if(vfs_lookup_executable(full_path, &data, &size) != 0) {
         return -1;  /* Program not found */
     }
 
     /* Create child process */
     struct process *child = process_create();
-    if (child == NULL) {
+    if(child == NULL) {
         return -1;
     }
 
@@ -912,7 +912,7 @@ static int spawn_create_child(uint64_t path_ptr, const char *cwd,
     process_set_cwd_for(child, cwd);
 
     /* Load ELF executable */
-    if (process_load_elf(child, data, size) != 0) {
+    if(process_load_elf(child, data, size) != 0) {
         process_destroy(child);
         return -1;
     }
@@ -944,7 +944,7 @@ static int64_t sys_spawn(uint64_t path_ptr, uint64_t argv_ptr) {
 
     /* Create and load child process */
     struct process *child;
-    if (spawn_create_child(path_ptr, cwd, &child) != 0) {
+    if(spawn_create_child(path_ptr, cwd, &child) != 0) {
         return -1;
     }
 
@@ -997,7 +997,7 @@ static int64_t sys_spawn_async(uint64_t path_ptr, uint64_t argv_ptr) {
 
     /* Create and load child process */
     struct process *child;
-    if (spawn_create_child(path_ptr, cwd, &child) != 0) {
+    if(spawn_create_child(path_ptr, cwd, &child) != 0) {
         return -1;
     }
 
@@ -1007,7 +1007,7 @@ static int64_t sys_spawn_async(uint64_t path_ptr, uint64_t argv_ptr) {
 
     /* Set up argc/argv on child's stack */
     child->stack = process_setup_argv(child, argc, parent->exec_argv);
-    if (child->stack == 0) {
+    if(child->stack == 0) {
         process_destroy(child);
         return -1;  /* Too many arguments */
     }
@@ -1029,7 +1029,7 @@ static void sys_shutdown(void) {
     puts("You may now power off your computer.\n");
     __asm__ volatile("cli; hlt");
     /* Never reached */
-    for (;;) {
+    for(;;) {
         __asm__ volatile("hlt");
     }
 }
@@ -1047,7 +1047,7 @@ static void sys_reboot(void) {
     uint8_t status;
     do {
         __asm__ volatile("inb $0x64, %0" : "=a"(status));
-    } while (status & 0x02);
+    } while(status & 0x02);
 
     /* Send reset command to keyboard controller */
     __asm__ volatile("outb %0, $0x64" : : "a"((uint8_t)0xFE));
@@ -1060,7 +1060,7 @@ static void sys_reboot(void) {
     );
 
     /* Should never reach here */
-    for (;;) {
+    for(;;) {
         __asm__ volatile("hlt");
     }
 }
@@ -1076,12 +1076,12 @@ static int64_t sys_waitpid(uint64_t pid) {
     struct process *parent = process_get_current();
     struct process *child = process_find_by_pid((int)pid);
 
-    if (child == NULL) {
+    if(child == NULL) {
         return -1;  /* Process not found */
     }
 
     /* If child already exited, just reap it */
-    if (child->state == PROC_ZOMBIE) {
+    if(child->state == PROC_ZOMBIE) {
         int exit_code = child->exit_code;
         process_destroy(child);
         return exit_code;
@@ -1091,7 +1091,7 @@ static int64_t sys_waitpid(uint64_t pid) {
     sched_block_on_pid(parent, (int)pid);
 
     /* Wait for child to exit and wake us up */
-    while (child->state != PROC_ZOMBIE) {
+    while(child->state != PROC_ZOMBIE) {
         /* Enable interrupts and halt - timer will fire and run scheduler */
         __asm__ volatile("sti; hlt; cli");
     }
@@ -1127,7 +1127,7 @@ void syscall_handler(struct syscall_registers *regs) {
     // put_dec(regs->rax);
     // puts("\n");
 
-    switch (regs->rax) {
+    switch(regs->rax) {
         case SYS_EXIT:
             sys_exit(regs->rdi);
             /* sys_exit never returns */

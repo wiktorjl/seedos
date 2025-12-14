@@ -8,7 +8,7 @@
 void *memcpy(void *dest, const void *src, size_t n) {
     unsigned char *d = dest;
     const unsigned char *s = src;
-    while (n--) {
+    while(n--) {
         *d++ = *s++;
     }
     return dest;
@@ -17,14 +17,14 @@ void *memcpy(void *dest, const void *src, size_t n) {
 void *memmove(void *dest, const void *src, size_t n) {
     unsigned char *d = dest;
     const unsigned char *s = src;
-    if (d < s) {
-        while (n--) {
+    if(d < s) {
+        while(n--) {
             *d++ = *s++;
         }
-    } else {
+    }else {
         d += n;
         s += n;
-        while (n--) {
+        while(n--) {
             *--d = *--s;
         }
     }
@@ -33,7 +33,7 @@ void *memmove(void *dest, const void *src, size_t n) {
 
 void *memset(void *s, int c, size_t n) {
     unsigned char *p = s;
-    while (n--) {
+    while(n--) {
         *p++ = (unsigned char)c;
     }
     return s;
@@ -42,8 +42,8 @@ void *memset(void *s, int c, size_t n) {
 int memcmp(const void *s1, const void *s2, size_t n) {
     const unsigned char *p1 = s1;
     const unsigned char *p2 = s2;
-    while (n--) {
-        if (*p1 != *p2) {
+    while(n--) {
+        if(*p1 != *p2) {
             return *p1 - *p2;
         }
         p1++;
@@ -54,8 +54,8 @@ int memcmp(const void *s1, const void *s2, size_t n) {
 
 void *memchr(const void *s, int c, size_t n) {
     const unsigned char *p = s;
-    while (n--) {
-        if (*p == (unsigned char)c) {
+    while(n--) {
+        if(*p == (unsigned char)c) {
             return (void *)p;
         }
         p++;
@@ -65,7 +65,7 @@ void *memchr(const void *s, int c, size_t n) {
 
 size_t strlen(const char *s) {
     size_t len = 0;
-    while (*s++) {
+    while(*s++) {
         len++;
     }
     return len;
@@ -73,7 +73,7 @@ size_t strlen(const char *s) {
 
 char *strcpy(char *dest, const char *src) {
     char *d = dest;
-    while ((*d++ = *src++)) {
+    while((*d++ = *src++)) {
         /* copy including null terminator */
     }
     return dest;
@@ -81,10 +81,10 @@ char *strcpy(char *dest, const char *src) {
 
 char *strncpy(char *dest, const char *src, size_t n) {
     size_t i;
-    for (i = 0; i < n && src[i]; i++) {
+    for(i = 0; i < n && src[i]; i++) {
         dest[i] = src[i];
     }
-    for (; i < n; i++) {
+    for(; i < n; i++) {
         dest[i] = '\0';
     }
     return dest;
@@ -92,7 +92,7 @@ char *strncpy(char *dest, const char *src, size_t n) {
 
 char *strcat(char *dest, const char *src) {
     char *d = dest + strlen(dest);
-    while ((*d++ = *src++)) {
+    while((*d++ = *src++)) {
         /* append including null terminator */
     }
     return dest;
@@ -100,7 +100,7 @@ char *strcat(char *dest, const char *src) {
 
 char *strncat(char *dest, const char *src, size_t n) {
     char *d = dest + strlen(dest);
-    while (n-- && *src) {
+    while(n-- && *src) {
         *d++ = *src++;
     }
     *d = '\0';
@@ -108,7 +108,7 @@ char *strncat(char *dest, const char *src, size_t n) {
 }
 
 int strcmp(const char *s1, const char *s2) {
-    while (*s1 && *s1 == *s2) {
+    while(*s1 && *s1 == *s2) {
         s1++;
         s2++;
     }
@@ -116,20 +116,20 @@ int strcmp(const char *s1, const char *s2) {
 }
 
 int strncmp(const char *s1, const char *s2, size_t n) {
-    while (n && *s1 && *s1 == *s2) {
+    while(n && *s1 && *s1 == *s2) {
         s1++;
         s2++;
         n--;
     }
-    if (n == 0) {
+    if(n == 0) {
         return 0;
     }
     return *(unsigned char *)s1 - *(unsigned char *)s2;
 }
 
 char *strchr(const char *s, int c) {
-    while (*s) {
-        if (*s == (char)c) {
+    while(*s) {
+        if(*s == (char)c) {
             return (char *)s;
         }
         s++;
@@ -139,8 +139,8 @@ char *strchr(const char *s, int c) {
 
 char *strrchr(const char *s, int c) {
     const char *last = NULL;
-    while (*s) {
-        if (*s == (char)c) {
+    while(*s) {
+        if(*s == (char)c) {
             last = s;
         }
         s++;
@@ -149,12 +149,12 @@ char *strrchr(const char *s, int c) {
 }
 
 char *strstr(const char *haystack, const char *needle) {
-    if (!*needle) {
+    if(!*needle) {
         return (char *)haystack;
     }
     size_t nlen = strlen(needle);
-    while (*haystack) {
-        if (strncmp(haystack, needle, nlen) == 0) {
+    while(*haystack) {
+        if(strncmp(haystack, needle, nlen) == 0) {
             return (char *)haystack;
         }
         haystack++;
@@ -165,7 +165,7 @@ char *strstr(const char *haystack, const char *needle) {
 char *strdup(const char *s) {
     size_t len = strlen(s) + 1;
     char *new = malloc(len);
-    if (new) {
+    if(new) {
         memcpy(new, s, len);
     }
     return new;
@@ -175,11 +175,11 @@ char *strdup(const char *s) {
 size_t strspn(const char *s, const char *accept) {
     size_t count = 0;
     const char *p;
-    while (*s) {
-        for (p = accept; *p; p++) {
-            if (*s == *p) break;
+    while(*s) {
+        for(p = accept; *p; p++) {
+            if(*s == *p) break;
         }
-        if (!*p) break;  /* char not in accept */
+        if(!*p) break;  /* char not in accept */
         s++;
         count++;
     }
@@ -190,9 +190,9 @@ size_t strspn(const char *s, const char *accept) {
 size_t strcspn(const char *s, const char *reject) {
     size_t count = 0;
     const char *p;
-    while (*s) {
-        for (p = reject; *p; p++) {
-            if (*s == *p) return count;
+    while(*s) {
+        for(p = reject; *p; p++) {
+            if(*s == *p) return count;
         }
         s++;
         count++;
@@ -202,10 +202,10 @@ size_t strcspn(const char *s, const char *reject) {
 
 /* Returns pointer to first occurrence in s of any char from accept */
 char *strpbrk(const char *s, const char *accept) {
-    while (*s) {
+    while(*s) {
         const char *p = accept;
-        while (*p) {
-            if (*s == *p) return (char *)s;
+        while(*p) {
+            if(*s == *p) return (char *)s;
             p++;
         }
         s++;
@@ -219,24 +219,24 @@ static char *strtok_save;
 char *strtok(char *str, const char *delim) {
     char *end;
 
-    if (str != NULL) {
+    if(str != NULL) {
         strtok_save = str;
     }
 
-    if (strtok_save == NULL) {
+    if(strtok_save == NULL) {
         return NULL;
     }
 
     /* Skip leading delimiters */
     strtok_save += strspn(strtok_save, delim);
-    if (*strtok_save == '\0') {
+    if(*strtok_save == '\0') {
         strtok_save = NULL;
         return NULL;
     }
 
     /* Find end of token */
     end = strtok_save + strcspn(strtok_save, delim);
-    if (*end == '\0') {
+    if(*end == '\0') {
         char *token = strtok_save;
         strtok_save = NULL;
         return token;

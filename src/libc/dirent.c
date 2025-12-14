@@ -17,13 +17,13 @@ long getdents(int fd, struct dirent *dirp, size_t count) {
 DIR *opendir(const char *name) {
     /* Open the directory */
     int fd = open(name, O_RDONLY);
-    if (fd < 0) {
+    if(fd < 0) {
         return NULL;
     }
 
     /* Allocate DIR structure */
     DIR *dirp = (DIR *)malloc(sizeof(DIR));
-    if (dirp == NULL) {
+    if(dirp == NULL) {
         close(fd);
         return NULL;
     }
@@ -36,14 +36,14 @@ DIR *opendir(const char *name) {
 }
 
 struct dirent *readdir(DIR *dirp) {
-    if (dirp == NULL) {
+    if(dirp == NULL) {
         return NULL;
     }
 
     /* If buffer is empty or exhausted, read more entries */
-    if (dirp->buf_pos >= dirp->buf_len) {
+    if(dirp->buf_pos >= dirp->buf_len) {
         long nread = getdents(dirp->fd, (struct dirent *)dirp->buf, sizeof(dirp->buf));
-        if (nread <= 0) {
+        if(nread <= 0) {
             return NULL;  /* End of directory or error */
         }
         dirp->buf_len = (size_t)nread;
@@ -63,7 +63,7 @@ struct dirent *readdir(DIR *dirp) {
 }
 
 int closedir(DIR *dirp) {
-    if (dirp == NULL) {
+    if(dirp == NULL) {
         return -1;
     }
 

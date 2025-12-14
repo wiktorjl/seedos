@@ -33,10 +33,10 @@ static ssize_t tarfs_read(struct vnode *vn, void *buf, size_t count, size_t offs
     // 5. Return bytes copied
 
     struct tar_file *tf = (struct tar_file *)vn->fs_data;
-    if (offset >= tf->size) {
+    if(offset >= tf->size) {
         return 0;  // EOF
     }
-    if (offset + count > tf->size) {
+    if(offset + count > tf->size) {
         count = tf->size - offset;
     }
     memcpy(buf, tf->data + offset, count);
@@ -59,7 +59,7 @@ static ssize_t tarfs_write(struct vnode *vn, const void *buf, size_t count, size
 static int tarfs_close(struct vnode *vn) {
 
     vn->refcount--;
-    if (vn->refcount == 0) {
+    if(vn->refcount == 0) {
         vn->ops = NULL;  // Mark as free
     }
     return 0;
@@ -83,17 +83,17 @@ struct vnode *tarfs_open(const char *path) {
     struct tar_file *tf;
 
     /* Handle root directory specially (empty path or "/") */
-    if (path == NULL || path[0] == '\0' || (path[0] == '/' && path[1] == '\0')) {
+    if(path == NULL || path[0] == '\0' || (path[0] == '/' && path[1] == '\0')) {
         tf = &tar_root;
-    } else {
+    }else {
         tf = tar_find(path);
-        if (tf == NULL) {
+        if(tf == NULL) {
             return NULL;
         }
     }
 
-    for (int i = 0; i < MAX_VNODES; i++) {
-        if (vnode_pool[i].ops == NULL) {
+    for(int i = 0; i < MAX_VNODES; i++) {
+        if(vnode_pool[i].ops == NULL) {
             vnode_pool[i].ops = &tarfs_ops;
             vnode_pool[i].fs_data = (void *)tf;
             vnode_pool[i].refcount = 1;

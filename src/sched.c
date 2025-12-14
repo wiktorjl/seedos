@@ -36,7 +36,7 @@ void sched_init(void) {
 
 void sched_add(struct process *p) {
     uint64_t flags = irq_save();
-    if (ready_count >= MAX_PROCESSES) {
+    if(ready_count >= MAX_PROCESSES) {
         irq_restore(flags);
         return;
     }
@@ -47,14 +47,14 @@ void sched_add(struct process *p) {
 
 void sched_remove(struct process *p) {
     uint64_t flags = irq_save();
-    for (int i = 0; i < ready_count; i++) {
-        if (ready_queue[i] == p) {
+    for(int i = 0; i < ready_count; i++) {
+        if(ready_queue[i] == p) {
             /* Shift remaining entries */
-            for (int j = i; j < ready_count - 1; j++) {
+            for(int j = i; j < ready_count - 1; j++) {
                 ready_queue[j] = ready_queue[j + 1];
             }
             ready_count--;
-            if (current_index >= ready_count) {
+            if(current_index >= ready_count) {
                 current_index = ready_count - 1;
             }
             irq_restore(flags);
@@ -111,13 +111,13 @@ void sched_load_context(struct process *p, struct interrupt_frame *frame) {
 }
 
 void schedule(struct interrupt_frame *frame) {
-    if (ready_count == 0) return;
+    if(ready_count == 0) return;
 
     struct process *current = process_get_current();
     int was_running = (current && current->state == PROC_RUNNING);
 
     /* Save current process context if it was actually running */
-    if (was_running) {
+    if(was_running) {
         sched_save_context(current, frame);
         current->state = PROC_READY;
     }
@@ -131,7 +131,7 @@ void schedule(struct interrupt_frame *frame) {
      * - Switching to a different process, OR
      * - Current process wasn't running (e.g., starting from kernel idle)
      */
-    if (next != current || !was_running) {
+    if(next != current || !was_running) {
         /* Load next process context */
         sched_load_context(next, frame);
         next->state = PROC_RUNNING;
@@ -148,18 +148,18 @@ void sched_yield(void) {
 }
 
 void sched_block_on_pid(struct process *p, int pid) {
-    if (p == NULL) return;
+    if(p == NULL) return;
 
     uint64_t flags = irq_save();
     /* Remove from ready queue (sched_remove handles its own locking, but
      * we need atomicity for the whole block operation) */
-    for (int i = 0; i < ready_count; i++) {
-        if (ready_queue[i] == p) {
-            for (int j = i; j < ready_count - 1; j++) {
+    for(int i = 0; i < ready_count; i++) {
+        if(ready_queue[i] == p) {
+            for(int j = i; j < ready_count - 1; j++) {
                 ready_queue[j] = ready_queue[j + 1];
             }
             ready_count--;
-            if (current_index >= ready_count) {
+            if(current_index >= ready_count) {
                 current_index = ready_count - 1;
             }
             break;
@@ -176,11 +176,11 @@ void sched_wake_waiters(int pid) {
     /* Find any process blocked waiting for this PID */
     struct process *waiter = process_find_blocked_on_pid(pid);
 
-    if (waiter != NULL) {
+    if(waiter != NULL) {
         /* Wake up the waiter */
         waiter->wait_pid = 0;
         /* Inline sched_add to avoid nested locking */
-        if (ready_count < MAX_PROCESSES) {
+        if(ready_count < MAX_PROCESSES) {
             ready_queue[ready_count++] = waiter;
             waiter->state = PROC_READY;
         }

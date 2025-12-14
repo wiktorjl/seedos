@@ -65,13 +65,13 @@ static uint64_t hhdm_offset;
 /* Forward declarations */
 int verify_bootloader_info(struct limine_memmap_response **memmap, uint64_t *hhdm_offset) {
     /* Check HHDM response */
-    if (hhdm_request.response == NULL) {
+    if(hhdm_request.response == NULL) {
         puts("[error] HHDM request failed\n");
         return 0;
     }
 
     /* Check memory map response */
-    if (memmap_request.response == NULL) {
+    if(memmap_request.response == NULL) {
         puts("[error] Memory map request failed\n");
         return 0;
     }
@@ -107,14 +107,14 @@ void kernel_main(void) {
     serial_init();
 
     /* Initialize framebuffer and console for dual output */
-    if (fb_init((void *)fb_request.response) == 0) {
+    if(fb_init((void *)fb_request.response) == 0) {
         fb_console_init();
         console_init();
-    } else {
+    }else {
         puts("[warning] Framebuffer initialization failed\n");
     }
     
-    if (!verify_bootloader_info(&memmap, &hhdm_offset)) {
+    if(!verify_bootloader_info(&memmap, &hhdm_offset)) {
         puts("Kernel panic: Invalid bootloader information\n");
         goto halt;
     }
@@ -159,13 +159,13 @@ void kernel_main(void) {
     asm volatile ("sti");
 
     struct limine_module_response *mod = module_request.response;
-    if (mod && mod->module_count > 0) {
+    if(mod && mod->module_count > 0) {
         struct limine_file *initrd = mod->modules[0];
         tar_init(initrd->address, initrd->size);
         puts("  initrd    ");
         put_dec(tar_get_file_count());
         puts(" files\n");
-    } else {
+    }else {
         puts("  initrd    [not found]\n");
     }
 
@@ -181,19 +181,19 @@ void kernel_main(void) {
     {
         /* Find /bin/init in initrd (tarfs uses "bin/init" without leading slash) */
         struct tar_file *init_file = tar_find("bin/init");
-        if (init_file == NULL) {
+        if(init_file == NULL) {
             puts("[error] /bin/init not found in initrd\n");
             goto halt;
         }
 
         /* Create process and load ELF */
         struct process *init = process_create();
-        if (init == NULL) {
+        if(init == NULL) {
             puts("[error] Failed to create init process\n");
             goto halt;
         }
 
-        if (process_load_elf(init, init_file->data, init_file->size) != 0) {
+        if(process_load_elf(init, init_file->data, init_file->size) != 0) {
             puts("[error] Failed to load init ELF\n");
             process_destroy(init);
             goto halt;
@@ -222,7 +222,7 @@ void kernel_main(void) {
     puts("\nSystem halted.\n");
 
 halt:
-    while (1) {
+    while(1) {
         asm volatile ("hlt");
     }
 }

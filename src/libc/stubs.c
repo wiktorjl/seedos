@@ -57,7 +57,7 @@ static const char *error_strings[] = {
 
 char *strerror(int errnum) {
     static char unknown_buf[32];
-    if (errnum >= 0 && (size_t)errnum < NUM_ERRORS && error_strings[errnum]) {
+    if(errnum >= 0 && (size_t)errnum < NUM_ERRORS && error_strings[errnum]) {
         return (char *)error_strings[errnum];
     }
     snprintf(unknown_buf, sizeof(unknown_buf), "Unknown error %d", errnum);
@@ -65,9 +65,9 @@ char *strerror(int errnum) {
 }
 
 void perror(const char *s) {
-    if (s && *s) {
+    if(s && *s) {
         fprintf(stderr, "%s: %s\n", s, strerror(errno));
-    } else {
+    }else {
         fprintf(stderr, "%s\n", strerror(errno));
     }
 }
@@ -176,7 +176,7 @@ void sync(void) {
 unsigned int sleep(unsigned int seconds) {
     unsigned long start = uptime();
     unsigned long target = start + (seconds * 1000);
-    while (uptime() < target) {
+    while(uptime() < target) {
         /* Busy wait - should use a yield syscall if available */
     }
     return 0;
@@ -316,7 +316,7 @@ struct group *getgrnam(const char *name) {
 time_t time(time_t *tloc) {
     /* Return uptime as time (not correct but works for basic use) */
     time_t t = (time_t)(uptime() / 1000);  /* Convert ms to seconds */
-    if (tloc) *tloc = t;
+    if(tloc) *tloc = t;
     return t;
 }
 

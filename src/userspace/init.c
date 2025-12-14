@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
     printf("init: SeedOS init process started (PID %d)\n", getpid());
 
     /* Main init loop - keep restarting the shell */
-    while (1) {
+    while(1) {
         printf("init: Starting shell...\n");
 
         /*

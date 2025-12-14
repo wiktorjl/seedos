@@ -73,12 +73,12 @@ void reboot(void) {
 
 int access(const char *pathname, int mode) {
     struct stat st;
-    if (stat(pathname, &st) < 0) {
+    if(stat(pathname, &st) < 0) {
         return -1;  /* errno set by stat */
     }
 
     /* F_OK - just test existence */
-    if (mode == F_OK) {
+    if(mode == F_OK) {
         return 0;
     }
 
@@ -87,18 +87,18 @@ int access(const char *pathname, int mode) {
      * so just check if the file has any of those bits set.
      * In reality, our tarfs is read-only so W_OK should fail.
      */
-    if ((mode & W_OK)) {
+    if((mode & W_OK)) {
         errno = EROFS;
         return -1;
     }
 
     /* R_OK and X_OK - check file permissions */
-    if ((mode & R_OK) && !(st.st_mode & (S_IRUSR | S_IRGRP | S_IROTH))) {
+    if((mode & R_OK) && !(st.st_mode & (S_IRUSR | S_IRGRP | S_IROTH))) {
         errno = EACCES;
         return -1;
     }
 
-    if ((mode & X_OK) && !(st.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH))) {
+    if((mode & X_OK) && !(st.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH))) {
         errno = EACCES;
         return -1;
     }
@@ -137,10 +137,10 @@ pid_t fork(void) {
 pid_t waitpid(pid_t pid, int *status, int options) {
     (void)options;
     int ret = __syscall1(__NR_waitpid, pid);
-    if (ret < 0) {
+    if(ret < 0) {
         return -1;  /* Error - no such process */
     }
-    if (status) {
+    if(status) {
         /* Encode exit code in status format: WEXITSTATUS extracts (status >> 8) & 0xff */
         *status = (ret & 0xff) << 8;
     }
@@ -161,7 +161,7 @@ pid_t wait(int *status) {
 int execvp(const char *file, char *const argv[]) {
     /* Try the file directly first */
     int ret = spawn(file, argv);
-    if (ret >= 0) {
+    if(ret >= 0) {
         /* spawn succeeded, but exec should not return on success */
         /* In SeedOS, spawn waits for completion, so we exit with child's code */
         _exit(ret);
@@ -169,29 +169,29 @@ int execvp(const char *file, char *const argv[]) {
 
     /* If file doesn't contain a slash, try /bin/ prefix */
     int has_slash = 0;
-    for (const char *p = file; *p; p++) {
-        if (*p == '/') {
+    for(const char *p = file; *p; p++) {
+        if(*p == '/') {
             has_slash = 1;
             break;
         }
     }
 
-    if (!has_slash) {
+    if(!has_slash) {
         char path[256];
         /* Build /bin/file path */
         int i = 0;
         const char *prefix = "/bin/";
-        while (*prefix && i < 250) {
+        while(*prefix && i < 250) {
             path[i++] = *prefix++;
         }
         const char *f = file;
-        while (*f && i < 255) {
+        while(*f && i < 255) {
             path[i++] = *f++;
         }
         path[i] = '\0';
 
         ret = spawn(path, argv);
-        if (ret >= 0) {
+        if(ret >= 0) {
             _exit(ret);
         }
     }
@@ -202,7 +202,7 @@ int execvp(const char *file, char *const argv[]) {
 
 int execv(const char *path, char *const argv[]) {
     int ret = spawn(path, argv);
-    if (ret >= 0) {
+    if(ret >= 0) {
         _exit(ret);
     }
     errno = ENOENT;

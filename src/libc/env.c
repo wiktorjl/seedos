@@ -23,7 +23,7 @@ char **environ = environ_storage;
 
 /* Initialize with some default variables */
 static void init_env(void) {
-    if (env_initialized) return;
+    if(env_initialized) return;
     env_initialized = 1;
 
     /* Set some reasonable defaults */
@@ -36,13 +36,13 @@ static void init_env(void) {
 }
 
 char *getenv(const char *name) {
-    if (!env_initialized) init_env();
-    if (!name) return NULL;
+    if(!env_initialized) init_env();
+    if(!name) return NULL;
 
     size_t namelen = strlen(name);
 
-    for (int i = 0; i < env_count; i++) {
-        if (environ_storage[i] &&
+    for(int i = 0; i < env_count; i++) {
+        if(environ_storage[i] &&
             strncmp(environ_storage[i], name, namelen) == 0 &&
             environ_storage[i][namelen] == '=') {
             return environ_storage[i] + namelen + 1;
@@ -53,12 +53,12 @@ char *getenv(const char *name) {
 }
 
 int putenv(char *string) {
-    if (!env_initialized) init_env();
-    if (!string) return -1;
+    if(!env_initialized) init_env();
+    if(!string) return -1;
 
     /* Find the '=' */
     char *eq = strchr(string, '=');
-    if (!eq) {
+    if(!eq) {
         /* No '=' means unset */
         return unsetenv(string);
     }
@@ -66,8 +66,8 @@ int putenv(char *string) {
     size_t namelen = eq - string;
 
     /* Check if variable already exists */
-    for (int i = 0; i < env_count; i++) {
-        if (environ_storage[i] &&
+    for(int i = 0; i < env_count; i++) {
+        if(environ_storage[i] &&
             strncmp(environ_storage[i], string, namelen) == 0 &&
             environ_storage[i][namelen] == '=') {
             /* Replace existing */
@@ -79,7 +79,7 @@ int putenv(char *string) {
     }
 
     /* Add new variable */
-    if (env_count >= MAX_ENV_VARS) {
+    if(env_count >= MAX_ENV_VARS) {
         errno = ENOMEM;
         return -1;
     }
@@ -94,14 +94,14 @@ int putenv(char *string) {
 }
 
 int setenv(const char *name, const char *value, int overwrite) {
-    if (!env_initialized) init_env();
-    if (!name || !value) {
+    if(!env_initialized) init_env();
+    if(!name || !value) {
         errno = EINVAL;
         return -1;
     }
 
     /* Check if already exists */
-    if (!overwrite && getenv(name) != NULL) {
+    if(!overwrite && getenv(name) != NULL) {
         return 0;
     }
 
@@ -109,15 +109,15 @@ int setenv(const char *name, const char *value, int overwrite) {
     size_t namelen = strlen(name);
     size_t valuelen = strlen(value);
 
-    if (namelen + valuelen + 2 > MAX_ENV_SIZE) {
+    if(namelen + valuelen + 2 > MAX_ENV_SIZE) {
         errno = ENOMEM;
         return -1;
     }
 
     /* Find or create slot */
     int slot = -1;
-    for (int i = 0; i < env_count; i++) {
-        if (environ_storage[i] &&
+    for(int i = 0; i < env_count; i++) {
+        if(environ_storage[i] &&
             strncmp(environ_storage[i], name, namelen) == 0 &&
             environ_storage[i][namelen] == '=') {
             slot = i;
@@ -125,8 +125,8 @@ int setenv(const char *name, const char *value, int overwrite) {
         }
     }
 
-    if (slot < 0) {
-        if (env_count >= MAX_ENV_VARS) {
+    if(slot < 0) {
+        if(env_count >= MAX_ENV_VARS) {
             errno = ENOMEM;
             return -1;
         }
@@ -144,20 +144,20 @@ int setenv(const char *name, const char *value, int overwrite) {
 }
 
 int unsetenv(const char *name) {
-    if (!env_initialized) init_env();
-    if (!name) {
+    if(!env_initialized) init_env();
+    if(!name) {
         errno = EINVAL;
         return -1;
     }
 
     size_t namelen = strlen(name);
 
-    for (int i = 0; i < env_count; i++) {
-        if (environ_storage[i] &&
+    for(int i = 0; i < env_count; i++) {
+        if(environ_storage[i] &&
             strncmp(environ_storage[i], name, namelen) == 0 &&
             environ_storage[i][namelen] == '=') {
             /* Remove by shifting */
-            for (int j = i; j < env_count - 1; j++) {
+            for(int j = i; j < env_count - 1; j++) {
                 environ_storage[j] = environ_storage[j + 1];
                 strcpy(env_strings[j], env_strings[j + 1]);
                 environ_storage[j] = env_strings[j];

@@ -24,16 +24,16 @@ int main(int argc, char **argv) {
     int show_all = 0;
 
     /* Parse arguments */
-    for (int i = 1; i < argc; i++) {
-        if (argv[i][0] == '-') {
+    for(int i = 1; i < argc; i++) {
+        if(argv[i][0] == '-') {
             /* Parse flags */
-            for (int j = 1; argv[i][j]; j++) {
-                switch (argv[i][j]) {
+            for(int j = 1; argv[i][j]; j++) {
+                switch(argv[i][j]) {
                     case 'l': long_format = 1; break;
                     case 'a': show_all = 1; break;
                 }
             }
-        } else {
+        }else {
             path = argv[i];
             display_path = argv[i];
         }
@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
 
     /* Let the kernel handle path resolution - just pass it through */
     DIR *dir = opendir(path);
-    if (dir == NULL) {
+    if(dir == NULL) {
         printf("ls: cannot access '%s': No such file or directory\n", display_path);
         return 1;
     }
@@ -49,8 +49,8 @@ int main(int argc, char **argv) {
     /* Get the real path for stat calls */
     char cwd[256];
     char full_path[512];
-    if (strcmp(path, ".") == 0) {
-        if (getcwd(cwd, sizeof(cwd)) == NULL) {
+    if(strcmp(path, ".") == 0) {
+        if(getcwd(cwd, sizeof(cwd)) == NULL) {
             strcpy(cwd, "/");
         }
         path = cwd;
@@ -60,20 +60,20 @@ int main(int argc, char **argv) {
     unsigned long total_blocks = 0;
     struct dirent *entry;
 
-    if (long_format) {
-        while ((entry = readdir(dir)) != NULL) {
+    if(long_format) {
+        while((entry = readdir(dir)) != NULL) {
             /* Skip hidden files unless -a */
-            if (!show_all && entry->d_name[0] == '.') continue;
+            if(!show_all && entry->d_name[0] == '.') continue;
 
             /* Build full path for stat */
-            if (strcmp(path, "/") == 0) {
+            if(strcmp(path, "/") == 0) {
                 snprintf(full_path, sizeof(full_path), "/%s", entry->d_name);
-            } else {
+            }else {
                 snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
             }
 
             struct stat st;
-            if (stat(full_path, &st) == 0) {
+            if(stat(full_path, &st) == 0) {
                 total_blocks += (st.st_size + 511) / 512;
             }
         }
@@ -82,41 +82,41 @@ int main(int argc, char **argv) {
         /* Rewind directory */
         closedir(dir);
         dir = opendir(path);
-        if (dir == NULL) return 1;
+        if(dir == NULL) return 1;
     }
 
-    while ((entry = readdir(dir)) != NULL) {
+    while((entry = readdir(dir)) != NULL) {
         /* Skip hidden files unless -a */
-        if (!show_all && entry->d_name[0] == '.') continue;
+        if(!show_all && entry->d_name[0] == '.') continue;
 
         int is_dir = (entry->d_type == DT_DIR);
 
-        if (long_format) {
+        if(long_format) {
             /* Build full path for stat */
-            if (strcmp(path, "/") == 0) {
+            if(strcmp(path, "/") == 0) {
                 snprintf(full_path, sizeof(full_path), "/%s", entry->d_name);
-            } else {
+            }else {
                 snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
             }
 
             struct stat st;
             unsigned long size = 0;
-            if (stat(full_path, &st) == 0) {
+            if(stat(full_path, &st) == 0) {
                 size = st.st_size;
             }
 
             /* Print permissions string */
-            if (is_dir) {
+            if(is_dir) {
                 printf("drwxr-xr-x");
-            } else {
+            }else {
                 /* Check if executable (files in /bin) */
                 int is_exec = 0;
-                if (strncmp(path, "/bin", 4) == 0 || strcmp(path, "bin") == 0) {
+                if(strncmp(path, "/bin", 4) == 0 || strcmp(path, "bin") == 0) {
                     is_exec = 1;
                 }
-                if (is_exec) {
+                if(is_exec) {
                     printf("-rwxr-xr-x");
-                } else {
+                }else {
                     printf("-rw-r--r--");
                 }
             }
@@ -131,16 +131,16 @@ int main(int argc, char **argv) {
             printf(" Jan  1 00:00");
 
             /* Filename with color hint for directories */
-            if (is_dir) {
+            if(is_dir) {
                 printf(" %s/\n", entry->d_name);
-            } else {
+            }else {
                 printf(" %s\n", entry->d_name);
             }
-        } else {
+        }else {
             /* Short format: name with / suffix for directories */
-            if (is_dir) {
+            if(is_dir) {
                 printf("%s/\n", entry->d_name);
-            } else {
+            }else {
                 printf("%s\n", entry->d_name);
             }
         }

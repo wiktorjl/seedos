@@ -92,7 +92,7 @@ void serial_init(void) {
  * This is a polling implementation (no interrupts).
  */
 void serial_putc(char c) {
-    while (!serial_is_transmit_ready())
+    while(!serial_is_transmit_ready())
         ;  /* Busy-wait until transmitter is ready */
     outb(SERIAL_DATA, c);
 }
@@ -103,8 +103,8 @@ void serial_putc(char c) {
  * Converts '\n' to '\r\n' because serial terminals expect CR+LF line endings.
  */
 void serial_puts(const char *s) {
-    while (*s) {
-        if (*s == '\n')
+    while(*s) {
+        if(*s == '\n')
             serial_putc('\r');  /* Carriage return before line feed */
         serial_putc(*s);
         s++;
@@ -127,7 +127,7 @@ void serial_puts(const char *s) {
 void serial_put_hex(uint64_t value) {
     const char *hex_digits = "0123456789abcdef";
     serial_puts("0x");
-    for (int shift = HEX64_TOP_NIBBLE_SHIFT; shift >= 0; shift -= BITS_PER_NIBBLE) {
+    for(int shift = HEX64_TOP_NIBBLE_SHIFT; shift >= 0; shift -= BITS_PER_NIBBLE) {
         serial_putc(hex_digits[(value >> shift) & 0xF]);
     }
 }
@@ -144,18 +144,18 @@ void serial_put_hex(uint64_t value) {
 #define MAX_UINT64_DECIMAL_DIGITS 21  /* 20 digits + null terminator */
 
 void serial_put_dec(uint64_t value) {
-    if (value == 0) {
+    if(value == 0) {
         serial_putc('0');
         return;
     }
     char buf[MAX_UINT64_DECIMAL_DIGITS];
     int i = 0;
-    while (value > 0) {
+    while(value > 0) {
         buf[i++] = '0' + (value % 10);
         value /= 10;
     }
     /* Output digits in reverse order (most significant first) */
-    while (i > 0) {
+    while(i > 0) {
         serial_putc(buf[--i]);
     }
 }

@@ -153,7 +153,7 @@ void pic_init(void) {
  * interrupt goes through the master's IRQ2.
  */
 void pic_send_eoi(uint8_t irq) {
-    if (irq >= IRQS_PER_PIC) {
+    if(irq >= IRQS_PER_PIC) {
         /* IRQ came from slave PIC - acknowledge slave first */
         outb(PIC_SLAVE_COMMAND, OCW2_EOI);
     }
@@ -172,10 +172,10 @@ void pic_unmask(uint8_t irq) {
     uint16_t port;
     uint8_t irq_bit;
 
-    if (irq < IRQS_PER_PIC) {
+    if(irq < IRQS_PER_PIC) {
         port = PIC_MASTER_DATA;
         irq_bit = irq;
-    } else {
+    }else {
         port = PIC_SLAVE_DATA;
         irq_bit = irq - IRQS_PER_PIC;
     }
@@ -197,10 +197,10 @@ void pic_mask(uint8_t irq) {
     uint16_t port;
     uint8_t irq_bit;
 
-    if (irq < IRQS_PER_PIC) {
+    if(irq < IRQS_PER_PIC) {
         port = PIC_MASTER_DATA;
         irq_bit = irq;
-    } else {
+    }else {
         port = PIC_SLAVE_DATA;
         irq_bit = irq - IRQS_PER_PIC;
     }

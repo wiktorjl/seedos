@@ -36,46 +36,46 @@ int programs_run_cwd(const char *name, int argc, char **argv, const char *cwd) {
 
     /* Check if name contains a slash (i.e., is a path) */
     int has_slash = 0;
-    for (const char *c = name; *c; c++) {
-        if (*c == '/') {
+    for(const char *c = name; *c; c++) {
+        if(*c == '/') {
             has_slash = 1;
             break;
         }
     }
 
     /* Only prepend "bin/" if name is not already a path */
-    if (!has_slash) {
+    if(!has_slash) {
         strcpy(path, "bin/"); 
         i = 4;
     }
 
     /* Copy the name */
     const char *p = name;
-    while (*p && i < sizeof(path) - 1) {
+    while(*p && i < sizeof(path) - 1) {
         path[i++] = *p++;
     }
     path[i] = '\0';
 
     /* Find program in initrd */
     const struct tar_file *file = tar_find(path);
-    if (file == NULL) {
+    if(file == NULL) {
         return -1;
     }
 
     /* Create new process */
     struct process *proc = process_create();
-    if (proc == NULL) {
+    if(proc == NULL) {
         puts("Error: Failed to create process\n");
         return -1;
     }
 
     /* Set initial working directory */
-    if (cwd != NULL && cwd[0] != '\0') {
+    if(cwd != NULL && cwd[0] != '\0') {
         process_set_cwd(cwd);
     }
 
     /* Load ELF executable into process address space */
-    if (process_load_elf(proc, file->data, file->size) != 0) {
+    if(process_load_elf(proc, file->data, file->size) != 0) {
         puts("Error: Failed to load ELF\n");
         process_destroy(proc);
         return -1;

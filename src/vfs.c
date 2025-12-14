@@ -20,28 +20,28 @@ void vfs_init(void) {
  * Output is in tarfs format (no leading slash).
  */
 int vfs_resolve_path(const char *path, const char *cwd, char *out, size_t out_size) {
-    if (path == NULL || out == NULL || out_size == 0) {
+    if(path == NULL || out == NULL || out_size == 0) {
         return -1;
     }
 
     /* Default cwd to root if not provided */
-    if (cwd == NULL) {
+    if(cwd == NULL) {
         cwd = "/";
     }
 
     /* Strip "./" prefix if present */
-    if (path[0] == '.' && path[1] == '/') {
+    if(path[0] == '.' && path[1] == '/') {
         path += 2;
     }
 
     /* Handle "." or empty string (current directory) */
-    if (strcmp(path, ".") == 0 || path[0] == '\0') {
-        if (cwd[0] == '/' && cwd[1] == '\0') {
+    if(strcmp(path, ".") == 0 || path[0] == '\0') {
+        if(cwd[0] == '/' && cwd[1] == '\0') {
             out[0] = '\0';  /* Root = empty for tarfs */
-        } else {
+        }else {
             /* Skip leading slash from cwd */
             const char *cwd_no_slash = (cwd[0] == '/') ? cwd + 1 : cwd;
-            if (strlen(cwd_no_slash) >= out_size) {
+            if(strlen(cwd_no_slash) >= out_size) {
                 return -1;
             }
             strcpy(out, cwd_no_slash);
@@ -50,9 +50,9 @@ int vfs_resolve_path(const char *path, const char *cwd, char *out, size_t out_si
     }
 
     /* Handle absolute path */
-    if (path[0] == '/') {
+    if(path[0] == '/') {
         /* Skip leading slash for tarfs */
-        if (strlen(path + 1) >= out_size) {
+        if(strlen(path + 1) >= out_size) {
             return -1;
         }
         strcpy(out, path + 1);
@@ -60,19 +60,19 @@ int vfs_resolve_path(const char *path, const char *cwd, char *out, size_t out_si
     }
 
     /* Relative path - prepend cwd */
-    if (cwd[0] == '/' && cwd[1] == '\0') {
+    if(cwd[0] == '/' && cwd[1] == '\0') {
         /* cwd is root - just use path as-is */
-        if (strlen(path) >= out_size) {
+        if(strlen(path) >= out_size) {
             return -1;
         }
         strcpy(out, path);
-    } else {
+    }else {
         /* cwd is like "/bin" - combine cwd + "/" + path */
         const char *cwd_no_slash = (cwd[0] == '/') ? cwd + 1 : cwd;
         size_t cwd_len = strlen(cwd_no_slash);
         size_t path_len = strlen(path);
 
-        if (cwd_len + 1 + path_len >= out_size) {
+        if(cwd_len + 1 + path_len >= out_size) {
             return -1;  /* Path too long */
         }
 
@@ -91,27 +91,27 @@ int vfs_resolve_path(const char *path, const char *cwd, char *out, size_t out_si
  * Otherwise resolves as a normal path using vfs_resolve_path.
  */
 int vfs_resolve_executable(const char *path, const char *cwd, char *out, size_t out_size) {
-    if (path == NULL || out == NULL || out_size == 0) {
+    if(path == NULL || out == NULL || out_size == 0) {
         return -1;
     }
 
     /* Strip "./" prefix */
-    if (path[0] == '.' && path[1] == '/') {
+    if(path[0] == '.' && path[1] == '/') {
         path += 2;
     }
 
     /* Check if path contains a slash (i.e., is a path, not just a name) */
     int has_slash = 0;
-    for (const char *c = path; *c; c++) {
-        if (*c == '/') {
+    for(const char *c = path; *c; c++) {
+        if(*c == '/') {
             has_slash = 1;
             break;
         }
     }
 
-    if (!has_slash) {
+    if(!has_slash) {
         /* Bare command name - prepend "bin/" */
-        if (strlen(path) + 5 >= out_size) {
+        if(strlen(path) + 5 >= out_size) {
             return -1;
         }
         strcpy(out, "bin/");
@@ -135,7 +135,7 @@ struct vnode *vfs_lookup(const char *path) {
  */
 int vfs_lookup_executable(const char *path, const void **data_out, size_t *size_out) {
     struct tar_file *file = tar_find(path);
-    if (file == NULL) {
+    if(file == NULL) {
         return -1;
     }
 
@@ -154,8 +154,8 @@ int vfs_lookup_executable(const char *path, const void **data_out, size_t *size_
 */
 int vfs_alloc_fd(struct fd_table *fdt) {
     /* Start at 3, skip stdin/stdout/stderr */
-    for (int i = 3; i < MAX_FDS; i++) {
-        if (fdt->fds[i].vn == NULL) {
+    for(int i = 3; i < MAX_FDS; i++) {
+        if(fdt->fds[i].vn == NULL) {
             return i;
         }
     }
@@ -166,7 +166,7 @@ int vfs_alloc_fd(struct fd_table *fdt) {
 * vfs_free_fd - Release a file descriptor slot.
 */
 void vfs_free_fd(struct fd_table *fdt, int fd) {
-    if (fd >= 0 && fd < MAX_FDS) {
+    if(fd >= 0 && fd < MAX_FDS) {
         fdt->fds[fd].vn = NULL;
         fdt->fds[fd].position = 0;
         fdt->fds[fd].flags = 0;
@@ -179,10 +179,10 @@ void vfs_free_fd(struct fd_table *fdt, int fd) {
 * Returns: Pointer to file_descriptor, or NULL if invalid/unused.
 */
 struct file_descriptor *vfs_get_fd(struct fd_table *fdt, int fd) {
-    if (fd < 0 || fd >= MAX_FDS) {
+    if(fd < 0 || fd >= MAX_FDS) {
         return NULL;
     }
-    if (fdt->fds[fd].vn == NULL) {
+    if(fdt->fds[fd].vn == NULL) {
         return NULL;  /* Slot not in use */
     }
     return &fdt->fds[fd];

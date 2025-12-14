@@ -15,22 +15,22 @@ int main(int argc, char **argv) {
     const char *filename = NULL;
 
     /* Parse options */
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-c") == 0) {
+    for(int i = 1; i < argc; i++) {
+        if(strcmp(argv[i], "-c") == 0) {
             count_mode = 1;
-        } else {
+        }else {
             filename = argv[i];
         }
     }
 
     FILE *fp;
-    if (filename) {
+    if(filename) {
         fp = fopen(filename, "r");
-        if (fp == NULL) {
+        if(fp == NULL) {
             fprintf(stderr, "uniq: cannot open '%s'\n", filename);
             return 1;
         }
-    } else {
+    }else {
         fp = stdin;
     }
 
@@ -38,14 +38,14 @@ int main(int argc, char **argv) {
     char curr_line[MAX_LINE];
     int count = 0;
 
-    while (fgets(curr_line, sizeof(curr_line), fp) != NULL) {
-        if (strcmp(curr_line, prev_line) == 0) {
+    while(fgets(curr_line, sizeof(curr_line), fp) != NULL) {
+        if(strcmp(curr_line, prev_line) == 0) {
             count++;
-        } else {
-            if (count > 0) {
-                if (count_mode) {
+        }else {
+            if(count > 0) {
+                if(count_mode) {
                     printf("%7d %s", count, prev_line);
-                } else {
+                }else {
                     printf("%s", prev_line);
                 }
             }
@@ -55,15 +55,15 @@ int main(int argc, char **argv) {
     }
 
     /* Print last line */
-    if (count > 0) {
-        if (count_mode) {
+    if(count > 0) {
+        if(count_mode) {
             printf("%7d %s", count, prev_line);
-        } else {
+        }else {
             printf("%s", prev_line);
         }
     }
 
-    if (filename) {
+    if(filename) {
         fclose(fp);
     }
 

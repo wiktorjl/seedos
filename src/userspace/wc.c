@@ -19,10 +19,10 @@ int main(int argc, char **argv) {
     int file_start = 1;
 
     /* Parse options */
-    while (file_start < argc && argv[file_start][0] == '-') {
+    while(file_start < argc && argv[file_start][0] == '-') {
         char *opt = argv[file_start] + 1;
-        while (*opt) {
-            switch (*opt) {
+        while(*opt) {
+            switch(*opt) {
                 case 'l': show_lines = 1; break;
                 case 'w': show_words = 1; break;
                 case 'c': show_bytes = 1; break;
@@ -36,11 +36,11 @@ int main(int argc, char **argv) {
     }
 
     /* Default: show all */
-    if (!show_lines && !show_words && !show_bytes) {
+    if(!show_lines && !show_words && !show_bytes) {
         show_lines = show_words = show_bytes = 1;
     }
 
-    if (argc <= file_start) {
+    if(argc <= file_start) {
         fprintf(stderr, "Usage: wc [-lwc] FILE [FILE ...]\n");
         return 1;
     }
@@ -51,9 +51,9 @@ int main(int argc, char **argv) {
     int multiple_files = (argc - file_start) > 1;
     int ret = 0;
 
-    for (int i = file_start; i < argc; i++) {
+    for(int i = file_start; i < argc; i++) {
         FILE *fp = fopen(argv[i], "r");
-        if (fp == NULL) {
+        if(fp == NULL) {
             fprintf(stderr, "wc: cannot open '%s'\n", argv[i]);
             ret = 1;
             continue;
@@ -65,15 +65,15 @@ int main(int argc, char **argv) {
         int in_word = 0;
         int c;
 
-        while ((c = fgetc(fp)) != EOF) {
+        while((c = fgetc(fp)) != EOF) {
             bytes++;
-            if (c == '\n') {
+            if(c == '\n') {
                 lines++;
             }
-            if (isspace(c)) {
+            if(isspace(c)) {
                 in_word = 0;
-            } else {
-                if (!in_word) {
+            }else {
+                if(!in_word) {
                     words++;
                     in_word = 1;
                 }
@@ -83,9 +83,9 @@ int main(int argc, char **argv) {
         fclose(fp);
 
         /* Print results */
-        if (show_lines) printf("%7lu ", lines);
-        if (show_words) printf("%7lu ", words);
-        if (show_bytes) printf("%7lu ", bytes);
+        if(show_lines) printf("%7lu ", lines);
+        if(show_words) printf("%7lu ", words);
+        if(show_bytes) printf("%7lu ", bytes);
         printf("%s\n", argv[i]);
 
         total_lines += lines;
@@ -94,10 +94,10 @@ int main(int argc, char **argv) {
     }
 
     /* Print totals if multiple files */
-    if (multiple_files) {
-        if (show_lines) printf("%7lu ", total_lines);
-        if (show_words) printf("%7lu ", total_words);
-        if (show_bytes) printf("%7lu ", total_bytes);
+    if(multiple_files) {
+        if(show_lines) printf("%7lu ", total_lines);
+        if(show_words) printf("%7lu ", total_words);
+        if(show_bytes) printf("%7lu ", total_bytes);
         printf("total\n");
     }
 

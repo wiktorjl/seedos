@@ -89,10 +89,10 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
      * how many pages we need to track.
      */
     uint64_t highest_addr = 0;
-    for (uint64_t i = 0; i < memmap->entry_count; i++) {
+    for(uint64_t i = 0; i < memmap->entry_count; i++) {
         struct limine_memmap_entry *entry = memmap->entries[i];
         uint64_t entry_end = entry->base + entry->length;
-        if (entry_end > highest_addr && entry->type == LIMINE_MEMMAP_USABLE) {
+        if(entry_end > highest_addr && entry->type == LIMINE_MEMMAP_USABLE) {
             highest_addr = entry_end;
         }
     }
@@ -105,9 +105,9 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
      * This is different from total_pages, which is just the tracking range.
      */
     usable_pages = 0;
-    for (uint64_t i = 0; i < memmap->entry_count; i++) {
+    for(uint64_t i = 0; i < memmap->entry_count; i++) {
         struct limine_memmap_entry *entry = memmap->entries[i];
-        if (entry->type == LIMINE_MEMMAP_USABLE) {
+        if(entry->type == LIMINE_MEMMAP_USABLE) {
             usable_pages += entry->length / PAGE_SIZE;
         }
     }
@@ -119,21 +119,21 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
     uint64_t bitmap_pages = (bitmap_size + PAGE_SIZE - 1) / PAGE_SIZE;
     uint64_t bitmap_phys = 0;
 
-    for (uint64_t i = 0; i < memmap->entry_count; i++) {
+    for(uint64_t i = 0; i < memmap->entry_count; i++) {
         struct limine_memmap_entry *entry = memmap->entries[i];
-        if (entry->type != LIMINE_MEMMAP_USABLE) {
+        if(entry->type != LIMINE_MEMMAP_USABLE) {
             continue;
         }
-        if (entry->length >= bitmap_pages * PAGE_SIZE) {
+        if(entry->length >= bitmap_pages * PAGE_SIZE) {
             bitmap_phys = entry->base;
             break;
         }
     }
 
     /* If we couldn't find space, we're in trouble */
-    if (bitmap_phys == 0) {
+    if(bitmap_phys == 0) {
         /* Can't do much without serial here - just hang */
-        while (1) {
+        while(1) {
             asm volatile ("hlt");
         }
     }
@@ -145,7 +145,7 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
      * Step 3: Initialize bitmap - mark ALL pages as used first.
      * This is safer: anything we don't explicitly mark free is used.
      */
-    for (uint64_t i = 0; i < bitmap_size; i++) {
+    for(uint64_t i = 0; i < bitmap_size; i++) {
         bitmap[i] = 0xFF;  /* All bits set = all pages used */
     }
     free_pages = 0;
@@ -153,9 +153,9 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
     /*
      * Step 4: Walk the memory map and mark usable regions as free.
      */
-    for (uint64_t i = 0; i < memmap->entry_count; i++) {
+    for(uint64_t i = 0; i < memmap->entry_count; i++) {
         struct limine_memmap_entry *entry = memmap->entries[i];
-        if (entry->type != LIMINE_MEMMAP_USABLE) {
+        if(entry->type != LIMINE_MEMMAP_USABLE) {
             continue;
         }
 
@@ -163,7 +163,7 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
         uint64_t base_page = entry->base / PAGE_SIZE;
         uint64_t page_count = entry->length / PAGE_SIZE;
 
-        for (uint64_t p = 0; p < page_count; p++) {
+        for(uint64_t p = 0; p < page_count; p++) {
             bitmap_mark_free(base_page + p);
             free_pages++;
         }
@@ -174,8 +174,8 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
      * We already placed data there, so they're not free!
      */
     uint64_t bitmap_base_page = bitmap_phys / PAGE_SIZE;
-    for (uint64_t p = 0; p < bitmap_pages; p++) {
-        if (!bitmap_is_used(bitmap_base_page + p)) {
+    for(uint64_t p = 0; p < bitmap_pages; p++) {
+        if(!bitmap_is_used(bitmap_base_page + p)) {
             bitmap_mark_used(bitmap_base_page + p);
             free_pages--;
         }
@@ -185,7 +185,7 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
      * Step 6: Mark page 0 as used (never allocate it).
      * NULL pointer dereferences should fault, not succeed.
      */
-    if (!bitmap_is_used(0)) {
+    if(!bitmap_is_used(0)) {
         bitmap_mark_used(0);
         free_pages--;
     }
@@ -197,8 +197,8 @@ uint64_t pmm_alloc(void) {
      * This is O(n) which is inefficient for large memory, but simple.
      * A production allocator would use a free list or buddy system.
      */
-    for (uint64_t i = 0; i < total_pages; i++) {
-        if (!bitmap_is_used(i)) {
+    for(uint64_t i = 0; i < total_pages; i++) {
+        if(!bitmap_is_used(i)) {
             bitmap_mark_used(i);
             free_pages--;
             return i * PAGE_SIZE;
@@ -211,10 +211,10 @@ void pmm_free(uint64_t phys_addr) {
     uint64_t page_index = phys_addr / PAGE_SIZE;
 
     /* Validate: must be in range and currently allocated */
-    if (page_index < total_pages && bitmap_is_used(page_index)) {
+    if(page_index < total_pages && bitmap_is_used(page_index)) {
         bitmap_mark_free(page_index);
         free_pages++;
-    } else {
+    }else {
         /* Invalid free (out of range or double-free) is ignored */
         if(bitmap_is_used(page_index)) {
             puts("ERROR: pmm_free: potential double free (bug?): ");

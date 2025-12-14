@@ -22,13 +22,13 @@ static int compare_lines(const void *a, const void *b) {
     const char *line_b = *(const char **)b;
     int result;
 
-    if (numeric_mode) {
+    if(numeric_mode) {
         long num_a = atol(line_a);
         long num_b = atol(line_b);
-        if (num_a < num_b) result = -1;
-        else if (num_a > num_b) result = 1;
+        if(num_a < num_b) result = -1;
+        else if(num_a > num_b) result = 1;
         else result = 0;
-    } else {
+    }else {
         result = strcmp(line_a, line_b);
     }
 
@@ -39,10 +39,10 @@ int main(int argc, char **argv) {
     int file_start = 1;
 
     /* Parse options */
-    while (file_start < argc && argv[file_start][0] == '-') {
+    while(file_start < argc && argv[file_start][0] == '-') {
         char *opt = argv[file_start] + 1;
-        while (*opt) {
-            switch (*opt) {
+        while(*opt) {
+            switch(*opt) {
                 case 'r': reverse_mode = 1; break;
                 case 'n': numeric_mode = 1; break;
                 default:
@@ -56,7 +56,7 @@ int main(int argc, char **argv) {
 
     /* Allocate line storage */
     char **lines = malloc(MAX_LINES * sizeof(char *));
-    if (!lines) {
+    if(!lines) {
         fprintf(stderr, "sort: out of memory\n");
         return 1;
     }
@@ -64,30 +64,30 @@ int main(int argc, char **argv) {
     int num_lines = 0;
 
     /* Read lines from files or stdin */
-    if (argc <= file_start) {
+    if(argc <= file_start) {
         /* Read from stdin */
         char buf[MAX_LINE_LEN];
-        while (fgets(buf, sizeof(buf), stdin) != NULL && num_lines < MAX_LINES) {
+        while(fgets(buf, sizeof(buf), stdin) != NULL && num_lines < MAX_LINES) {
             lines[num_lines] = strdup(buf);
-            if (!lines[num_lines]) {
+            if(!lines[num_lines]) {
                 fprintf(stderr, "sort: out of memory\n");
                 break;
             }
             num_lines++;
         }
-    } else {
+    }else {
         /* Read from files */
-        for (int i = file_start; i < argc && num_lines < MAX_LINES; i++) {
+        for(int i = file_start; i < argc && num_lines < MAX_LINES; i++) {
             FILE *fp = fopen(argv[i], "r");
-            if (fp == NULL) {
+            if(fp == NULL) {
                 fprintf(stderr, "sort: cannot open '%s'\n", argv[i]);
                 continue;
             }
 
             char buf[MAX_LINE_LEN];
-            while (fgets(buf, sizeof(buf), fp) != NULL && num_lines < MAX_LINES) {
+            while(fgets(buf, sizeof(buf), fp) != NULL && num_lines < MAX_LINES) {
                 lines[num_lines] = strdup(buf);
-                if (!lines[num_lines]) {
+                if(!lines[num_lines]) {
                     fprintf(stderr, "sort: out of memory\n");
                     break;
                 }
@@ -102,7 +102,7 @@ int main(int argc, char **argv) {
     qsort(lines, num_lines, sizeof(char *), compare_lines);
 
     /* Print sorted lines */
-    for (int i = 0; i < num_lines; i++) {
+    for(int i = 0; i < num_lines; i++) {
         printf("%s", lines[i]);
         free(lines[i]);
     }

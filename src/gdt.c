@@ -238,7 +238,7 @@ void gdt_init(void) {
 
     /* Entry 5-6: TSS (selector 0x28, spans 16 bytes) */
     /* Initialize TSS structure */
-    for (int i = 0; i < (int)sizeof(tss); i++) {
+    for(int i = 0; i < (int)sizeof(tss); i++) {
         ((uint8_t *)&tss)[i] = 0;
     }
     tss.iopb_offset = sizeof(tss);  /* No I/O permission bitmap */

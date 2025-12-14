@@ -183,7 +183,7 @@ static void idt_set_entry(int n, void (*handler)(void), uint8_t type_attr) {
  */
 void idt_init(void) {
     /* Set up exception handlers (0-31) and IRQ handlers (32-47) */
-    for (int i = 0; i < NUM_ISR_STUBS; i++) {
+    for(int i = 0; i < NUM_ISR_STUBS; i++) {
         idt_set_entry(i, isr_stubs[i], IDT_GATE_INTERRUPT);
     }
 
@@ -220,12 +220,12 @@ void idt_init(void) {
 void interrupt_handler(struct interrupt_frame *frame) {
 
     /* Breakpoint exception (INT3) - just continue for debugging */
-    if (frame->int_no == EXCEPTION_BREAKPOINT) {
+    if(frame->int_no == EXCEPTION_BREAKPOINT) {
         return;
     }
 
     /* CPU Exception (vectors 0-31) */
-    if (frame->int_no < 32) {
+    if(frame->int_no < 32) {
         /*
          * Check if the exception occurred in userspace (ring 3).
          * The CS register's lower 2 bits contain the RPL (privilege level).
@@ -233,14 +233,14 @@ void interrupt_handler(struct interrupt_frame *frame) {
          */
         int from_userspace = ((frame->cs & RPL_MASK) == RPL_USER);
 
-        if (from_userspace) {
+        if(from_userspace) {
             /* Userspace fault - terminate process gracefully */
             puts("\n");
             puts("========================================\n");
             puts("  PROCESS TERMINATED: ");
-            if (frame->int_no < NUM_EXCEPTION_NAMES) {
+            if(frame->int_no < NUM_EXCEPTION_NAMES) {
                 puts(exception_names[frame->int_no]);
-            } else {
+            }else {
                 puts("Unknown Exception");
             }
             puts("\n");
@@ -250,7 +250,7 @@ void interrupt_handler(struct interrupt_frame *frame) {
             put_hex(frame->rip);
             puts("\n");
 
-            if (frame->int_no == EXCEPTION_PAGE_FAULT) {
+            if(frame->int_no == EXCEPTION_PAGE_FAULT) {
                 uint64_t faulting_address;
                 asm volatile ("movq %%cr2, %0" : "=r"(faulting_address));
                 puts("  Fault address (CR2): ");
@@ -270,9 +270,9 @@ void interrupt_handler(struct interrupt_frame *frame) {
         puts("\n");
         puts("========================================\n");
         puts("  KERNEL PANIC: ");
-        if (frame->int_no < NUM_EXCEPTION_NAMES) {
+        if(frame->int_no < NUM_EXCEPTION_NAMES) {
             puts(exception_names[frame->int_no]);
-        } else {
+        }else {
             puts("Unknown Exception");
         }
         puts("\n");
@@ -324,7 +324,7 @@ void interrupt_handler(struct interrupt_frame *frame) {
          * For page faults, CR2 contains the virtual address that caused
          * the fault. This is essential for implementing demand paging.
          */
-        if (frame->int_no == EXCEPTION_PAGE_FAULT) {
+        if(frame->int_no == EXCEPTION_PAGE_FAULT) {
             uint64_t faulting_address;
             asm volatile ("movq %%cr2, %0" : "=r"(faulting_address));
             puts("\n  Fault address (CR2): ");
@@ -336,13 +336,13 @@ void interrupt_handler(struct interrupt_frame *frame) {
         puts("\n========================================\n");
         puts("  System halted. Please reboot.\n");
         puts("========================================\n");
-        while (1) {
+        while(1) {
             asm volatile ("cli; hlt");  /* Disable interrupts and halt */
         }
     }
 
     /* Hardware IRQ (vectors 32-47) */
-    if (frame->int_no >= IRQ_BASE && frame->int_no < IRQ_BASE + 16) {
+    if(frame->int_no >= IRQ_BASE && frame->int_no < IRQ_BASE + 16) {
         uint8_t irq_number = frame->int_no - IRQ_BASE;
 
         if(irq_number == 0) {
@@ -353,7 +353,7 @@ void interrupt_handler(struct interrupt_frame *frame) {
              * If in kernel (e.g., during syscall), don't preempt - the syscall
              * will return to userspace normally, and preemption can happen then.
              */
-            if ((frame->cs & RPL_MASK) == RPL_USER) {
+            if((frame->cs & RPL_MASK) == RPL_USER) {
                 schedule(frame);
             }
 
@@ -361,7 +361,7 @@ void interrupt_handler(struct interrupt_frame *frame) {
             return;
         }
         /* Dispatch to specific IRQ handler */
-        if (irq_number == 1) {
+        if(irq_number == 1) {
             keyboard_handler();  /* IRQ1 = PS/2 keyboard */
         }
 
