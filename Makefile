@@ -9,6 +9,7 @@ OBJCOPY = objcopy
 SRC_DIR = src
 BUILD_DIR = build
 USER_DIR = $(SRC_DIR)/userspace
+LIBC_DIR = $(SRC_DIR)/libc
 TEST_DIR = test
 
 # C compiler flags
@@ -64,7 +65,8 @@ USER_CFLAGS = -ffreestanding       \
               -Wno-unused-parameter \
               -O2                  \
               -g                   \
-              -nostdlib
+              -nostdlib            \
+              -I$(LIBC_DIR)/include
 
 # All objects
 OBJECTS = $(ASM_OBJECTS) $(C_OBJECTS) $(TEST_OBJECTS) $(USER_PROG_OBJS)
@@ -75,9 +77,15 @@ KERNEL = $(BUILD_DIR)/kernel.elf
 # Prevent Make from deleting intermediate files in the user program build chain
 .PRECIOUS: $(BUILD_DIR)/%_ucode.o $(BUILD_DIR)/%.elf $(USER_DIR)/%_bin.c
 
-.PHONY: all clean
+.PHONY: all clean libc
 
 all: $(KERNEL)
+
+# Build libc
+libc: $(LIBC_DIR)/libc.a
+
+$(LIBC_DIR)/libc.a:
+	$(MAKE) -C $(LIBC_DIR)
 
 # Create build directory if needed
 $(BUILD_DIR):
@@ -105,8 +113,8 @@ $(BUILD_DIR)/crt0.o: $(USER_DIR)/crt0.s | $(BUILD_DIR)
 $(BUILD_DIR)/%_ucode.o: $(USER_DIR)/%.c | $(BUILD_DIR)
 	$(CC) $(USER_CFLAGS) -I$(USER_DIR) -c $< -o $@
 
-# Link C program to ELF (crt0.o + program.o)
-$(foreach prog,$(USER_PROGRAMS),$(eval $(BUILD_DIR)/$(prog).elf: $(BUILD_DIR)/crt0.o $(BUILD_DIR)/$(prog)_ucode.o $(USER_LDSCRIPT) ; $(LD) -nostdlib -static -T $(USER_LDSCRIPT) -o $$@ $(BUILD_DIR)/crt0.o $(BUILD_DIR)/$(prog)_ucode.o))
+# Link C program to ELF (crt0.o + program.o + libc.a)
+$(foreach prog,$(USER_PROGRAMS),$(eval $(BUILD_DIR)/$(prog).elf: $(BUILD_DIR)/crt0.o $(BUILD_DIR)/$(prog)_ucode.o $(USER_LDSCRIPT) $(LIBC_DIR)/libc.a ; $(LD) -nostdlib -static -T $(USER_LDSCRIPT) -o $$@ $(BUILD_DIR)/crt0.o $(BUILD_DIR)/$(prog)_ucode.o $(LIBC_DIR)/libc.a))
 
 # Generate C file .elf -> _bin.c
 $(USER_DIR)/%_bin.c: $(BUILD_DIR)/%.elf
@@ -143,6 +151,7 @@ $(BUILD_DIR)/%.o: $(TEST_DIR)/%.c | $(BUILD_DIR)
 clean:
 	rm -rf $(BUILD_DIR)
 	rm -f $(USER_DIR)/*_bin.c
+	$(MAKE) -C $(LIBC_DIR) clean
 
 # IDE setup - generates .clangd config and compile_commands.json for VS Code/clangd
 .PHONY: ide-setup
