@@ -48,10 +48,11 @@ TEST_OBJECTS = $(addprefix $(BUILD_DIR)/,$(TEST_SOURCES:.c=.o))
 # =============================================================================
 # User Programs
 #
-# Build chain: .c -> _ucode.o + crt0.o -> .elf -> _bin.c -> _bin.o
+# Build chain: .c -> _ucode.o + crt0.o + libc.a -> .elf
+# ELF files are copied to initrd by build.sh, NOT embedded in kernel.
 # =============================================================================
 USER_PROGRAMS = hello info heap count alpha stars loop crash input ctest filetest
-USER_PROG_OBJS = $(addprefix $(BUILD_DIR)/,$(addsuffix _bin.o,$(USER_PROGRAMS)))
+USER_ELF_FILES = $(addprefix $(BUILD_DIR)/,$(addsuffix .elf,$(USER_PROGRAMS)))
 
 # C compiler flags for userspace (NO -mcmodel=kernel!)
 USER_CFLAGS = -ffreestanding       \
@@ -68,18 +69,20 @@ USER_CFLAGS = -ffreestanding       \
               -nostdlib            \
               -I$(LIBC_DIR)/include
 
-# All objects
-OBJECTS = $(ASM_OBJECTS) $(C_OBJECTS) $(TEST_OBJECTS) $(USER_PROG_OBJS)
+# All objects (user programs are in initrd, not embedded in kernel)
+OBJECTS = $(ASM_OBJECTS) $(C_OBJECTS) $(TEST_OBJECTS)
 
 # Output
 KERNEL = $(BUILD_DIR)/kernel.elf
 
 # Prevent Make from deleting intermediate files in the user program build chain
-.PRECIOUS: $(BUILD_DIR)/%_ucode.o $(BUILD_DIR)/%.elf $(USER_DIR)/%_bin.c
+.PRECIOUS: $(BUILD_DIR)/%_ucode.o $(BUILD_DIR)/%.elf
 
-.PHONY: all clean libc
+.PHONY: all clean libc user-programs
 
-all: $(KERNEL)
+all: $(KERNEL) $(USER_ELF_FILES)
+
+user-programs: $(USER_ELF_FILES)
 
 # Build libc
 libc: $(LIBC_DIR)/libc.a
@@ -116,19 +119,6 @@ $(BUILD_DIR)/%_ucode.o: $(USER_DIR)/%.c | $(BUILD_DIR)
 # Link C program to ELF (crt0.o + program.o + libc.a)
 $(foreach prog,$(USER_PROGRAMS),$(eval $(BUILD_DIR)/$(prog).elf: $(BUILD_DIR)/crt0.o $(BUILD_DIR)/$(prog)_ucode.o $(USER_LDSCRIPT) $(LIBC_DIR)/libc.a ; $(LD) -nostdlib -static -T $(USER_LDSCRIPT) -o $$@ $(BUILD_DIR)/crt0.o $(BUILD_DIR)/$(prog)_ucode.o $(LIBC_DIR)/libc.a))
 
-# Generate C file .elf -> _bin.c
-$(USER_DIR)/%_bin.c: $(BUILD_DIR)/%.elf
-	@echo "Generating $@ from $<"
-	@echo '#include "user_programs.h"' > $@
-	@echo '' >> $@
-	@echo 'unsigned char $*_bin[] = {' >> $@
-	@xxd -i < $< >> $@
-	@echo '};' >> $@
-	@echo "unsigned int $*_bin_len = $$(wc -c < $<);" >> $@
-
-# Step 4: Compile generated C -> .o
-$(BUILD_DIR)/%_bin.o: $(USER_DIR)/%_bin.c | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
 
 # =============================================================================
 # Kernel Build Rules
@@ -150,7 +140,6 @@ $(BUILD_DIR)/%.o: $(TEST_DIR)/%.c | $(BUILD_DIR)
 
 clean:
 	rm -rf $(BUILD_DIR)
-	rm -f $(USER_DIR)/*_bin.c
 	$(MAKE) -C $(LIBC_DIR) clean
 
 # IDE setup - generates .clangd config and compile_commands.json for VS Code/clangd
