@@ -247,8 +247,8 @@ static int readline(char *buf, int size) {
                 }
             }
 
-            if(!has_space && pos > 0) {
-                /* Complete the command */
+            if(!has_space) {
+                /* Complete the command (empty prefix shows all commands) */
                 char matches[MAX_COMPLETIONS][64];
                 int num_matches = complete_command(buf, matches, MAX_COMPLETIONS);
 
@@ -271,10 +271,13 @@ static int readline(char *buf, int size) {
                     }
                     printf("%s", buf);
                 }else if(num_matches > 1) {
-                    /* Multiple matches - show them all */
+                    /* Multiple matches - show them bash-style (space-separated) */
                     printf("\n");
                     for(int i = 0; i < num_matches; i++) {
-                        printf("%s  ", matches[i]);
+                        printf("%s", matches[i]);
+                        if(i < num_matches - 1) {
+                            printf("  ");
+                        }
                     }
                     printf("\n");
 

@@ -19,6 +19,9 @@ void schedule(struct interrupt_frame *frame);
 /* Yield CPU voluntarily */
 void sched_yield(void);
 
+/* Flag to allow preemption during kernel I/O wait */
+extern volatile int kernel_preempt_ok;
+
 /* Block current process waiting for a child PID */
 void sched_block_on_pid(struct process *p, int pid);
 

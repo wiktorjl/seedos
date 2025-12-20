@@ -349,11 +349,14 @@ void interrupt_handler(struct interrupt_frame *frame) {
             pit_handler();
 
             /*
-             * Only preempt if we were in userspace (ring 3).
-             * If in kernel (e.g., during syscall), don't preempt - the syscall
-             * will return to userspace normally, and preemption can happen then.
+             * Preempt if we were in userspace (ring 3), OR if the kernel
+             * has indicated it's safe to preempt (e.g., waiting for I/O).
+             *
+             * kernel_preempt_ok is set by syscalls that are waiting for
+             * input, allowing background processes to run while the
+             * foreground process waits.
              */
-            if((frame->cs & RPL_MASK) == RPL_USER) {
+            if((frame->cs & RPL_MASK) == RPL_USER || kernel_preempt_ok) {
                 schedule(frame);
             }
 

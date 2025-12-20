@@ -66,14 +66,26 @@ static size_t input_read(char *buf, size_t len) {
 
 /*
  * input_wait - Block until input is available from either source.
+ *
+ * Sets kernel_preempt_ok to allow the scheduler to preempt us even
+ * though we're in kernel mode. This enables background processes to
+ * run while we wait for keyboard/serial input.
  */
 static void input_wait(void) {
     if(input_has_char()) {
         return;
     }
+
+    /* Allow preemption while waiting for I/O */
+    kernel_preempt_ok = 1;
+
     while(!input_has_char()) {
         __asm__ volatile("sti; hlt; cli");
     }
+
+    /* Disable kernel preemption before returning */
+    kernel_preempt_ok = 0;
+
     __asm__ volatile("sti");
 }
 
@@ -1181,11 +1193,17 @@ static int64_t sys_waitpid(uint64_t pid) {
     /* Block parent until child exits */
     sched_block_on_pid(parent, (int)pid);
 
+    /* Allow preemption while waiting for child */
+    kernel_preempt_ok = 1;
+
     /* Wait for child to exit and wake us up */
     while(child->state != PROC_ZOMBIE) {
         /* Enable interrupts and halt - timer will fire and run scheduler */
         __asm__ volatile("sti; hlt; cli");
     }
+
+    /* Disable kernel preemption */
+    kernel_preempt_ok = 0;
 
     /* Child has exited - reap it */
     int exit_code = child->exit_code;

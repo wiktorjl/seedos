@@ -29,6 +29,15 @@ static struct process *ready_queue[MAX_PROCESSES];
 static int ready_count = 0;
 static int current_index = -1;
 
+/*
+ * kernel_preempt_ok - Flag to allow preemption during kernel I/O wait.
+ *
+ * When a syscall is waiting for I/O (e.g., keyboard input), it sets this
+ * flag to indicate that it's safe to preempt even though we're in kernel
+ * mode. This allows background processes to run while the shell waits.
+ */
+volatile int kernel_preempt_ok = 0;
+
 void sched_init(void) {
     ready_count = 0;
     current_index = -1;
