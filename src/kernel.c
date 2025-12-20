@@ -32,6 +32,7 @@
 #include "pic.h"
 #include "keyboard.h"
 #include "shell.h"
+#include "string.h"
 #include "fb.h"
 #include "gdt.h"
 #include "console.h"
@@ -83,12 +84,73 @@ int verify_bootloader_info(struct limine_memmap_response **memmap, uint64_t *hhd
     return 1;
 }
 
+/* Get CPU model and name */
+void print_cpu_info(void) {
+    uint32_t eax, ebx, ecx, edx;
+    char cpu_name[65] = {0};
+    char vendor[13] = {0};
+    char brand[49] = {0};
+    char model[17] = {0};
+
+
+    /* Get CPU vendor string */
+    __asm__ volatile (
+        "cpuid"
+        : "=b"(ebx), "=d"(edx), "=c"(ecx)
+        : "a"(0)
+    );
+    *((uint32_t *)&cpu_name[0])  = ebx;
+    *((uint32_t *)&cpu_name[4])  = edx;
+    *((uint32_t *)&cpu_name[8])  = ecx;
+
+    /* Get CPU brand string */
+    for(int i = 0; i < 3; i++) {
+        __asm__ volatile (
+            "cpuid"
+            : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+            : "a"(0x80000002 + i)
+        );
+        *((uint32_t *)&cpu_name[16 + i * 16 + 0])  = eax;
+        *((uint32_t *)&cpu_name[16 + i * 16 + 4])  = ebx;
+        *((uint32_t *)&cpu_name[16 + i * 16 + 8])  = ecx;
+        *((uint32_t *)&cpu_name[16 + i * 16 + 12]) = edx;
+    }
+
+    puts("[cpu] Name: ");
+    puts(cpu_name);
+    puts("\n");
+
+    /* Extract vendor string */
+    *((uint32_t *)&vendor[0])  = *((uint32_t *)&cpu_name[0]);
+    *((uint32_t *)&vendor[4])  = *((uint32_t *)&cpu_name[4]);
+    *((uint32_t *)&vendor[8])  = *((uint32_t *)&cpu_name[8]);
+    vendor[12] = '\0';
+
+    /* Extract brand string */
+    strncpy(brand, &cpu_name[16], 48);
+    brand[48] = '\0';
+
+    /* Extract model string */
+    strncpy(model, &cpu_name[16], 16);
+    model[16] = '\0';
+
+    puts("[cpu] Vendor: ");
+    puts(vendor);
+    puts("\n");
+
+    puts("[cpu] Brand: ");
+    puts(brand);
+    puts("\n");
+
+    puts("[cpu] Model: ");
+    puts(model);
+    puts("\n");
+}
+
 /* Print kernel banner */
 void print_banner(void) {
     puts("\n");
-    puts("  SeedOS v0.1\n");
-    puts("  A Simple Educational Kernel\n");
-    puts("\n");
+    puts("SeedOS v0.1\n\n");
 }
 
 /* =============================================================================
@@ -118,66 +180,74 @@ void kernel_main(void) {
         puts("Kernel panic: Invalid bootloader information\n");
         goto halt;
     }
-
+    print_cpu_info();
     print_banner();
 
     /* Initialize kernel subsystems */
     pmm_init(memmap, hhdm_offset);
-    puts("  pmm       ");
+    puts("[pmm] Physical Memory Manager initialized\n");
+    puts("[pmm] ");
     put_dec(pmm_get_usable_pages() * 4 / 1024);
     puts(" MB usable, ");
     put_dec(pmm_get_free_pages() * 4 / 1024);
     puts(" MB free\n");
 
     gdt_init();
-    puts("  gdt       kernel/user segments, tss\n");
+    puts("[gdt] Kernel/user segments, TSS initialized\n");
 
     vmm_init(hhdm_offset);
-    puts("  vmm       4-level paging, hhdm @ ");
+    puts("[vmm] 4-level paging"); 
+    puts("[vmm] HHDM @ ");
     put_hex(hhdm_offset);
     puts("\n");
+    puts("[vmm] Page tables start at: ");
+    put_hex(vmm_get_kernel_pml4());
+    puts("\n");
 
+    
     idt_init();
-    puts("  idt       48 handlers + syscall\n");
+
+    puts("[idt] 48 handlers + syscall\n");
 
     pic_init();
-    puts("  pic       irq 32-47\n");
+    puts("[pic] IRQ 32-47\n");
 
     keyboard_init();
-    puts("  keyboard  ps/2\n");
+    puts("[keyboard] PS/2\n");
 
     pit_init();
-    puts("  pit       100 Hz timer\n");
+    puts("[pit] 100 Hz timer\n");
 
     /* Initialize test framework and register all tests */
     test_framework_init(memmap, hhdm_offset);
     test_register_all();
-    puts("  tests     ");
+    puts("[test] Registered all tests\n");
+    puts("[test] Slots available: ");
     put_dec(MAX_TESTS);
-    puts(" slots\n");
+    puts("\n");
 
+    /* Enable interrupts */
     asm volatile ("sti");
 
     struct limine_module_response *mod = module_request.response;
     if(mod && mod->module_count > 0) {
         struct limine_file *initrd = mod->modules[0];
         tar_init(initrd->address, initrd->size);
-        puts("  initrd    ");
+        puts("[tarfs] tarfs loaded: ");
         put_dec(tar_get_file_count());
         puts(" files\n");
     }else {
-        puts("  initrd    [not found]\n");
+        puts("[tarfs] [not found]\n");
     }
 
     vfs_init();
-    puts("  vfs       tarfs mounted\n");
-
+    puts("[vfs] tarfs mounted\n");
     /* Initialize scheduler */
     sched_init();
-    puts("  sched     round-robin scheduler\n");
+    puts("[sched] round-robin scheduler\n");
 
     /* Load and start /bin/init as the first userspace process */
-    puts("\nStarting init process...\n");
+    puts("[init] Starting init process...\n");
     {
         /* Find /bin/init in initrd (tarfs uses "bin/init" without leading slash) */
         struct tar_file *init_file = tar_find("bin/init");
@@ -199,9 +269,9 @@ void kernel_main(void) {
             goto halt;
         }
 
-        puts("  init      PID ");
+        puts("[init] PID ");
         put_dec(init->pid);
-        puts("\n\n");
+        puts("\n");
 
         /*
          * Enter userspace via blocking call. This properly builds the
@@ -213,7 +283,7 @@ void kernel_main(void) {
          */
         char *init_argv[] = { "init", 0 };
         int init_exit = process_run_with_args(init, 1, init_argv);
-        puts("init exited with code ");
+        puts("[init]     exited with code ");
         put_dec(init_exit);
         puts("\n");
         process_destroy(init);

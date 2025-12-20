@@ -481,7 +481,7 @@ static uint64_t sys_getpid(void) {
 }
 
 static uint64_t sys_getuptime(void) {
-    return pit_get_ticks() * 1000;  /* Convert ticks to milliseconds */
+    return pit_get_ticks() * 1000 / PIT_DEFAULT_HZ;  /* Convert ticks to milliseconds */
 }
 
 static uint64_t sys_brk(uint64_t increment) {

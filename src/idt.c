@@ -360,7 +360,6 @@ void interrupt_handler(struct interrupt_frame *frame) {
              */
             if((frame->cs & RPL_MASK) == RPL_USER) {
                 schedule(frame);
-                /* Never returns if we context switch */
             }
 
             return;

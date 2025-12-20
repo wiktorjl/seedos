@@ -2,7 +2,8 @@
 
 A comprehensive code review identifying issues that undermine the project's stated goals of simplicity, correctness, completeness, and source code readability.
 
-**Analysis Date:** December 2024
+**Initial Analysis:** December 2024
+**Last Updated:** December 2024 (scheduler/process re-review)
 **Scope:** Source code only (documentation excluded as potentially outdated)
 
 ---
@@ -162,22 +163,36 @@ for(uint64_t i = 0; i < count; i++) {
 
 ### 6. Scheduler Returns Without Switching Context
 
-**File:** `src/sched.c:144-149`
+**File:** `src/sched.c:145-149`
 
 ```c
 if(!next->context_valid) {
+    /* Process has no valid context - skip it */
     next->state = PROC_READY;
     return;  // BUG: frame still contains previous process's registers!
 }
 ```
 
-**Impact:** If the selected process has no valid context, the function returns without updating the interrupt frame. The ISR will restore stale register values, causing undefined behavior.
+**Impact:** If the selected process has no valid context, the function returns without updating the interrupt frame. The ISR will then restore the *previous* process's registers (or garbage), causing undefined behavior.
+
+**Why this can happen:**
+- A process is added to the ready queue before `process_start()` sets `context_valid = 1`
+- A bug causes `context_valid` to be cleared unexpectedly
+
+**Suggested fixes:**
+1. Skip invalid processes in the round-robin loop rather than returning early
+2. Ensure all processes in ready queue always have valid context (enforce invariant)
+3. If returning early, at least keep the current process running instead of using stale frame data
+
+**Note:** The `process_start()` function (`src/process.c:402-436`) does correctly initialize all saved registers and sets `context_valid = 1` before calling `sched_add()`, so this issue may not trigger in normal operation. However, the defensive code path is still broken.
 
 ---
 
-### 7. sbrk() Integer Wraparound Vulnerability
+### 7. sbrk() Integer Wraparound and Page Calculation Issues
 
-**File:** `src/process.c:301-309`
+**File:** `src/process.c:301-335`
+
+**Issue A: Integer Wraparound**
 
 ```c
 uint64_t new_brk = old_brk + increment;  // increment is signed (intptr_t)
@@ -193,6 +208,18 @@ if(new_brk < USER_HEAP_BASE) {
 - `increment = -0x10000000000`
 - `new_brk = 0x500000 + (-0x10000000000)` wraps to `0xFFFFFF0000500000`
 - This passes `new_brk < USER_HEAP_BASE` check!
+
+**Issue B: Confusing Page Calculation**
+
+```c
+uint64_t old_page = old_brk == USER_HEAP_BASE ?
+    (USER_HEAP_BASE / VMM_PAGE_SIZE) - 1 : (old_brk - 1) / VMM_PAGE_SIZE;
+uint64_t new_page = (new_brk - 1) / VMM_PAGE_SIZE;
+```
+
+The special-case for `old_brk == USER_HEAP_BASE` subtracts 1 from the page number, which is confusing and error-prone. The intent appears to be "no pages allocated yet" but the arithmetic is non-obvious.
+
+**Suggested fix:** Use clearer logic like tracking allocated page count separately, or use `old_brk > USER_HEAP_BASE` as the condition for having allocated pages.
 
 ---
 
@@ -453,6 +480,28 @@ Each userspace program defines its own limits:
 
 ---
 
+## What's Working Correctly
+
+### Scheduler and Process Management (Re-reviewed December 2024)
+
+The following aspects of the scheduler and process management are implemented correctly:
+
+1. **Timer preemption check** (`src/idt.c:355-357`) - Only preempts when interrupted from ring 3 (userspace), correctly avoiding preemption during kernel code execution
+
+2. **EOI ordering** (`src/idt.c:359`) - End-of-interrupt is sent after `schedule()`, which is acceptable for the current single-CPU design
+
+3. **Context save/restore** (`src/sched.c:67-111`) - All 15 general-purpose registers plus RIP, RSP, RFLAGS, CS, and SS are properly saved and loaded
+
+4. **Interrupt-safe queue operations** (`src/sched.c:38-65`) - Uses `irq_save()`/`irq_restore()` correctly to protect critical sections
+
+5. **Process context initialization** (`src/process.c:402-436`) - `process_start()` properly initializes all saved registers, sets correct segment selectors (0x1B for CS, 0x23 for SS), and sets `context_valid = 1` before adding to scheduler
+
+6. **Round-robin scheduling** (`src/sched.c:126-159`) - Basic round-robin works correctly when all processes have valid context
+
+7. **Address space switching** (`src/sched.c:157`) - Correctly switches CR3 to the next process's PML4
+
+---
+
 ## Conclusion
 
 The codebase is functional for simple demonstrations but has fundamental resource management issues that will cause failures under sustained use. The most pressing concerns are:
@@ -460,5 +509,7 @@ The codebase is functional for simple demonstrations but has fundamental resourc
 1. **Vnode pool exhaustion** - system becomes unusable after ~64 file operations
 2. **Memory safety** - user pointer validation missing in key syscalls
 3. **Resource leaks** - file descriptors and vnodes never cleaned up
+
+The scheduler and process management code is largely correct for the current synchronous execution model. The main architectural limitation (single shared kernel stack) is documented and understood. The remaining issues are edge cases (invalid context handling) and code clarity (sbrk page calculation).
 
 The educational value is diminished by these hidden bugs that students might unknowingly replicate. Fixing the critical issues would make SeedOS a more reliable learning platform.

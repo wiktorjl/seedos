@@ -57,7 +57,7 @@
   #define SYS_WRITE   1  /* Write: rdi=fd, rsi=buffer, rdx=count -> bytes written */
   #define SYS_READ    2  /* Read: rdi=fd, rsi=buffer, rdx=count -> bytes read */
   #define SYS_GETPID  3  /* Get process ID: -> pid */
-  #define SYS_UPTIME  4  /* Get uptime in seconds: -> uptime */
+  #define SYS_UPTIME  4  /* Get uptime in milliseconds: -> uptime_ms */
   #define SYS_SBRK    5  /* Change data segment size: rdi=increment -> old top */
   #define SYS_OPEN    6  /* Open file: rdi=path, rsi=flags -> fd */
   #define SYS_CLOSE   7  /* Close file: rdi=fd -> 0 on success */

@@ -19,7 +19,7 @@
 
 /* Simple busy-wait delay using uptime */
 static void delay(unsigned long ms) {
-    unsigned long start = uptime();
+    unsigned long start = uptime();  /* uptime() returns milliseconds */
     while(uptime() - start < ms) {
         /* Busy wait - scheduler will preempt us */
     }
@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
 
     for(int i = 1; i <= count; i++) {
         printf("%s: %d\n", label, i);
-        delay(500);  /* 500ms between each print */
+        delay(1500);  /* 500ms between each print */
     }
 
     printf("[%s] done\n", label);

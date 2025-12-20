@@ -100,6 +100,9 @@ TERM_SIZE=$(stty size 2>/dev/null || echo "")
 # Build QEMU command
 QEMU_CMD="qemu-system-x86_64 -cdrom $BUILD_DIR/seed.iso"
 
+# Set the CPU to Xeon for better compatibility
+# QEMU_CMD="$QEMU_CMD -cpu i7-6700K"
+
 if [[ "$GUI_MODE" == true ]]; then
     echo "Mode: GUI (graphical window)"
     QEMU_CMD="$QEMU_CMD -serial stdio"

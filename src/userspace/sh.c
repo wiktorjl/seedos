@@ -402,7 +402,7 @@ int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
-    printf("SeedOS Shell\n");
+    printf("\nSeedOS Shell\n");
     printf("Type 'exit' to quit\n\n");
 
     while(1) {

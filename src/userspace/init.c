@@ -20,12 +20,11 @@ int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
-    printf("init: SeedOS init process started (PID %d)\n", getpid());
+    printf("[init] SeedOS init process started (PID %d)\n", getpid());
 
     /* Main init loop - keep restarting the shell */
     while(1) {
-        printf("init: Starting shell...\n");
-
+        printf("[init] Starting shell...\n");
         /*
          * Run the shell using blocking spawn().
          * This waits for shell to exit before returning.
@@ -36,8 +35,8 @@ int main(int argc, char **argv) {
          */
         int exit_code = spawn("/bin/sh", NULL);
 
-        printf("init: Shell exited with code %d\n", exit_code);
-        printf("init: Restarting...\n\n");
+        printf("[init] Shell exited with code %d\n", exit_code);
+        printf("[init] Restarting...\n\n");
     }
 
     return 0;
