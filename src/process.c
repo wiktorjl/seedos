@@ -31,16 +31,6 @@ static struct process *current_process = NULL;
 
 static int next_pid = 1;
 
-static int last_exit_code = 0;
-
-int process_get_exit_code() {
-    return last_exit_code;
-}   
-
-void process_set_exit_code(int code) {
-    last_exit_code = code;
-}
-
 int process_get_pid(void) {
     if(current_process == NULL) {
         return -1;
@@ -73,9 +63,11 @@ struct process *process_create(void) {
     p->entry = USER_CODE_BASE;
     p->stack = USER_STACK_TOP;  /* RSP starts at top of stack */
     p->exit_code = 0;
-    p->wait_pid = 0;
     p->pid = next_pid++;
     p->brk = USER_HEAP_BASE;
+    p->context_valid = 0;       /* No valid context yet */
+    p->kernel_stack_phys = 0;   /* Not used yet */
+    p->kernel_stack_top = 0;    /* Not used yet */
 
     /* Create new address space (PML4 with kernel mappings) */
     p->pml4 = vmm_create_address_space();
@@ -262,7 +254,8 @@ int process_run_with_args(struct process *p, int argc, char **argv) {
     /* Enter userspace - blocks until sys_exit */
     context_switch_to_user(&ctx);
 
-    return last_exit_code;
+    /* Return the exit code set by sys_exit() */
+    return p->exit_code;
 }
 
 void process_destroy(struct process *p) {
@@ -435,6 +428,9 @@ int process_start(struct process *p) {
     p->saved_r14 = 0;
     p->saved_r15 = 0;
 
+    /* Mark context as valid - this process can now be scheduled */
+    p->context_valid = 1;
+
     sched_add(p);
     return 0;
 }
@@ -455,19 +451,3 @@ struct process *process_find_by_pid(int pid) {
     return NULL;
 }
 
-/*
- * process_find_blocked_on_pid - Find a process blocked waiting for a PID.
- *
- * @pid: PID being waited for
- *
- * Returns: Pointer to blocked process, or NULL if none found.
- */
-struct process *process_find_blocked_on_pid(int pid) {
-    for(int i = 0; i < MAX_PROCESSES; i++) {
-        if(process_slots[i].state == PROC_BLOCKED &&
-            process_slots[i].wait_pid == pid) {
-            return &process_slots[i];
-        }
-    }
-    return NULL;
-}

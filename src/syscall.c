@@ -67,26 +67,14 @@ static size_t input_read(char *buf, size_t len) {
 /*
  * input_wait - Block until input is available from either source.
  *
- * Sets kernel_preempt_ok to allow the scheduler to preempt us even
- * though we're in kernel mode. This enables background processes to
- * run while we wait for keyboard/serial input.
+ * Uses simple HLT loop: CPU sleeps until any interrupt wakes it.
+ * No other processes run while we wait (no kernel preemption).
+ * This is efficient (CPU sleeps) and simple.
  */
 static void input_wait(void) {
-    if(input_has_char()) {
-        return;
-    }
-
-    /* Allow preemption while waiting for I/O */
-    kernel_preempt_ok = 1;
-
     while(!input_has_char()) {
-        __asm__ volatile("sti; hlt; cli");
+        __asm__ volatile("sti; hlt");
     }
-
-    /* Disable kernel preemption before returning */
-    kernel_preempt_ok = 0;
-
-    __asm__ volatile("sti");
 }
 
 /* =============================================================================
@@ -271,16 +259,12 @@ static void sys_exit(uint64_t exit_code) {
     /* Switch back to kernel address space before returning */
     vmm_switch_address_space(vmm_get_kernel_pml4());
 
-    /* Save the exit code (both per-process and global for legacy code) */
+    /* Save the exit code in the process struct */
     current->exit_code = (int)exit_code;
-    process_set_exit_code(exit_code);
 
     /* Remove from scheduler and mark as zombie */
     sched_remove(current);
     current->state = PROC_ZOMBIE;
-
-    /* Wake up any process waiting for us */
-    sched_wake_waiters(current->pid);
 
     /*
      * Return to kernel context. This works for processes started via
@@ -1093,41 +1077,18 @@ static int64_t sys_spawn(uint64_t path_ptr, uint64_t argv_ptr) {
 /*
  * sys_spawn_async - Spawn a program without waiting for it to complete.
  *
- * @path_ptr: Path to the program
- * @argv_ptr: NULL-terminated array of argument strings
+ * NOT IMPLEMENTED: Returns -ENOSYS.
  *
- * Returns: Child PID on success, or -1 on error.
+ * This function requires per-process kernel stacks to work correctly.
+ * Without them, there's no way for the child to exit properly when
+ * started asynchronously.
  *
- * Unlike sys_spawn, this returns immediately after starting the child.
- * Use sys_waitpid to wait for the child to complete.
+ * Will be implemented when per-process kernel stacks are added.
  */
 static int64_t sys_spawn_async(uint64_t path_ptr, uint64_t argv_ptr) {
-    const char *path = (const char *)path_ptr;
-    char **argv = (char **)argv_ptr;
-    const char *cwd = process_get_cwd();
-    struct process *parent = process_get_current();
-
-    /* Create and load child process */
-    struct process *child;
-    if(spawn_create_child(path_ptr, cwd, &child) != 0) {
-        return -1;
-    }
-
-    /* Copy argv from user space into parent's exec buffers */
-    int argc;
-    spawn_copy_argv(parent, argv, argv_ptr, path, &argc);
-
-    /* Set up argc/argv on child's stack */
-    child->stack = process_setup_argv(child, argc, parent->exec_argv);
-    if(child->stack == 0) {
-        process_destroy(child);
-        return -1;  /* Too many arguments */
-    }
-
-    /* Start the child process (non-blocking) */
-    process_start(child);
-
-    return child->pid;
+    (void)path_ptr;
+    (void)argv_ptr;
+    return -38;  /* ENOSYS - function not implemented */
 }
 
 /*
@@ -1180,48 +1141,17 @@ static void sys_reboot(void) {
 /*
  * sys_waitpid - Wait for a child process to complete.
  *
- * @pid: Process ID to wait for
+ * NOT IMPLEMENTED: Returns -ENOSYS.
  *
- * Returns: Exit code of the child, or -1 on error.
+ * This function requires per-process kernel stacks to work correctly.
+ * Without them, a process blocked in waitpid cannot be properly preempted
+ * and resumed, so the child process would never get to run.
  *
- * This uses polling instead of scheduler-based blocking because the
- * current scheduler only supports preempting processes in userspace.
- * A process in a syscall has no saved userspace context to restore.
+ * Will be implemented when per-process kernel stacks are added.
  */
 static int64_t sys_waitpid(uint64_t pid) {
-    struct process *child = process_find_by_pid((int)pid);
-
-    if(child == NULL) {
-        return -1;  /* Process not found */
-    }
-
-    /* If child already exited, just reap it */
-    if(child->state == PROC_ZOMBIE) {
-        int exit_code = child->exit_code;
-        process_destroy(child);
-        return exit_code;
-    }
-
-    /*
-     * Poll for child to exit. We allow preemption so that other processes
-     * (like the child we're waiting for) can run. But we don't remove
-     * ourselves from the ready queue - we just keep checking.
-     */
-    kernel_preempt_ok = 1;
-
-    while(child->state != PROC_ZOMBIE) {
-        /* Enable interrupts and halt - timer will fire and run scheduler */
-        __asm__ volatile("sti; hlt; cli");
-    }
-
-    kernel_preempt_ok = 0;
-    __asm__ volatile("sti");
-
-    /* Child has exited - reap it */
-    int exit_code = child->exit_code;
-    process_destroy(child);
-
-    return exit_code;
+    (void)pid;
+    return -38;  /* ENOSYS - function not implemented */
 }
 
 /* =============================================================================

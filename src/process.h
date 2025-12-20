@@ -72,18 +72,28 @@ struct process {
     char cwd[256];          /* Current working directory (per-process, inherited on fork/exec) */
 
     enum process_state state;
-    int wait_pid;           /* PID this process is waiting for(if PROC_BLOCKED) */
 
-     /* Saved CPU context for preemption */
-     uint64_t saved_rip;
-     uint64_t saved_rsp;
-     uint64_t saved_rflags;
-     uint64_t saved_cs;   /* Code segment - needed for kernel preemption */
-     uint64_t saved_ss;   /* Stack segment - needed for kernel preemption */
-     uint64_t saved_rax, saved_rbx, saved_rcx, saved_rdx;
-     uint64_t saved_rsi, saved_rdi, saved_rbp;
-     uint64_t saved_r8, saved_r9, saved_r10, saved_r11;
-     uint64_t saved_r12, saved_r13, saved_r14, saved_r15;
+    /* Saved CPU context for preemption */
+    uint64_t saved_rip;
+    uint64_t saved_rsp;
+    uint64_t saved_rflags;
+    uint64_t saved_cs;   /* Code segment selector */
+    uint64_t saved_ss;   /* Stack segment selector */
+    uint64_t saved_rax, saved_rbx, saved_rcx, saved_rdx;
+    uint64_t saved_rsi, saved_rdi, saved_rbp;
+    uint64_t saved_r8, saved_r9, saved_r10, saved_r11;
+    uint64_t saved_r12, saved_r13, saved_r14, saved_r15;
+
+    /* Context validity flag.
+     * True if saved_* fields contain valid context that can be restored.
+     * Used to prevent switching to a process that was never preempted. */
+    int context_valid;
+
+    /* Future: per-process kernel stack
+     * Currently not used - all processes share a single kernel stack.
+     * These fields are reserved for when per-process kernel stacks are added. */
+    uint64_t kernel_stack_phys;  /* Physical address of kernel stack page(s) */
+    uint64_t kernel_stack_top;   /* Top of kernel stack (for TSS.RSP0) */
 
     /* Per-process buffers for spawn/exec argument handling.
      * These must be per-process (not static) to handle concurrent spawns. */
@@ -94,10 +104,6 @@ struct process {
 void *process_sbrk(int64_t increment);
 
 int process_get_pid(void);
-
-int process_get_exit_code();
-
-void process_set_exit_code(int code);
 
 /*
  * process_create - Create a new process with its own address space.
@@ -252,13 +258,5 @@ int process_start(struct process *p);
  * @return Pointer to process struct, or NULL if not found.
  */
 struct process *process_find_by_pid(int pid);
-
-/**
- * @brief Find a process blocked waiting for a specific PID.
- *
- * @param pid: PID being waited for
- * @return Pointer to blocked process, or NULL if none found.
- */
-struct process *process_find_blocked_on_pid(int pid);
 
 #endif /* PROCESS_H */

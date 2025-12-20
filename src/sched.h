@@ -16,18 +16,6 @@ void sched_remove(struct process *p);
 /* Pick next process and switch to it (called from timer) */
 void schedule(struct interrupt_frame *frame);
 
-/* Yield CPU voluntarily */
-void sched_yield(void);
-
-/* Flag to allow preemption during kernel I/O wait */
-extern volatile int kernel_preempt_ok;
-
-/* Block current process waiting for a child PID */
-void sched_block_on_pid(struct process *p, int pid);
-
-/* Wake up any process blocked waiting for the given PID */
-void sched_wake_waiters(int pid);
-
 /* Save context from interrupt frame to process */
 void sched_save_context(struct process *p, struct interrupt_frame *frame);
 

@@ -29,15 +29,6 @@ static struct process *ready_queue[MAX_PROCESSES];
 static int ready_count = 0;
 static int current_index = -1;
 
-/*
- * kernel_preempt_ok - Flag to allow preemption during kernel I/O wait.
- *
- * When a syscall is waiting for I/O (e.g., keyboard input), it sets this
- * flag to indicate that it's safe to preempt even though we're in kernel
- * mode. This allows background processes to run while the shell waits.
- */
-volatile int kernel_preempt_ok = 0;
-
 void sched_init(void) {
     ready_count = 0;
     current_index = -1;
@@ -119,65 +110,41 @@ void sched_load_context(struct process *p, struct interrupt_frame *frame) {
     frame->r15 = p->saved_r15;
 }
 
+/*
+ * schedule - Round-robin process scheduler.
+ *
+ * Called from the timer interrupt handler when a process was interrupted
+ * in userspace. Saves the current process context and switches to the
+ * next ready process.
+ *
+ * IMPORTANT: This function must ONLY be called when the interrupted code
+ * was in userspace (ring 3). The caller (timer handler in idt.c) must
+ * verify this before calling schedule().
+ *
+ * @frame: Interrupt frame containing saved CPU state
+ */
 void schedule(struct interrupt_frame *frame) {
     if(ready_count == 0) return;
 
     struct process *current = process_get_current();
-
-    /*
-     * Check if the current interrupt was from userspace.
-     * Only userspace interrupts have valid context we can save/restore.
-     * Kernel-mode interrupts (when kernel_preempt_ok=1) should not
-     * have their context saved - the kernel code will continue normally.
-     */
-    int from_userspace = ((frame->cs & 3) == 3);
-
     int was_running = (current && current->state == PROC_RUNNING);
 
-    /* Save current process context only if we were in userspace */
-    if(was_running && from_userspace) {
+    /* Save current process context */
+    if(was_running) {
         sched_save_context(current, frame);
         current->state = PROC_READY;
-    }
-
-    /* If current process is in kernel mode (blocking syscall), don't switch away */
-    if(was_running && !from_userspace) {
-        /* We're in kernel mode - pick another process to run */
-        for(int i = 0; i < ready_count; i++) {
-            int idx = (current_index + 1 + i) % ready_count;
-            struct process *next = ready_queue[idx];
-            if(next != current && next->saved_cs != 0) {
-                /* Found a runnable process - switch to it */
-                sched_load_context(next, frame);
-                next->state = PROC_RUNNING;
-                process_set_current(next);
-                vmm_switch_address_space(next->pml4);
-                current_index = idx;
-                return;
-            }
-        }
-        /* No other runnable process - continue with current (return from hlt) */
-        return;
     }
 
     /* Round-robin: pick next ready process */
     current_index = (current_index + 1) % ready_count;
     struct process *next = ready_queue[current_index];
 
-    /*
-     * Load context if:
-     * - Switching to a different process, OR
-     * - Current process wasn't running (e.g., starting from kernel idle)
-     *
-     * BUT: if next has saved_cs == 0, it was never preempted in userspace
-     * (e.g., it was woken from a blocking syscall). Don't load its context -
-     * just return and let the current process continue.
-     */
+    /* Switch to next process if different from current */
     if(next != current || !was_running) {
-        /* Skip processes with uninitialized context */
-        if(next->saved_cs == 0) {
-            /* Don't switch to this process yet - it's still in a syscall */
-            next->state = PROC_READY;  /* Keep it ready for later */
+        /* Check if the process has valid saved context */
+        if(!next->context_valid) {
+            /* Process has no valid context - skip it */
+            next->state = PROC_READY;
             return;
         }
 
@@ -191,51 +158,11 @@ void schedule(struct interrupt_frame *frame) {
     }
 }
 
-void sched_yield(void) {
-    /* For now, just busy-wait - will be improved later */
-    asm volatile("hlt");
-}
-
-void sched_block_on_pid(struct process *p, int pid) {
-    if(p == NULL) return;
-
-    uint64_t flags = irq_save();
-    /* Remove from ready queue (sched_remove handles its own locking, but
-     * we need atomicity for the whole block operation) */
-    for(int i = 0; i < ready_count; i++) {
-        if(ready_queue[i] == p) {
-            for(int j = i; j < ready_count - 1; j++) {
-                ready_queue[j] = ready_queue[j + 1];
-            }
-            ready_count--;
-            if(current_index >= ready_count) {
-                current_index = ready_count - 1;
-            }
-            break;
-        }
-    }
-    /* Mark as blocked and record what we're waiting for */
-    p->state = PROC_BLOCKED;
-    p->wait_pid = pid;
-    irq_restore(flags);
-}
-
-void sched_wake_waiters(int pid) {
-    uint64_t flags = irq_save();
-    /* Find any process blocked waiting for this PID */
-    struct process *waiter = process_find_blocked_on_pid(pid);
-
-    if(waiter != NULL) {
-        /* Wake up the waiter */
-        waiter->wait_pid = 0;
-        /* Inline sched_add to avoid nested locking */
-        if(ready_count < MAX_PROCESSES) {
-            ready_queue[ready_count++] = waiter;
-            waiter->state = PROC_READY;
-        }
-    }
-    irq_restore(flags);
-}
-
-/* sched_run_from_kernel removed - approach doesn't work */
+/* Dead code removed:
+ * - sched_yield() - was never called
+ * - sched_block_on_pid() - was never called
+ * - sched_wake_waiters() - was called but always no-op
+ *
+ * These will be properly implemented when per-process kernel stacks are added.
+ */
 

@@ -217,6 +217,58 @@ qemu-system-x86_64 -cdrom seed.iso -serial stdio
 QEMU window: keyboard input, graphics output
 Terminal: serial output (debugging)
 
+## Debugging with GDB
+
+QEMU supports GDB debugging. Use this for investigating crashes, stepping through code, or examining state.
+
+**Start QEMU with GDB server:**
+```bash
+# -s: Start GDB server on port 1234
+# -S: Freeze CPU at startup (wait for GDB to connect)
+qemu-system-x86_64 -cdrom build/seed.iso -display none -serial stdio -m 128M -s -S &
+```
+
+**Connect GDB:**
+```bash
+gdb build/kernel.elf -ex "target remote localhost:1234"
+```
+
+**Batch mode example (for non-interactive debugging):**
+```bash
+qemu-system-x86_64 -cdrom build/seed.iso -display none -serial stdio -m 128M -s -S &
+QEMU_PID=$!
+sleep 1
+
+gdb build/kernel.elf \
+    -ex "target remote localhost:1234" \
+    -ex "break kernel_main" \
+    -ex "continue" \
+    -ex "info registers" \
+    -ex "backtrace" \
+    -ex "quit" \
+    --batch
+
+kill $QEMU_PID
+```
+
+**Useful GDB commands:**
+- `break <function>` - Set breakpoint at function
+- `break *0xaddress` - Set breakpoint at address
+- `continue` / `c` - Continue execution
+- `stepi` / `si` - Step one instruction
+- `info registers` - Show CPU registers
+- `backtrace` / `bt` - Show call stack
+- `x/10i $rip` - Disassemble 10 instructions at RIP
+- `x/10gx $rsp` - Examine 10 qwords at RSP
+- `print variable` - Print variable value
+
+**Debugging userspace programs:**
+```bash
+# Load user program symbols (addresses start at 0x400000)
+gdb build/sh.elf -ex "target remote localhost:1234" \
+    -ex "break main" -ex "continue"
+```
+
 ## IDE Setup (VS Code)
 
 For code navigation (Go to Definition, Find References, etc.), run:
