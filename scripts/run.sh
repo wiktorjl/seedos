@@ -104,8 +104,8 @@ if [[ "$GUI_MODE" == true ]]; then
     echo "Mode: GUI (graphical window)"
     QEMU_CMD="$QEMU_CMD -serial stdio"
 else
-    echo "Mode: No GUI (terminal only, UEFI)"
-    QEMU_CMD="$QEMU_CMD -nographic -serial mon:stdio -bios /usr/share/ovmf/OVMF.fd"
+    echo "Mode: No GUI (terminal only, BIOS)"
+    QEMU_CMD="$QEMU_CMD -display none -serial stdio"
 fi
 
 if [[ "$DEBUG_MODE" == true ]]; then
@@ -128,6 +128,9 @@ echo ""
 
 # Run QEMU
 eval $QEMU_CMD
+
+reset
+stty sane
 
 # Restore terminal size if we saved it
 if [[ -n "$TERM_SIZE" ]]; then
