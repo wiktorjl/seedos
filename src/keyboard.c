@@ -76,6 +76,18 @@
 #define SCANCODE_RIGHT_SHIFT_UP 0xB6  /* 0x36 | 0x80 */
 
 /* =============================================================================
+ * Extended Scancode Constants (0xE0 prefixed keys)
+ *
+ * Arrow keys and other extended keys send 0xE0 followed by a scancode.
+ * =============================================================================
+ */
+#define SCANCODE_EXTENDED_PREFIX 0xE0
+#define SCANCODE_UP_ARROW        0x48
+#define SCANCODE_DOWN_ARROW      0x50
+#define SCANCODE_LEFT_ARROW      0x4B
+#define SCANCODE_RIGHT_ARROW     0x4D
+
+/* =============================================================================
  * Keyboard Input Buffer
  *
  * Circular buffer for storing translated ASCII characters.
@@ -95,6 +107,9 @@ static volatile int buffer_write_pos = 0;
  * =============================================================================
  */
 static int shift_held = 0;
+
+/* Track extended scancode state (0xE0 prefix received) */
+static volatile int extended_scancode = 0;
 
 /* =============================================================================
  * Scancode to ASCII Translation Tables (US QWERTY Layout)
@@ -147,6 +162,19 @@ static const char scancode_to_ascii_shifted[] = {
  */
 
 /*
+ * buffer_put_char - Add a character to the input buffer.
+ *
+ * Internal helper to add a character. Silently drops if buffer is full.
+ */
+static void buffer_put_char(char c) {
+    int next_write_pos = (buffer_write_pos + 1) % INPUT_BUFFER_SIZE;
+    if(next_write_pos != buffer_read_pos) {  /* Not full */
+        input_buffer[buffer_write_pos] = c;
+        buffer_write_pos = next_write_pos;
+    }
+}
+
+/*
  * keyboard_init - Enable keyboard interrupts.
  *
  * The PS/2 keyboard is ready by default after boot. We just need to
@@ -166,6 +194,45 @@ void keyboard_init(void) {
 void keyboard_handler(void) {
     /* Read scancode - MUST be done to acknowledge the interrupt */
     uint8_t scancode = inb(PS2_DATA_PORT);
+
+    /*
+     * Handle extended scancode prefix (0xE0).
+     * The next interrupt will contain the actual key code.
+     */
+    if(scancode == SCANCODE_EXTENDED_PREFIX) {
+        extended_scancode = 1;
+        return;
+    }
+
+    /*
+     * Handle extended scancodes (arrow keys, etc.).
+     * These are prefixed with 0xE0 and produce ANSI escape sequences.
+     */
+    if(extended_scancode) {
+        extended_scancode = 0;
+
+        /* Ignore key release events for extended keys */
+        if(scancode & SCANCODE_RELEASE_BIT) {
+            return;
+        }
+
+        /* Translate arrow keys to ANSI escape sequences: ESC [ <code> */
+        char arrow_code = 0;
+        switch(scancode) {
+            case SCANCODE_UP_ARROW:    arrow_code = 'A'; break;
+            case SCANCODE_DOWN_ARROW:  arrow_code = 'B'; break;
+            case SCANCODE_RIGHT_ARROW: arrow_code = 'C'; break;
+            case SCANCODE_LEFT_ARROW:  arrow_code = 'D'; break;
+        }
+
+        if(arrow_code) {
+            /* Send ESC [ <code> sequence */
+            buffer_put_char(27);          /* ESC */
+            buffer_put_char('[');
+            buffer_put_char(arrow_code);
+        }
+        return;
+    }
 
     /*
      * Handle shift key press/release.
@@ -206,12 +273,7 @@ void keyboard_handler(void) {
      * Silently drop if buffer is full (better than blocking in IRQ handler).
      */
     if(ascii != 0) {
-        int next_write_pos = (buffer_write_pos + 1) % INPUT_BUFFER_SIZE;
-        if(next_write_pos != buffer_read_pos) {  /* Not full */
-            input_buffer[buffer_write_pos] = ascii;
-            buffer_write_pos = next_write_pos;
-        }
-        /* If full, character is dropped - could add overflow counter here */
+        buffer_put_char(ascii);
     }
 }
 
