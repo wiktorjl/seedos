@@ -397,6 +397,32 @@ static uint64_t sys_read(uint64_t fd, uint64_t buffer, uint64_t count) {
                     putc(' ');
                     putc('\b');
                 }
+            }else if(c == 27) {
+                /* ESC - start of escape sequence, pass through without echo */
+                if(input_pos < sizeof(line_buffer) - 3) {
+                    line_buffer[input_pos++] = c;
+                    /* Read the rest of the escape sequence (e.g., [ A for arrow keys) */
+                    char c2 = 0, c3 = 0;
+                    size_t n2 = input_read(&c2, 1);
+                    if(n2 > 0 && c2 == '[') {
+                        line_buffer[input_pos++] = c2;
+                        size_t n3 = input_read(&c3, 1);
+                        if(n3 > 0) {
+                            line_buffer[input_pos++] = c3;
+                        }
+                    }
+                    /* Return immediately so shell can process escape sequence */
+                    line_len = input_pos;
+                    line_read = 0;
+                    size_t to_copy = line_len < count ? line_len : count;
+                    memcpy(buf, line_buffer, to_copy);
+                    line_read = to_copy;
+                    if(line_read >= line_len) {
+                        line_len = 0;
+                        line_read = 0;
+                    }
+                    return to_copy;
+                }
             }else if(c >= 32 && c < 127) {
                 /* Printable character - add to buffer if room */
                 if(input_pos < sizeof(line_buffer) - 1) {
