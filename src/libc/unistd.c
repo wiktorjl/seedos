@@ -71,6 +71,10 @@ void reboot(void) {
     __builtin_unreachable();
 }
 
+int kbhit(void) {
+    return __syscall0(__NR_poll_input);
+}
+
 int access(const char *pathname, int mode) {
     struct stat st;
     if(stat(pathname, &st) < 0) {

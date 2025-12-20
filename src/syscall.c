@@ -1337,6 +1337,11 @@ void syscall_handler(struct syscall_registers *regs) {
             /* Never returns */
             break;
 
+        case SYS_POLL_INPUT:
+            /* Check if stdin has input available (non-blocking) */
+            regs->rax = input_has_char() ? 1 : 0;
+            break;
+
         default:
             puts("Unknown syscall: ");
             put_dec(regs->rax);

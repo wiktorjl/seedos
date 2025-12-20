@@ -1,13 +1,13 @@
 /*
  * snake.c - Classic Snake Game for SeedOS
  *
- * Use arrow keys to navigate the snake and eat food (*).
- * The snake grows each time it eats.
- * Game ends if you hit a wall or yourself.
+ * A proper snake game with automatic movement!
+ * The snake moves on its own - you just steer it.
  *
  * Controls:
- *   Arrow keys - Move snake
+ *   Arrow keys - Change direction
  *   q          - Quit game
+ *   p          - Pause/unpause
  */
 
 #include <stdio.h>
@@ -17,10 +17,13 @@
 
 /* Game board dimensions */
 #define BOARD_WIDTH  40
-#define BOARD_HEIGHT 15
+#define BOARD_HEIGHT 18
 
 /* Maximum snake length */
 #define MAX_SNAKE_LEN 256
+
+/* Game speed (milliseconds per frame) */
+#define FRAME_TIME_MS 150
 
 /* Direction constants */
 #define DIR_UP    0
@@ -28,14 +31,26 @@
 #define DIR_LEFT  2
 #define DIR_RIGHT 3
 
+/* ANSI color codes */
+#define COLOR_RESET   "\033[0m"
+#define COLOR_GREEN   "\033[32m"
+#define COLOR_YELLOW  "\033[33m"
+#define COLOR_RED     "\033[31m"
+#define COLOR_CYAN    "\033[36m"
+#define COLOR_WHITE   "\033[37m"
+#define COLOR_BOLD    "\033[1m"
+
 /* Game state */
 static int snake_x[MAX_SNAKE_LEN];
 static int snake_y[MAX_SNAKE_LEN];
 static int snake_len;
 static int direction;
+static int next_direction;  /* Buffered direction change */
 static int food_x, food_y;
 static int score;
 static int game_over;
+static int paused;
+static int high_score = 0;
 
 /* Simple pseudo-random number generator */
 static unsigned int rand_state = 12345;
@@ -45,14 +60,23 @@ static int rand_int(int max) {
     return (rand_state >> 16) % max;
 }
 
-/* Seed the RNG with uptime */
 static void rand_seed(void) {
     rand_state = (unsigned int)uptime();
 }
 
-/* Clear screen using ANSI escape codes */
+/* Clear screen and move cursor home */
 static void clear_screen(void) {
     printf("\033[2J\033[H");
+}
+
+/* Hide cursor */
+static void hide_cursor(void) {
+    printf("\033[?25l");
+}
+
+/* Show cursor */
+static void show_cursor(void) {
+    printf("\033[?25h");
 }
 
 /* Place food at random empty location */
@@ -82,6 +106,7 @@ static void init_game(void) {
     /* Start snake in center, length 3, going right */
     snake_len = 3;
     direction = DIR_RIGHT;
+    next_direction = DIR_RIGHT;
 
     int start_x = BOARD_WIDTH / 2;
     int start_y = BOARD_HEIGHT / 2;
@@ -93,6 +118,7 @@ static void init_game(void) {
 
     score = 0;
     game_over = 0;
+    paused = 0;
 
     place_food();
 }
@@ -100,52 +126,102 @@ static void init_game(void) {
 /* Draw the game board */
 static void draw_board(void) {
     clear_screen();
+    hide_cursor();
+
+    /* Title */
+    printf("%s%s", COLOR_BOLD, COLOR_CYAN);
+    printf("                    SNAKE\n");
+    printf("%s", COLOR_RESET);
 
     /* Create board buffer */
     char board[BOARD_HEIGHT][BOARD_WIDTH + 1];
+    char colors[BOARD_HEIGHT][BOARD_WIDTH];
 
     /* Fill with spaces */
     for(int y = 0; y < BOARD_HEIGHT; y++) {
         for(int x = 0; x < BOARD_WIDTH; x++) {
             board[y][x] = ' ';
+            colors[y][x] = 'W';  /* White/default */
         }
         board[y][BOARD_WIDTH] = '\0';
     }
 
-    /* Draw walls */
+    /* Draw walls with box-drawing style */
     for(int x = 0; x < BOARD_WIDTH; x++) {
         board[0][x] = '#';
         board[BOARD_HEIGHT - 1][x] = '#';
+        colors[0][x] = 'C';  /* Cyan */
+        colors[BOARD_HEIGHT - 1][x] = 'C';
     }
     for(int y = 0; y < BOARD_HEIGHT; y++) {
         board[y][0] = '#';
         board[y][BOARD_WIDTH - 1] = '#';
+        colors[y][0] = 'C';
+        colors[y][BOARD_WIDTH - 1] = 'C';
     }
 
     /* Draw food */
     board[food_y][food_x] = '*';
+    colors[food_y][food_x] = 'R';  /* Red */
 
     /* Draw snake */
     for(int i = 0; i < snake_len; i++) {
-        if(i == 0) {
-            board[snake_y[i]][snake_x[i]] = 'O';  /* Head */
-        } else {
-            board[snake_y[i]][snake_x[i]] = 'o';  /* Body */
+        int x = snake_x[i];
+        int y = snake_y[i];
+        if(x >= 0 && x < BOARD_WIDTH && y >= 0 && y < BOARD_HEIGHT) {
+            if(i == 0) {
+                /* Head - show direction */
+                switch(direction) {
+                    case DIR_UP:    board[y][x] = '^'; break;
+                    case DIR_DOWN:  board[y][x] = 'v'; break;
+                    case DIR_LEFT:  board[y][x] = '<'; break;
+                    case DIR_RIGHT: board[y][x] = '>'; break;
+                }
+                colors[y][x] = 'G';  /* Green */
+            } else {
+                board[y][x] = 'o';
+                colors[y][x] = 'Y';  /* Yellow for body */
+            }
         }
     }
 
-    /* Print board */
+    /* Print board with colors */
     for(int y = 0; y < BOARD_HEIGHT; y++) {
-        printf("%s\n", board[y]);
+        for(int x = 0; x < BOARD_WIDTH; x++) {
+            switch(colors[y][x]) {
+                case 'G': printf("%s", COLOR_GREEN); break;
+                case 'Y': printf("%s", COLOR_YELLOW); break;
+                case 'R': printf("%s%s", COLOR_BOLD, COLOR_RED); break;
+                case 'C': printf("%s", COLOR_CYAN); break;
+                default: printf("%s", COLOR_WHITE); break;
+            }
+            putchar(board[y][x]);
+        }
+        printf("%s\n", COLOR_RESET);
     }
 
-    /* Print score */
-    printf("\nScore: %d  |  Length: %d  |  Press arrow keys to move, 'q' to quit\n",
-           score, snake_len);
+    /* Print score bar */
+    printf("%s", COLOR_BOLD);
+    printf(" Score: %s%d%s", COLOR_GREEN, score, COLOR_RESET);
+    printf("%s  |  Length: %s%d%s", COLOR_BOLD, COLOR_YELLOW, snake_len, COLOR_RESET);
+    printf("%s  |  High: %s%d%s", COLOR_BOLD, COLOR_CYAN, high_score, COLOR_RESET);
+
+    if(paused) {
+        printf("  %s[PAUSED]%s", COLOR_RED, COLOR_RESET);
+    }
+    printf("\n");
+
+    printf(" %sArrows%s=move  %sp%s=pause  %sq%s=quit\n",
+           COLOR_CYAN, COLOR_RESET,
+           COLOR_CYAN, COLOR_RESET,
+           COLOR_CYAN, COLOR_RESET);
 }
 
 /* Move the snake */
 static void move_snake(void) {
+    /* Apply buffered direction change */
+    direction = next_direction;
+
     /* Calculate new head position */
     int new_x = snake_x[0];
     int new_y = snake_y[0];
@@ -185,13 +261,15 @@ static void move_snake(void) {
     } else {
         /* Ate food - grow snake */
         if(snake_len < MAX_SNAKE_LEN) {
-            /* Shift and add new segment */
             for(int i = snake_len; i > 0; i--) {
                 snake_x[i] = snake_x[i - 1];
                 snake_y[i] = snake_y[i - 1];
             }
             snake_len++;
             score += 10;
+            if(score > high_score) {
+                high_score = score;
+            }
             place_food();
         }
     }
@@ -201,25 +279,59 @@ static void move_snake(void) {
     snake_y[0] = new_y;
 }
 
-/* Read a keypress (handles escape sequences for arrows) */
-static int read_key(void) {
-    int c = getchar();
+/* Process available input (non-blocking) */
+static int process_input(void) {
+    while(kbhit()) {
+        int c = getchar();
 
-    if(c == 27) {  /* ESC - start of escape sequence */
-        int c2 = getchar();
-        if(c2 == '[') {
-            int c3 = getchar();
-            switch(c3) {
-                case 'A': return 'U';  /* Up */
-                case 'B': return 'D';  /* Down */
-                case 'C': return 'R';  /* Right */
-                case 'D': return 'L';  /* Left */
+        if(c == 'q' || c == 'Q') {
+            return -1;  /* Quit */
+        }
+
+        if(c == 'p' || c == 'P') {
+            paused = !paused;
+            continue;
+        }
+
+        /* Handle escape sequences (arrow keys) */
+        if(c == 27) {
+            if(kbhit()) {
+                int c2 = getchar();
+                if(c2 == '[' && kbhit()) {
+                    int c3 = getchar();
+                    switch(c3) {
+                        case 'A':  /* Up */
+                            if(direction != DIR_DOWN)
+                                next_direction = DIR_UP;
+                            break;
+                        case 'B':  /* Down */
+                            if(direction != DIR_UP)
+                                next_direction = DIR_DOWN;
+                            break;
+                        case 'C':  /* Right */
+                            if(direction != DIR_LEFT)
+                                next_direction = DIR_RIGHT;
+                            break;
+                        case 'D':  /* Left */
+                            if(direction != DIR_RIGHT)
+                                next_direction = DIR_LEFT;
+                            break;
+                    }
+                }
             }
         }
-        return 0;  /* Unknown escape sequence */
     }
+    return 0;
+}
 
-    return c;
+/* Wait until next frame */
+static void wait_frame(unsigned long *last_time) {
+    unsigned long now;
+    do {
+        now = uptime();
+        /* Small yield to not busy-wait too hard */
+    } while(now - *last_time < FRAME_TIME_MS);
+    *last_time = now;
 }
 
 /* Main game loop */
@@ -227,56 +339,73 @@ int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
-    printf("=== SNAKE ===\n\n");
-    printf("Eat the food (*) to grow!\n");
-    printf("Don't hit the walls or yourself!\n\n");
-    printf("Controls: Arrow keys to move, 'q' to quit\n\n");
-    printf("Press any key to start...\n");
+    clear_screen();
+    hide_cursor();
 
-    getchar();  /* Wait for key */
+    printf("%s%s", COLOR_BOLD, COLOR_GREEN);
+    printf("\n");
+    printf("        ####  #   #   ##   #  #  ##### \n");
+    printf("       #      ##  #  #  #  # #   #     \n");
+    printf("        ###   # # #  ####  ##    ####  \n");
+    printf("           #  #  ##  #  #  # #   #     \n");
+    printf("       ####   #   #  #  #  #  #  ##### \n");
+    printf("%s\n", COLOR_RESET);
+    printf("\n");
+    printf("  %sEat the food %s*%s to grow!%s\n",
+           COLOR_WHITE, COLOR_RED, COLOR_WHITE, COLOR_RESET);
+    printf("  %sDon't hit the walls or yourself!%s\n\n",
+           COLOR_WHITE, COLOR_RESET);
+    printf("  %sControls:%s\n", COLOR_CYAN, COLOR_RESET);
+    printf("    Arrow keys - Change direction\n");
+    printf("    P          - Pause\n");
+    printf("    Q          - Quit\n");
+    printf("\n");
+    printf("  %sPress any key to start...%s\n", COLOR_YELLOW, COLOR_RESET);
+
+    show_cursor();
+    getchar();
 
     init_game();
+
+    unsigned long last_frame = uptime();
 
     while(!game_over) {
         draw_board();
 
-        int key = read_key();
-
-        /* Handle quit */
-        if(key == 'q' || key == 'Q') {
-            break;
+        /* Process any pending input */
+        if(process_input() < 0) {
+            break;  /* User quit */
         }
 
-        /* Handle direction change (prevent 180-degree turns) */
-        switch(key) {
-            case 'U':  /* Up */
-                if(direction != DIR_DOWN) direction = DIR_UP;
-                break;
-            case 'D':  /* Down */
-                if(direction != DIR_UP) direction = DIR_DOWN;
-                break;
-            case 'L':  /* Left */
-                if(direction != DIR_RIGHT) direction = DIR_LEFT;
-                break;
-            case 'R':  /* Right */
-                if(direction != DIR_LEFT) direction = DIR_RIGHT;
-                break;
-        }
+        /* Wait for next frame */
+        wait_frame(&last_frame);
 
-        move_snake();
+        /* Move snake if not paused */
+        if(!paused) {
+            move_snake();
+        }
     }
 
     /* Game over screen */
     draw_board();
+    show_cursor();
 
+    printf("\n");
     if(game_over) {
-        printf("\n*** GAME OVER ***\n");
+        printf("  %s%s*** GAME OVER ***%s\n", COLOR_BOLD, COLOR_RED, COLOR_RESET);
     }
-    printf("Final Score: %d\n", score);
-    printf("Snake Length: %d\n", snake_len);
+    printf("  %sFinal Score: %s%d%s\n", COLOR_WHITE, COLOR_GREEN, score, COLOR_RESET);
+    printf("  %sSnake Length: %s%d%s\n", COLOR_WHITE, COLOR_YELLOW, snake_len, COLOR_RESET);
 
-    printf("\nPress any key to exit...\n");
+    if(score >= high_score && score > 0) {
+        printf("  %s%sNEW HIGH SCORE!%s\n", COLOR_BOLD, COLOR_CYAN, COLOR_RESET);
+    }
+
+    printf("\n  Press any key to exit...\n");
     getchar();
+
+    clear_screen();
+    show_cursor();
 
     return 0;
 }

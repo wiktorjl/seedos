@@ -75,6 +75,7 @@
   #define SYS_WAITPID 19  /* Wait for child: rdi=pid -> exit code */
   #define SYS_SHUTDOWN 20 /* Shutdown: halt the system */
   #define SYS_REBOOT   21 /* Reboot: restart the system */
+  #define SYS_POLL_INPUT 22 /* Poll stdin: -> 1 if data available, 0 otherwise */
 
 
 /* =============================================================================

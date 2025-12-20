@@ -36,6 +36,7 @@
 #define __NR_waitpid 19
 #define __NR_shutdown 20
 #define __NR_reboot   21
+#define __NR_poll_input 22
 
 /* Syscall with 0 arguments */
 static inline long __syscall0(long n) {

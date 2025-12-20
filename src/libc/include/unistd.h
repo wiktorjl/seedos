@@ -100,6 +100,7 @@ int execve(const char *path, char *const argv[], char *const envp[]);
 unsigned long uptime(void);  /* milliseconds since boot */
 void shutdown(void) __attribute__((noreturn));  /* Halt the system */
 void reboot(void) __attribute__((noreturn));    /* Reboot the system */
+int kbhit(void);  /* Check if keyboard input is available (non-blocking) */
 
 /*
  * spawn - Run a program and wait for it to complete.
