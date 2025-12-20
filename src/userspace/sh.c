@@ -8,6 +8,7 @@
  * Features:
  *   - Command history with arrow key navigation
  *   - Line editing with backspace
+ *   - Tab completion for commands in /bin
  *
  * Builtins:
  *   cd <dir>  - Change directory
@@ -23,6 +24,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <dirent.h>
 
 #define MAX_LINE 256
 #define MAX_ARGS 32
@@ -69,6 +71,62 @@ static const char *history_get(int idx) {
 /* Get number of available history entries */
 static int history_available(void) {
     return history_count < HISTORY_SIZE ? history_count : HISTORY_SIZE;
+}
+
+/* Built-in commands for tab completion */
+static const char *builtins[] = {"cd", "exit", "history", NULL};
+
+/*
+ * complete_command - Try to complete a command prefix.
+ *
+ * Searches both built-in commands and /bin for matches.
+ *
+ * @prefix:   The prefix to complete
+ * @matches:  Array to store matching command names
+ * @max:      Maximum number of matches to store
+ *
+ * Returns: Number of matches found.
+ */
+#define MAX_COMPLETIONS 32
+
+static int complete_command(const char *prefix, char matches[][64], int max) {
+    int count = 0;
+    size_t prefix_len = strlen(prefix);
+
+    /* Check built-in commands */
+    for(int i = 0; builtins[i] != NULL && count < max; i++) {
+        if(strncmp(builtins[i], prefix, prefix_len) == 0) {
+            strncpy(matches[count], builtins[i], 63);
+            matches[count][63] = '\0';
+            count++;
+        }
+    }
+
+    /* Check commands in /bin */
+    DIR *dir = opendir("/bin");
+    if(dir != NULL) {
+        struct dirent *ent;
+        while((ent = readdir(dir)) != NULL && count < max) {
+            if(strncmp(ent->d_name, prefix, prefix_len) == 0) {
+                /* Avoid duplicates with builtins */
+                int dup = 0;
+                for(int i = 0; i < count; i++) {
+                    if(strcmp(matches[i], ent->d_name) == 0) {
+                        dup = 1;
+                        break;
+                    }
+                }
+                if(!dup) {
+                    strncpy(matches[count], ent->d_name, 63);
+                    matches[count][63] = '\0';
+                    count++;
+                }
+            }
+        }
+        closedir(dir);
+    }
+
+    return count;
 }
 
 /*
@@ -178,6 +236,77 @@ static int readline(char *buf, int size) {
             continue;
         }
 
+        /* Handle tab completion */
+        if(c == '\t') {
+            /* Only complete if we're at the start (first word = command) */
+            int has_space = 0;
+            for(int i = 0; i < pos; i++) {
+                if(buf[i] == ' ') {
+                    has_space = 1;
+                    break;
+                }
+            }
+
+            if(!has_space && pos > 0) {
+                /* Complete the command */
+                char matches[MAX_COMPLETIONS][64];
+                int num_matches = complete_command(buf, matches, MAX_COMPLETIONS);
+
+                if(num_matches == 1) {
+                    /* Single match - complete it */
+                    int old_len = pos;
+                    strncpy(buf, matches[0], size - 1);
+                    buf[size - 1] = '\0';
+                    pos = strlen(buf);
+
+                    /* Erase old text and print new */
+                    for(int i = 0; i < old_len; i++) {
+                        printf("\b");
+                    }
+                    for(int i = 0; i < old_len; i++) {
+                        printf(" ");
+                    }
+                    for(int i = 0; i < old_len; i++) {
+                        printf("\b");
+                    }
+                    printf("%s", buf);
+                }else if(num_matches > 1) {
+                    /* Multiple matches - show them all */
+                    printf("\n");
+                    for(int i = 0; i < num_matches; i++) {
+                        printf("%s  ", matches[i]);
+                    }
+                    printf("\n");
+
+                    /* Find common prefix among matches */
+                    int common_len = strlen(matches[0]);
+                    for(int i = 1; i < num_matches; i++) {
+                        int j = 0;
+                        while(j < common_len && matches[0][j] == matches[i][j]) {
+                            j++;
+                        }
+                        common_len = j;
+                    }
+
+                    /* Extend to common prefix if longer than current */
+                    if(common_len > pos) {
+                        strncpy(buf, matches[0], common_len);
+                        buf[common_len] = '\0';
+                        pos = common_len;
+                    }
+
+                    /* Re-print prompt and buffer */
+                    char cwd[256];
+                    if(getcwd(cwd, sizeof(cwd)) == NULL) {
+                        strcpy(cwd, "?");
+                    }
+                    printf("%s $ %s", cwd, buf);
+                }
+                /* If no matches, just beep or do nothing */
+            }
+            continue;
+        }
+
         /* Handle Enter */
         if(c == '\n' || c == '\r') {
             buf[pos] = '\0';
@@ -185,11 +314,10 @@ static int readline(char *buf, int size) {
             return pos;
         }
 
-        /* Regular character */
+        /* Regular character - kernel already echoes, just buffer it */
         if(pos < size - 1 && c >= 32 && c < 127) {
             buf[pos++] = (char)c;
             buf[pos] = '\0';
-            putchar(c);
         }
     }
 }

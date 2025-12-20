@@ -396,6 +396,12 @@ static uint64_t sys_read(uint64_t fd, uint64_t buffer, uint64_t count) {
                     putc('\b');
                     putc(' ');
                     putc('\b');
+                }else {
+                    /* No local buffer content - pass backspace to userspace
+                     * so shell can handle its own line editing (e.g., after
+                     * recalling history with arrow keys) */
+                    buf[0] = (char)c;
+                    return 1;
                 }
             }else if(c == 27) {
                 /* ESC - start of escape sequence, pass through without echo */
@@ -423,6 +429,23 @@ static uint64_t sys_read(uint64_t fd, uint64_t buffer, uint64_t count) {
                     }
                     return to_copy;
                 }
+            }else if(c == '\t') {
+                /* Tab - pass through for shell completion.
+                 * Include any previously typed characters so shell knows
+                 * the prefix to complete. */
+                if(input_pos < sizeof(line_buffer) - 1) {
+                    line_buffer[input_pos++] = c;
+                }
+                line_len = input_pos;
+                line_read = 0;
+                size_t to_copy = line_len < count ? line_len : count;
+                memcpy(buf, line_buffer, to_copy);
+                line_read = to_copy;
+                if(line_read >= line_len) {
+                    line_len = 0;
+                    line_read = 0;
+                }
+                return to_copy;
             }else if(c >= 32 && c < 127) {
                 /* Printable character - add to buffer if room */
                 if(input_pos < sizeof(line_buffer) - 1) {
