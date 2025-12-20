@@ -43,7 +43,7 @@ mkdir -p "$BUILD_DIR/initrd/bin"
 for prog in info crash ls cat sh init \
              echo yes true false seq clear pwd uptime stat \
              head tail wc hexdump uniq tr sort grep \
-             shutdown reboot; do
+             shutdown reboot bgcount ctest; do
     if [ -f "$BUILD_DIR/${prog}.elf" ]; then
         cp "$BUILD_DIR/${prog}.elf" "$BUILD_DIR/initrd/bin/${prog}"
         echo "  Added $prog to initrd"
