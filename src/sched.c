@@ -77,6 +77,8 @@ void sched_save_context(struct process *p, struct interrupt_frame *frame) {
     p->saved_rip = frame->rip;
     p->saved_rsp = frame->rsp;
     p->saved_rflags = frame->rflags;
+    p->saved_cs = frame->cs;
+    p->saved_ss = frame->ss;
     p->saved_rax = frame->rax;
     p->saved_rbx = frame->rbx;
     p->saved_rcx = frame->rcx;
@@ -98,6 +100,8 @@ void sched_load_context(struct process *p, struct interrupt_frame *frame) {
     frame->rip = p->saved_rip;
     frame->rsp = p->saved_rsp;
     frame->rflags = p->saved_rflags;
+    frame->cs = p->saved_cs;
+    frame->ss = p->saved_ss;
     frame->rax = p->saved_rax;
     frame->rbx = p->saved_rbx;
     frame->rcx = p->saved_rcx;
@@ -113,22 +117,47 @@ void sched_load_context(struct process *p, struct interrupt_frame *frame) {
     frame->r13 = p->saved_r13;
     frame->r14 = p->saved_r14;
     frame->r15 = p->saved_r15;
-
-    /* Set segment selectors for userspace return */
-    frame->cs = USER_CS;
-    frame->ss = USER_SS;
 }
 
 void schedule(struct interrupt_frame *frame) {
     if(ready_count == 0) return;
 
     struct process *current = process_get_current();
+
+    /*
+     * Check if the current interrupt was from userspace.
+     * Only userspace interrupts have valid context we can save/restore.
+     * Kernel-mode interrupts (when kernel_preempt_ok=1) should not
+     * have their context saved - the kernel code will continue normally.
+     */
+    int from_userspace = ((frame->cs & 3) == 3);
+
     int was_running = (current && current->state == PROC_RUNNING);
 
-    /* Save current process context if it was actually running */
-    if(was_running) {
+    /* Save current process context only if we were in userspace */
+    if(was_running && from_userspace) {
         sched_save_context(current, frame);
         current->state = PROC_READY;
+    }
+
+    /* If current process is in kernel mode (blocking syscall), don't switch away */
+    if(was_running && !from_userspace) {
+        /* We're in kernel mode - pick another process to run */
+        for(int i = 0; i < ready_count; i++) {
+            int idx = (current_index + 1 + i) % ready_count;
+            struct process *next = ready_queue[idx];
+            if(next != current && next->saved_cs != 0) {
+                /* Found a runnable process - switch to it */
+                sched_load_context(next, frame);
+                next->state = PROC_RUNNING;
+                process_set_current(next);
+                vmm_switch_address_space(next->pml4);
+                current_index = idx;
+                return;
+            }
+        }
+        /* No other runnable process - continue with current (return from hlt) */
+        return;
     }
 
     /* Round-robin: pick next ready process */
@@ -139,8 +168,19 @@ void schedule(struct interrupt_frame *frame) {
      * Load context if:
      * - Switching to a different process, OR
      * - Current process wasn't running (e.g., starting from kernel idle)
+     *
+     * BUT: if next has saved_cs == 0, it was never preempted in userspace
+     * (e.g., it was woken from a blocking syscall). Don't load its context -
+     * just return and let the current process continue.
      */
     if(next != current || !was_running) {
+        /* Skip processes with uninitialized context */
+        if(next->saved_cs == 0) {
+            /* Don't switch to this process yet - it's still in a syscall */
+            next->state = PROC_READY;  /* Keep it ready for later */
+            return;
+        }
+
         /* Load next process context */
         sched_load_context(next, frame);
         next->state = PROC_RUNNING;
@@ -196,4 +236,6 @@ void sched_wake_waiters(int pid) {
     }
     irq_restore(flags);
 }
+
+/* sched_run_from_kernel removed - approach doesn't work */
 

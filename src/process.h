@@ -78,6 +78,8 @@ struct process {
      uint64_t saved_rip;
      uint64_t saved_rsp;
      uint64_t saved_rflags;
+     uint64_t saved_cs;   /* Code segment - needed for kernel preemption */
+     uint64_t saved_ss;   /* Stack segment - needed for kernel preemption */
      uint64_t saved_rax, saved_rbx, saved_rcx, saved_rdx;
      uint64_t saved_rsi, saved_rdi, saved_rbp;
      uint64_t saved_r8, saved_r9, saved_r10, saved_r11;

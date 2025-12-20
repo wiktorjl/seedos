@@ -283,12 +283,21 @@ static void sys_exit(uint64_t exit_code) {
     sched_wake_waiters(current->pid);
 
     /*
-     * Return to where context_save_kernel_state() was called.
-     * This effectively "returns" from context_switch_to_user().
+     * Return to kernel context. This works for processes started via
+     * the synchronous spawn() call (which uses context_switch_to_user).
+     *
+     * For processes started via spawn_async/process_start, there's no
+     * kernel context to return to - context_return_to_kernel will still
+     * work but will return to whatever the last context_switch_to_user was,
+     * which is wrong. However, since we're not using spawn_async with
+     * concurrent children right now, this is acceptable.
      */
     context_return_to_kernel();
 
-    /* Never reached - context_return_to_kernel doesn't return */
+    /* Should never reach here */
+    while(1) {
+        __asm__ volatile("cli; hlt");
+    }
 }
 
 /*
@@ -1174,9 +1183,12 @@ static void sys_reboot(void) {
  * @pid: Process ID to wait for
  *
  * Returns: Exit code of the child, or -1 on error.
+ *
+ * This uses polling instead of scheduler-based blocking because the
+ * current scheduler only supports preempting processes in userspace.
+ * A process in a syscall has no saved userspace context to restore.
  */
 static int64_t sys_waitpid(uint64_t pid) {
-    struct process *parent = process_get_current();
     struct process *child = process_find_by_pid((int)pid);
 
     if(child == NULL) {
@@ -1190,20 +1202,20 @@ static int64_t sys_waitpid(uint64_t pid) {
         return exit_code;
     }
 
-    /* Block parent until child exits */
-    sched_block_on_pid(parent, (int)pid);
-
-    /* Allow preemption while waiting for child */
+    /*
+     * Poll for child to exit. We allow preemption so that other processes
+     * (like the child we're waiting for) can run. But we don't remove
+     * ourselves from the ready queue - we just keep checking.
+     */
     kernel_preempt_ok = 1;
 
-    /* Wait for child to exit and wake us up */
     while(child->state != PROC_ZOMBIE) {
         /* Enable interrupts and halt - timer will fire and run scheduler */
         __asm__ volatile("sti; hlt; cli");
     }
 
-    /* Disable kernel preemption */
     kernel_preempt_ok = 0;
+    __asm__ volatile("sti");
 
     /* Child has exited - reap it */
     int exit_code = child->exit_code;

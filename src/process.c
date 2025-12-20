@@ -15,6 +15,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "sched.h"
+#include "gdt.h"
 
 /* Note: PROCESS_STACK_SIZE and PROCESS_STACK_PAGES are defined in process.h */
 
@@ -412,6 +413,10 @@ int process_start(struct process *p) {
     p->saved_rip = p->entry;
     p->saved_rsp = p->stack;
     p->saved_rflags = 0x202;  /* IF=1, reserved bit=1 */
+
+    /* Set segment selectors for userspace (ring 3) */
+    p->saved_cs = GDT_USER_CODE | 3;  /* 0x1B */
+    p->saved_ss = GDT_USER_DATA | 3;  /* 0x23 */
 
     /* Clear all other registers */
     p->saved_rax = 0;
