@@ -89,4 +89,45 @@ void serial_put_hex(uint64_t value);
  */
 void serial_put_dec(uint64_t value);
 
+/* =============================================================================
+ * Serial Port Input Functions
+ *
+ * These functions enable reading from the serial port, which is useful for
+ * automated testing with QEMU (input can be piped via -serial stdio).
+ * =============================================================================
+ */
+
+/*
+ * serial_has_char - Check if a character is available to read.
+ *
+ * Returns non-zero if data is available in the receive buffer.
+ */
+int serial_has_char(void);
+
+/*
+ * serial_getc - Read a single character from the serial port.
+ *
+ * Blocks until a character is available (polling mode).
+ * Returns the received character.
+ */
+char serial_getc(void);
+
+/*
+ * serial_read - Read up to len characters from the serial port.
+ *
+ * @buf: Buffer to store characters.
+ * @len: Maximum number of characters to read.
+ *
+ * Non-blocking: returns immediately with available characters.
+ * Returns the number of characters actually read.
+ */
+size_t serial_read(char *buf, size_t len);
+
+/*
+ * serial_wait - Block until serial input is available.
+ *
+ * Uses HLT to reduce CPU usage while waiting.
+ */
+void serial_wait(void);
+
 #endif /* SERIAL_H */

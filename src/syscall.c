@@ -36,6 +36,48 @@
 #include "memory.h"
 
 /* =============================================================================
+ * Combined Input Functions (Serial + Keyboard)
+ *
+ * These allow input from either serial port (for automated testing) or
+ * PS/2 keyboard (for interactive GUI use).
+ * =============================================================================
+ */
+
+/*
+ * input_has_char - Check if input is available from either source.
+ */
+static int input_has_char(void) {
+    return serial_has_char() || keyboard_has_char();
+}
+
+/*
+ * input_read - Read up to len chars from serial or keyboard.
+ *
+ * Checks serial first (for automated testing), then keyboard.
+ * Returns number of characters read.
+ */
+static size_t input_read(char *buf, size_t len) {
+    size_t n = serial_read(buf, len);
+    if(n > 0) {
+        return n;
+    }
+    return keyboard_read(buf, len);
+}
+
+/*
+ * input_wait - Block until input is available from either source.
+ */
+static void input_wait(void) {
+    if(input_has_char()) {
+        return;
+    }
+    while(!input_has_char()) {
+        __asm__ volatile("sti; hlt; cli");
+    }
+    __asm__ volatile("sti");
+}
+
+/* =============================================================================
  * Structures for stat and getdents syscalls
  * =============================================================================
  */
@@ -321,10 +363,10 @@ static uint64_t sys_read(uint64_t fd, uint64_t buffer, uint64_t count) {
             /* Wait for a character - block if none available */
             char c = 0;
             while(c == 0) {
-                size_t n = keyboard_read(&c, 1);
+                size_t n = input_read(&c, 1);
                 if(n == 0) {
-                    /* Block until keyboard input available */
-                    keyboard_wait();
+                    /* Block until input available (serial or keyboard) */
+                    input_wait();
                     c = 0;
                 }
             }

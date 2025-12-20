@@ -42,8 +42,9 @@
 /* Baud rate divisor: 115200 / desired_baud. For 38400 baud: 115200/38400 = 3 */
 #define SERIAL_DIVISOR_38400 0x03
 
-/* Line Status Register bit for "transmitter empty" */
-#define SERIAL_LSR_TX_EMPTY  0x20
+/* Line Status Register bits */
+#define SERIAL_LSR_DATA_READY 0x01  /* Data available in receive buffer */
+#define SERIAL_LSR_TX_EMPTY   0x20  /* Transmitter empty, ready to send */
 
 /* =============================================================================
  * Helper Functions
@@ -158,4 +159,59 @@ void serial_put_dec(uint64_t value) {
     while(i > 0) {
         serial_putc(buf[--i]);
     }
+}
+
+/* =============================================================================
+ * Serial Input Functions
+ * =============================================================================
+ */
+
+/*
+ * serial_has_char - Check if a character is available to read.
+ *
+ * Returns non-zero if data is available in the receive buffer.
+ */
+int serial_has_char(void) {
+    return inb(SERIAL_LINE_STATUS) & SERIAL_LSR_DATA_READY;
+}
+
+/*
+ * serial_getc - Read a single character from the serial port.
+ *
+ * Blocks until a character is available (polling mode).
+ * Returns the received character.
+ */
+char serial_getc(void) {
+    while(!serial_has_char())
+        ;  /* Busy-wait until data is ready */
+    return inb(SERIAL_DATA);
+}
+
+/*
+ * serial_read - Read up to len characters from the serial port.
+ *
+ * Non-blocking: returns immediately with available characters.
+ * Returns the number of characters actually read.
+ */
+size_t serial_read(char *buf, size_t len) {
+    size_t bytes_read = 0;
+    while(bytes_read < len && serial_has_char()) {
+        buf[bytes_read++] = inb(SERIAL_DATA);
+    }
+    return bytes_read;
+}
+
+/*
+ * serial_wait - Block until serial input is available.
+ *
+ * Uses HLT to reduce CPU usage while waiting.
+ */
+void serial_wait(void) {
+    if(serial_has_char()) {
+        return;
+    }
+    while(!serial_has_char()) {
+        __asm__ volatile("sti; hlt; cli");
+    }
+    __asm__ volatile("sti");
 }
