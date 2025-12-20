@@ -349,14 +349,20 @@ void interrupt_handler(struct interrupt_frame *frame) {
             pit_handler();
 
             /*
+             * Must send EOI before scheduling, because schedule() may
+             * context-switch and never return to this code path.
+             */
+            pic_send_eoi(0);
+
+            /*
              * Only preempt if we were in userspace (ring 3).
              * We don't preempt kernel code - it must complete its syscall.
              */
             if((frame->cs & RPL_MASK) == RPL_USER) {
                 schedule(frame);
+                /* Never returns if we context switch */
             }
 
-            pic_send_eoi(0);
             return;
         }
         /* Dispatch to specific IRQ handler */
