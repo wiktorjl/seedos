@@ -54,7 +54,7 @@ TEST_OBJECTS = $(addprefix $(BUILD_DIR)/,$(TEST_SOURCES:.c=.o))
 USER_PROGRAMS = info crash ls cat sh init \
                 echo yes true false seq clear pwd uptime stat \
                 head tail wc hexdump uniq tr sort grep \
-                shutdown reboot bgcount ctest locust
+                shutdown reboot bgcount ctest locust snake
 USER_ELF_FILES = $(addprefix $(BUILD_DIR)/,$(addsuffix .elf,$(USER_PROGRAMS)))
 
 # C compiler flags for userspace (NO -mcmodel=kernel!)
