@@ -1,0 +1,6 @@
+build/
+log/
+limine/
+initrd/
+initrd_extra/
+.cache/
