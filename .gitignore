@@ -4,3 +4,4 @@ limine/
 initrd/
 initrd_extra/
 .cache/
+**/esp
