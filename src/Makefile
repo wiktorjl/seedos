@@ -36,8 +36,12 @@ $(BUILD)/limine_asm.o: limine.S | $(BUILD)
 $(BUILD)/limine.o: limine.c limine.h | $(BUILD)
 	cc $(CFLAGS) -c $< -o $@
 
+# Convert seedos.png to raw BGRA
+seedos.bin seedos.h: seedos.png convert-image.sh
+	./convert-image.sh seedos.png seedos.bin
+
 # Assemble boot.S (entry point)
-$(BUILD)/boot.o: boot.S font.bin | $(BUILD)
+$(BUILD)/boot.o: boot.S font.bin seedos.bin | $(BUILD)
 	cc -c boot.S -o $@
 
 # Compile console.c
@@ -45,7 +49,7 @@ $(BUILD)/console.o: console.c console.h limine.h | $(BUILD)
 	cc $(CFLAGS) -c $< -o $@
 
 # Compile kernel.c
-$(BUILD)/kernel.o: kernel.c limine.h console.h | $(BUILD)
+$(BUILD)/kernel.o: kernel.c limine.h console.h seedos.h | $(BUILD)
 	cc $(CFLAGS) -c $< -o $@
 
 # Link kernel
@@ -94,4 +98,4 @@ run: $(ISO)
 
 # Remove build artifacts
 clean:
-	rm -rf $(BUILD)
+	rm -rf $(BUILD) seedos.bin seedos.h

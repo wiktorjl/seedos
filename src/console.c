@@ -33,3 +33,20 @@ void console_draw_string(const char *str, int x, int y, uint32_t color) {
         str++;
     }
 }
+
+void console_draw_image(const uint32_t *pixels, int img_w, int img_h, int x, int y) {
+    if (!framebuffer) return;
+
+    uint32_t *fb_base = (uint32_t *)framebuffer->address;
+    uint64_t pitch_pixels = framebuffer->pitch / 4;
+    int fb_w = framebuffer->width;
+    int fb_h = framebuffer->height;
+
+    for (int row = 0; row < img_h; row++) {
+        if (y + row >= fb_h) break;
+        for (int col = 0; col < img_w; col++) {
+            if (x + col >= fb_w) break;
+            fb_base[(y + row) * pitch_pixels + (x + col)] = pixels[row * img_w + col];
+        }
+    }
+}

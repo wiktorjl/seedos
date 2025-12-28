@@ -18,6 +18,12 @@ struct limine_framebuffer {
     uint8_t blue_mask_shift;
 };
 
+struct limine_framebuffer_response {
+    uint64_t revision;
+    uint64_t framebuffer_count;
+    struct limine_framebuffer **framebuffers;
+};
+
 struct limine_framebuffer *limine_get_framebuffer(void);
 
 #endif

@@ -6,6 +6,11 @@
 font_data:
     .incbin "font.bin"
 
+# Image data (seedos.png converted to raw BGRA)
+.global seedos_data
+seedos_data:
+    .incbin "seedos.bin"
+
 # Entry point
 .section .text
 .global _start
