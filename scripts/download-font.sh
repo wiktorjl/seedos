@@ -17,9 +17,9 @@ tar -xzf /tmp/spleen.tar.gz -C /tmp "spleen-${FONT_VERSION}/${FONT_FILE}"
 echo "Converting PSF to raw font data..."
 # PSF1 format: 4-byte header (magic, mode, charsize), then glyph data
 # Skip header, extract 256 glyphs * 16 bytes = 4096 bytes
-dd if="/tmp/spleen-${FONT_VERSION}/${FONT_FILE}" of="$OUTPUT_FILE" bs=1 skip=4 count=4096 2>/dev/null
+dd if="/tmp/spleen-${FONT_VERSION}/${FONT_FILE}" of="data/$OUTPUT_FILE" bs=1 skip=4 count=4096 2>/dev/null
 
 echo "Cleaning up..."
 rm -rf /tmp/spleen.tar.gz "/tmp/spleen-${FONT_VERSION}"
 
-echo "Done! Created ${OUTPUT_FILE} ($(wc -c < "$OUTPUT_FILE") bytes)"
+echo "Done! Created data/${OUTPUT_FILE} ($(wc -c < "data/$OUTPUT_FILE") bytes)"
