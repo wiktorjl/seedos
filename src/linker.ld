@@ -14,7 +14,23 @@ SECTIONS
     . = 0xFFFFFFFF80000000;          /* Start at higher-half address (top 2GB of 64-bit space) */
                                      /* This is conventional for kernels - user space gets lower addresses */
 
-    .text : {                        /* Code section */
-        *(.text .text.*)             /* Include all .text sections from all input files */
+    .text : {                        /* Code section (read + execute) */
+        *(.text .text.*)
+    }
+
+    . = ALIGN(4096);                 /* Page-align to get separate segment */
+
+    .limine_requests : {             /* Limine boot protocol requests */
+        *(.limine_requests_start)    /* Start marker must come first */
+        *(.limine_requests)          /* Actual requests */
+        *(.limine_requests_end)      /* End marker must come last */
+    }
+
+    .rodata : {                      /* Read-only data (font, strings, etc.) */
+        *(.rodata .rodata.*)
+    }
+
+    .data : {                        /* Initialized data (read + write) */
+        *(.data .data.*)
     }
 }

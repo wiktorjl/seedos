@@ -24,13 +24,33 @@ all: $(ISO)
 $(BUILD):
 	mkdir -p $(BUILD)
 
-# Assemble boot.S
-$(BUILD)/boot.o: boot.S | $(BUILD)
+# Compiler flags for freestanding kernel
+CFLAGS := -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone \
+          -mno-sse -mno-sse2 -mno-mmx -mno-80387 -mcmodel=kernel
+
+# Assemble limine.S (boot protocol markers)
+$(BUILD)/limine_asm.o: limine.S | $(BUILD)
 	cc -c $< -o $@
 
+# Compile limine.c (boot protocol requests)
+$(BUILD)/limine.o: limine.c limine.h | $(BUILD)
+	cc $(CFLAGS) -c $< -o $@
+
+# Assemble boot.S (entry point)
+$(BUILD)/boot.o: boot.S font.bin | $(BUILD)
+	cc -c boot.S -o $@
+
+# Compile console.c
+$(BUILD)/console.o: console.c console.h limine.h | $(BUILD)
+	cc $(CFLAGS) -c $< -o $@
+
+# Compile kernel.c
+$(BUILD)/kernel.o: kernel.c limine.h console.h | $(BUILD)
+	cc $(CFLAGS) -c $< -o $@
+
 # Link kernel
-$(KERNEL): $(BUILD)/boot.o linker.ld
-	ld -nostdlib -static -T linker.ld -o $@ $(BUILD)/boot.o
+$(KERNEL): $(BUILD)/limine_asm.o $(BUILD)/limine.o $(BUILD)/boot.o $(BUILD)/console.o $(BUILD)/kernel.o linker.ld
+	ld -nostdlib -static -T linker.ld -o $@ $(BUILD)/limine_asm.o $(BUILD)/limine.o $(BUILD)/boot.o $(BUILD)/console.o $(BUILD)/kernel.o
 
 # Create bootable ISO
 $(ISO): $(KERNEL) limine.conf | limine
