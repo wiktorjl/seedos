@@ -3,6 +3,7 @@
 #include "log.h"
 #include "config.h"
 #include "console.h"
+#include "serial.h" 
 
 void log_init(void) {
     // Future: initialize log buffers, serial, etc.
@@ -20,9 +21,9 @@ static void log_console(int level, const char *prefix, const char *msg, uint32_t
 static void log_serial(int level, const char *prefix, const char *msg) {
 #if CONFIG_OUTPUT_SERIAL
     if (level > CONFIG_LOG_LEVEL_SERIAL) return;
-    // serial_puts(prefix);
-    // serial_puts(msg);
-    // serial_putchar('\n');
+    serial_puts(prefix);
+    serial_puts(msg);
+    serial_putchar('\n');
 #endif
 }
 

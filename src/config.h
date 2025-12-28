@@ -18,7 +18,7 @@
 
 // Enable/disable output backends
 #define CONFIG_OUTPUT_CONSOLE       1
-#define CONFIG_OUTPUT_SERIAL        0   // Not yet implemented
+#define CONFIG_OUTPUT_SERIAL        1
 
 // Console colors
 #define CONFIG_CONSOLE_COLOR_DEFAULT 0xFFFFFF  // White - user-facing output

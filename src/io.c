@@ -3,9 +3,12 @@
 #include "io.h"
 #include "config.h"
 #include "console.h"
+#include "serial.h"
 
 void io_init(void) {
-    // Future: initialize serial port here
+#if CONFIG_OUTPUT_SERIAL
+    serial_init();
+#endif
 }
 
 void putchar(char c) {
@@ -14,7 +17,7 @@ void putchar(char c) {
 #endif
 
 #if CONFIG_OUTPUT_SERIAL
-    // serial_putchar(c);
+    serial_putchar(c);
 #endif
 }
 
