@@ -20,34 +20,80 @@ static void kputs(terminal_t *term, const char *s, int *count) {
     }
 }
 
-// Helper: print unsigned integer in given base
-static void print_uint(terminal_t *term, uint64_t value, int base, int uppercase, int *count) {
-    char buf[24];  // Enough for 64-bit in binary
+// Helper: print unsigned integer in given base with optional width/padding
+static void print_uint_padded(terminal_t *term, uint64_t value, int base, int uppercase,
+                               int width, int zero_pad, int *count) {
+    char buf[65];  // Enough for 64-bit in binary
     const char *digits = uppercase ? "0123456789ABCDEF" : "0123456789abcdef";
     int i = 0;
 
     if (value == 0) {
-        kputc(term, '0', count);
-        return;
+        buf[i++] = '0';
+    } else {
+        while (value > 0) {
+            buf[i++] = digits[value % base];
+            value /= base;
+        }
     }
 
-    while (value > 0) {
-        buf[i++] = digits[value % base];
-        value /= base;
+    // Add padding
+    char pad_char = zero_pad ? '0' : ' ';
+    while (i < width) {
+        kputc(term, pad_char, count);
+        width--;
     }
 
+    // Print digits in reverse order
     while (i > 0) {
         kputc(term, buf[--i], count);
     }
 }
 
-// Helper: print signed integer
-static void print_int(terminal_t *term, int64_t value, int *count) {
+// Helper: print signed integer with optional width/padding
+static void print_int_padded(terminal_t *term, int64_t value, int width, int zero_pad, int *count) {
+    int negative = 0;
+    uint64_t uval;
+
     if (value < 0) {
-        kputc(term, '-', count);
-        value = -value;
+        negative = 1;
+        uval = (uint64_t)(-value);
+    } else {
+        uval = (uint64_t)value;
     }
-    print_uint(term, (uint64_t)value, 10, 0, count);
+
+    // Calculate number of digits
+    char buf[21];
+    int i = 0;
+    uint64_t tmp = uval;
+    if (tmp == 0) {
+        buf[i++] = '0';
+    } else {
+        while (tmp > 0) {
+            buf[i++] = '0' + (tmp % 10);
+            tmp /= 10;
+        }
+    }
+
+    int num_len = i + (negative ? 1 : 0);
+
+    if (zero_pad && negative) {
+        kputc(term, '-', count);
+        width--;
+    }
+
+    char pad_char = zero_pad ? '0' : ' ';
+    while (num_len < width) {
+        kputc(term, pad_char, count);
+        width--;
+    }
+
+    if (!zero_pad && negative) {
+        kputc(term, '-', count);
+    }
+
+    while (i > 0) {
+        kputc(term, buf[--i], count);
+    }
 }
 
 // Core vprintf implementation
@@ -110,7 +156,7 @@ int tkvprintf(terminal_t *term, const char *fmt, va_list args) {
                     val = va_arg(args, long);
                 else
                     val = va_arg(args, int);
-                print_int(term, val, &count);
+                print_int_padded(term, val, width, zero_pad, &count);
                 break;
             }
 
@@ -122,7 +168,7 @@ int tkvprintf(terminal_t *term, const char *fmt, va_list args) {
                     val = va_arg(args, unsigned long);
                 else
                     val = va_arg(args, unsigned int);
-                print_uint(term, val, 10, 0, &count);
+                print_uint_padded(term, val, 10, 0, width, zero_pad, &count);
                 break;
             }
 
@@ -135,14 +181,38 @@ int tkvprintf(terminal_t *term, const char *fmt, va_list args) {
                     val = va_arg(args, unsigned long);
                 else
                     val = va_arg(args, unsigned int);
-                print_uint(term, val, 16, *fmt == 'X', &count);
+                print_uint_padded(term, val, 16, *fmt == 'X', width, zero_pad, &count);
+                break;
+            }
+
+            case 'o': {
+                uint64_t val;
+                if (is_long == 2)
+                    val = va_arg(args, uint64_t);
+                else if (is_long == 1)
+                    val = va_arg(args, unsigned long);
+                else
+                    val = va_arg(args, unsigned int);
+                print_uint_padded(term, val, 8, 0, width, zero_pad, &count);
+                break;
+            }
+
+            case 'b': {
+                uint64_t val;
+                if (is_long == 2)
+                    val = va_arg(args, uint64_t);
+                else if (is_long == 1)
+                    val = va_arg(args, unsigned long);
+                else
+                    val = va_arg(args, unsigned int);
+                print_uint_padded(term, val, 2, 0, width, zero_pad, &count);
                 break;
             }
 
             case 'p': {
                 void *ptr = va_arg(args, void *);
                 kputs(term, "0x", &count);
-                print_uint(term, (uint64_t)(uintptr_t)ptr, 16, 0, &count);
+                print_uint_padded(term, (uint64_t)(uintptr_t)ptr, 16, 0, 0, 0, &count);
                 break;
             }
 

@@ -18,6 +18,75 @@ void console_set_cursor(int x, int y) {
     cursor_y = y;
 }
 
+void console_get_cursor(int *x, int *y) {
+    if (x) *x = cursor_x;
+    if (y) *y = cursor_y;
+}
+
+void console_get_dimensions(int *cols, int *rows) {
+    if (!framebuffer) {
+        if (cols) *cols = 0;
+        if (rows) *rows = 0;
+        return;
+    }
+    if (cols) *cols = framebuffer->width / 8;
+    if (rows) *rows = framebuffer->height / 16;
+}
+
+void console_fill_rect(int x, int y, int w, int h, uint32_t color) {
+    if (!framebuffer) return;
+
+    uint32_t *fb = (uint32_t *)framebuffer->address;
+    uint64_t pitch = framebuffer->pitch / 4;
+    int fb_w = framebuffer->width;
+    int fb_h = framebuffer->height;
+
+    for (int row = 0; row < h && y + row < fb_h; row++) {
+        for (int col = 0; col < w && x + col < fb_w; col++) {
+            fb[(y + row) * pitch + (x + col)] = color;
+        }
+    }
+}
+
+void console_clear(uint32_t color) {
+    if (!framebuffer) return;
+    console_fill_rect(0, 0, framebuffer->width, framebuffer->height, color);
+    cursor_x = 0;
+    cursor_y = 0;
+}
+
+void console_scroll(int lines) {
+    if (!framebuffer || lines <= 0) return;
+
+    uint32_t *fb = (uint32_t *)framebuffer->address;
+    uint64_t pitch = framebuffer->pitch / 4;
+    int fb_h = framebuffer->height;
+    int scroll_pixels = lines * 16;
+
+    if (scroll_pixels >= fb_h) {
+        console_clear(0x000000);
+        return;
+    }
+
+    // Move framebuffer content up
+    for (int row = 0; row < fb_h - scroll_pixels; row++) {
+        for (uint64_t col = 0; col < pitch; col++) {
+            fb[row * pitch + col] = fb[(row + scroll_pixels) * pitch + col];
+        }
+    }
+
+    // Clear the bottom area
+    for (int row = fb_h - scroll_pixels; row < fb_h; row++) {
+        for (uint64_t col = 0; col < pitch; col++) {
+            fb[row * pitch + col] = 0x000000;
+        }
+    }
+
+    // Adjust cursor
+    cursor_y -= scroll_pixels;
+    if (cursor_y < 0) cursor_y = 0;
+}
+
 void console_putchar(char c, uint32_t color) {
     if (framebuffer == 0) return;
 
@@ -42,7 +111,10 @@ void console_putchar(char c, uint32_t color) {
         cursor_y += 16;
     }
 
-    // TODO: scroll when cursor_y exceeds fb_h
+    // Scroll when cursor exceeds screen height
+    if (cursor_y + 16 > fb_h) {
+        console_scroll(1);
+    }
 }
 
 void console_puts(const char *str, uint32_t color) {

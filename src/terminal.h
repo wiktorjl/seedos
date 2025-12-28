@@ -34,6 +34,11 @@ void terminal_putchar(terminal_t *term, char c);
 void terminal_puts(terminal_t *term, const char *str);
 void terminal_set_color(terminal_t *term, uint32_t color);
 
+// Screen management (operates on FB backend)
+void terminal_clear(terminal_t *term);
+void terminal_get_cursor(terminal_t *term, int *col, int *row);
+void terminal_get_dimensions(terminal_t *term, int *cols, int *rows);
+
 // Default terminal (outputs to all backends)
 extern terminal_t terminal_default;
 
