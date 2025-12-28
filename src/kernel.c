@@ -2,10 +2,10 @@
 
 #include "limine.h"
 #include "console.h"
-#include "io.h"
 #include "log.h"
 #include "logo.h"
-#include "serial.h"
+#include "terminal.h"
+#include "kprintf.h"
 
 extern const uint32_t logo_data[];
 
@@ -14,20 +14,18 @@ void kmain(void) {
     if (fb == 0) return;
 
     console_init(fb);
-    io_init();
-    log_init();
-    
+    terminal_init();
+
     // Display logo and log boot messages
     console_draw_image(logo_data, LOGO_WIDTH, LOGO_HEIGHT, 0, 0);
     console_set_cursor(0, LOGO_HEIGHT + 8);
     log_info("Initialized framebuffer");
     log_info("Initialized console");
-    log_info("Initialized I/O");
-    log_info("Initialized logging");
+    log_info("Initialized terminal");
 
     // Test log messages
     log_debug("This debug message is hidden (below LOG_INFO)");
-    log_trace("This trace message is also hidden");    
+    log_trace("This trace message is also hidden");
 
-    puts("\nWelcome to SeedOS!\n");
+    kprintf("\nWelcome to SeedOS!\n");
 }

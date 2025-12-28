@@ -11,10 +11,8 @@
 #define LOG_DEBUG   4
 #define LOG_TRACE   5
 
-// Minimum log level for each output backend
-// Messages below this level are suppressed for that backend
-#define CONFIG_LOG_LEVEL_CONSOLE    LOG_TRACE
-#define CONFIG_LOG_LEVEL_SERIAL     LOG_TRACE
+// Minimum log level (messages above this level are suppressed)
+#define CONFIG_LOG_LEVEL    LOG_TRACE
 
 // Enable/disable output backends
 #define CONFIG_OUTPUT_CONSOLE       1

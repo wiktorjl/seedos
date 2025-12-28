@@ -1,17 +1,27 @@
-// Logging interface with level filtering
+// Logging interface with level filtering and format string support
 
 #ifndef LOG_H
 #define LOG_H
 
 #include "config.h"
+#include "kprintf.h"
 
-void log_init(void);
+#define log_panic(fmt, ...) \
+    kprintf_log(LOG_PANIC, "[ panic ] ", CONFIG_CONSOLE_COLOR_PANIC, fmt, ##__VA_ARGS__)
 
-void log_panic(const char *msg);
-void log_error(const char *msg);
-void log_warn(const char *msg);
-void log_info(const char *msg);
-void log_debug(const char *msg);
-void log_trace(const char *msg);
+#define log_error(fmt, ...) \
+    kprintf_log(LOG_ERROR, "[ error ] ", CONFIG_CONSOLE_COLOR_ERROR, fmt, ##__VA_ARGS__)
+
+#define log_warn(fmt, ...) \
+    kprintf_log(LOG_WARN,  "[  warn ] ", CONFIG_CONSOLE_COLOR_WARN, fmt, ##__VA_ARGS__)
+
+#define log_info(fmt, ...) \
+    kprintf_log(LOG_INFO,  "[  info ] ", CONFIG_CONSOLE_COLOR_INFO, fmt, ##__VA_ARGS__)
+
+#define log_debug(fmt, ...) \
+    kprintf_log(LOG_DEBUG, "[ debug ] ", CONFIG_CONSOLE_COLOR_DEBUG, fmt, ##__VA_ARGS__)
+
+#define log_trace(fmt, ...) \
+    kprintf_log(LOG_TRACE, "[ trace ] ", CONFIG_CONSOLE_COLOR_TRACE, fmt, ##__VA_ARGS__)
 
 #endif
