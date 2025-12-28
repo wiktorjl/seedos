@@ -1,21 +1,26 @@
 #!/bin/bash
 # Convert image to raw BGRA format for embedding in kernel
+# Outputs: build/logo.bin (binary) and src/logo.h (dimensions header)
 
 set -e
 
-if [ $# -ne 2 ]; then
-    echo "Usage: $0 <input.gif> <output.bin>"
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <input-image>"
     exit 1
 fi
 
 INPUT="$1"
-OUTPUT="$2"
+OUTPUT="build/logo.bin"
+HEADER="src/logo.h"
 
 # Get image dimensions
 WIDTH=$(identify -format '%w' "$INPUT")
 HEIGHT=$(identify -format '%h' "$INPUT")
 
 echo "Converting $INPUT (${WIDTH}x${HEIGHT}) to raw BGRA..."
+
+# Ensure build directory exists
+mkdir -p build
 
 # Scale down to fit in ~1MB (target ~512x280 for 16:9)
 MAX_PIXELS=150000
@@ -34,14 +39,18 @@ else
 fi
 
 # Generate header with dimensions
-HEADER="${OUTPUT%.bin}.h"
-BASENAME=$(basename "$INPUT" | sed 's/\.[^.]*$//')
 echo "Generating $HEADER..."
 
 cat > "$HEADER" << EOF
-// Auto-generated from $INPUT
-#define ${BASENAME^^}_WIDTH $WIDTH
-#define ${BASENAME^^}_HEIGHT $HEIGHT
+// Logo image dimensions (regenerate with: scripts/convert-image.sh)
+
+#ifndef LOGO_H
+#define LOGO_H
+
+#define LOGO_WIDTH $WIDTH
+#define LOGO_HEIGHT $HEIGHT
+
+#endif
 EOF
 
 echo "Done. Output: $OUTPUT ($((WIDTH * HEIGHT * 4)) bytes)"

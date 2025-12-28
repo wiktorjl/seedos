@@ -4,9 +4,9 @@
 #include "console.h"
 #include "io.h"
 #include "log.h"
-#include "seedos.h"
+#include "logo.h"
 
-extern const uint32_t seedos_data[];
+extern const uint32_t logo_data[];
 
 void kmain(void) {
     struct limine_framebuffer *fb = limine_get_framebuffer();
@@ -17,8 +17,8 @@ void kmain(void) {
     log_init();
 
     // Display logo
-    console_draw_image(seedos_data, SEEDOS_WIDTH, SEEDOS_HEIGHT, 0, 0);
-    console_set_cursor(0, SEEDOS_HEIGHT + 8);
+    console_draw_image(logo_data, LOGO_WIDTH, LOGO_HEIGHT, 0, 0);
+    console_set_cursor(0, LOGO_HEIGHT + 8);
 
     // Test logging
     log_info("Initialized framebuffer");

@@ -6,9 +6,9 @@
 font_data:
     .incbin "font.bin"      # Spleen 8x16 bitmap font (256 glyphs, 16 bytes each)
 
-.global seedos_data
-seedos_data:
-    .incbin "seedos.bin"    # Logo image (raw BGRA pixels)
+.global logo_data
+logo_data:
+    .incbin "logo.bin"      # Logo image (raw BGRA pixels)
 
 .section .text
 .global _start

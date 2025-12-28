@@ -23,47 +23,35 @@ LIMINE_BRANCH := v8.x-binary
 CFLAGS := -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone \
           -mno-sse -mno-sse2 -mno-mmx -mno-80387 -mcmodel=kernel
 
+# Source files
+C_SRCS   := $(wildcard $(SRC)/*.c)
+ASM_SRCS := $(wildcard $(SRC)/*.S)
+
+# Object files
+C_OBJS   := $(patsubst $(SRC)/%.c,$(BUILD)/%.o,$(C_SRCS))
+ASM_OBJS := $(patsubst $(SRC)/%.S,$(BUILD)/%.o,$(ASM_SRCS))
+OBJS     := $(C_OBJS) $(ASM_OBJS)
+
 # Default target
 all: $(ISO)
 
 $(BUILD):
 	mkdir -p $(BUILD)
 
-# Convert logo image to raw BGRA
-$(BUILD)/seedos.bin $(BUILD)/seedos.h: $(DATA)/seedos.png $(SCRIPTS)/convert-image.sh | $(BUILD)
-	$(SCRIPTS)/convert-image.sh $(DATA)/seedos.png $(BUILD)/seedos.bin
+# Convert logo image to raw BGRA (run manually: scripts/convert-image.sh data/seedos.png)
+$(BUILD)/logo.bin: $(DATA)/seedos.png $(SCRIPTS)/convert-image.sh | $(BUILD)
+	$(SCRIPTS)/convert-image.sh $(DATA)/seedos.png
 
-# Assemble limine.S (boot protocol markers)
-$(BUILD)/limine_asm.o: $(SRC)/limine.S | $(BUILD)
-	cc -c $< -o $@
-
-# Compile limine.c (boot protocol requests)
-$(BUILD)/limine.o: $(SRC)/limine.c $(SRC)/limine.h | $(BUILD)
+# Pattern rule for C files
+$(BUILD)/%.o: $(SRC)/%.c | $(BUILD)
 	cc $(CFLAGS) -c $< -o $@
 
-# Assemble boot.S (entry point and embedded data)
-$(BUILD)/boot.o: $(SRC)/boot.S $(DATA)/font.bin $(BUILD)/seedos.bin | $(BUILD)
+# Pattern rule for assembly files
+$(BUILD)/%.o: $(SRC)/%.S | $(BUILD)
 	cc -I$(BUILD) -I$(DATA) -c $< -o $@
 
-# Compile console.c
-$(BUILD)/console.o: $(SRC)/console.c $(SRC)/console.h $(SRC)/limine.h | $(BUILD)
-	cc $(CFLAGS) -c $< -o $@
-
-# Compile io.c
-$(BUILD)/io.o: $(SRC)/io.c $(SRC)/io.h $(SRC)/config.h $(SRC)/console.h | $(BUILD)
-	cc $(CFLAGS) -c $< -o $@
-
-# Compile log.c
-$(BUILD)/log.o: $(SRC)/log.c $(SRC)/log.h $(SRC)/config.h $(SRC)/console.h | $(BUILD)
-	cc $(CFLAGS) -c $< -o $@
-
-# Compile kernel.c
-$(BUILD)/kernel.o: $(SRC)/kernel.c $(SRC)/limine.h $(SRC)/console.h $(BUILD)/seedos.h $(SRC)/io.h $(SRC)/log.h | $(BUILD)
-	cc $(CFLAGS) -I$(BUILD) -c $< -o $@
-
-# Object files
-OBJS := $(BUILD)/limine_asm.o $(BUILD)/limine.o $(BUILD)/boot.o \
-        $(BUILD)/console.o $(BUILD)/io.o $(BUILD)/log.o $(BUILD)/kernel.o
+# boot.S needs logo.bin and font.bin
+$(BUILD)/boot.o: $(DATA)/font.bin $(BUILD)/logo.bin
 
 # Link kernel
 $(KERNEL): $(OBJS) $(SRC)/linker.ld
