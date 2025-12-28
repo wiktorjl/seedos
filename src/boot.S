@@ -1,36 +1,31 @@
-# SeedOS entry point and startup code
+# SeedOS entry point and embedded data
 
-# Font data (Spleen 8x16 bitmap font)
 .section .rodata
+
 .global font_data
 font_data:
-    .incbin "font.bin"
+    .incbin "font.bin"      # Spleen 8x16 bitmap font (256 glyphs, 16 bytes each)
 
-# Image data (seedos.png converted to raw BGRA)
 .global seedos_data
 seedos_data:
-    .incbin "seedos.bin"
+    .incbin "seedos.bin"    # Logo image (raw BGRA pixels)
 
-# Entry point
 .section .text
 .global _start
 .extern kmain
 .extern limine_base_revision
 
 _start:
-    # Check if Limine modified the base revision marker
-    # If unchanged, our requested protocol version is not supported
+    # Limine stores [magic0, magic1, revision] at limine_base_revision.
+    # On success, Limine replaces magic1 (offset +8) with the supported revision.
+    # If magic1 is unchanged, the bootloader doesn't support our protocol version.
     mov limine_base_revision+8(%rip), %rax
-    mov $0x6a7b384944536bdc, %rcx
+    mov $0x6a7b384944536bdc, %rcx   # Original magic1 value
     cmp %rcx, %rax
-    je .not_supported
+    je .halt                        # Halt if protocol unsupported
 
-    # Call kernel main
     call kmain
 
 .halt:
     hlt
     jmp .halt
-
-.not_supported:
-    jmp .not_supported

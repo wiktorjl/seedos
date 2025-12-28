@@ -1,3 +1,5 @@
+// Limine boot protocol types (subset for framebuffer support)
+
 #ifndef LIMINE_H
 #define LIMINE_H
 

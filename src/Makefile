@@ -48,13 +48,25 @@ $(BUILD)/boot.o: boot.S font.bin seedos.bin | $(BUILD)
 $(BUILD)/console.o: console.c console.h limine.h | $(BUILD)
 	cc $(CFLAGS) -c $< -o $@
 
-# Compile kernel.c
-$(BUILD)/kernel.o: kernel.c limine.h console.h seedos.h | $(BUILD)
+# Compile io.c
+$(BUILD)/io.o: io.c io.h config.h console.h | $(BUILD)
 	cc $(CFLAGS) -c $< -o $@
 
+# Compile log.c
+$(BUILD)/log.o: log.c log.h config.h console.h | $(BUILD)
+	cc $(CFLAGS) -c $< -o $@
+
+# Compile kernel.c
+$(BUILD)/kernel.o: kernel.c limine.h console.h seedos.h io.h log.h | $(BUILD)
+	cc $(CFLAGS) -c $< -o $@
+
+# Object files
+OBJS := $(BUILD)/limine_asm.o $(BUILD)/limine.o $(BUILD)/boot.o \
+        $(BUILD)/console.o $(BUILD)/io.o $(BUILD)/log.o $(BUILD)/kernel.o
+
 # Link kernel
-$(KERNEL): $(BUILD)/limine_asm.o $(BUILD)/limine.o $(BUILD)/boot.o $(BUILD)/console.o $(BUILD)/kernel.o linker.ld
-	ld -nostdlib -static -T linker.ld -o $@ $(BUILD)/limine_asm.o $(BUILD)/limine.o $(BUILD)/boot.o $(BUILD)/console.o $(BUILD)/kernel.o
+$(KERNEL): $(OBJS) linker.ld
+	ld -nostdlib -static -T linker.ld -o $@ $(OBJS)
 
 # Create bootable ISO
 $(ISO): $(KERNEL) limine.conf | limine
