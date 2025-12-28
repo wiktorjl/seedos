@@ -5,3 +5,5 @@ initrd/
 initrd_extra/
 .cache/
 **/esp
+*.bin
+*.psfu
