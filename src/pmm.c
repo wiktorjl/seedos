@@ -62,6 +62,7 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
      */
     uint64_t bitmap_pages = (bitmap_size + PAGE_SIZE - 1) / PAGE_SIZE;
     uint64_t bitmap_phys = 0;
+    int bitmap_found = 0;
 
     for(uint64_t i = 0; i < memmap->entry_count; i++) {
         struct limine_memmap_entry *entry = memmap->entries[i];
@@ -70,11 +71,13 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
         }
         if(entry->length >= bitmap_pages * PAGE_SIZE) {
             bitmap_phys = entry->base;
+            bitmap_found = 1;
+            break;  /* Use first suitable region */
         }
     }
 
     /* If we couldn't find space, we're in trouble */
-    if(bitmap_phys == 0) {
+    if(!bitmap_found) {
         /* Can't do much without serial here - just hang */
         while(1) {
             log_panic("PMM init failed: no space for bitmap");
@@ -160,6 +163,12 @@ uint64_t pmm_alloc(void) {
 }
 
 void pmm_free(uint64_t phys_addr) {
+    /* Validate: must be page-aligned */
+    if (phys_addr & (PAGE_SIZE - 1)) {
+        kprintf("ERROR: pmm_free: address not page-aligned: 0x%llx\n", phys_addr);
+        return;
+    }
+
     uint64_t page_index = phys_addr / PAGE_SIZE;
 
     /* Validate: must be in range and currently allocated */

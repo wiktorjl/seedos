@@ -157,38 +157,80 @@ int vmm_map_page(uint64_t pml4_phys, uint64_t virt, uint64_t phys, uint64_t flag
     int pd_idx   = PD_INDEX(virt);
     int pt_idx   = PT_INDEX(virt);
 
+    /*
+     * Intermediate page table flags:
+     * - Always PRESENT and WRITABLE (needed to traverse)
+     * - USER bit only if mapping a user-accessible page
+     */
+    uint64_t intermediate_flags = PTE_PRESENT | PTE_WRITABLE;
+    if (flags & PTE_USER) {
+        intermediate_flags |= PTE_USER;
+    }
+
+    /* Track newly allocated tables for cleanup on failure */
+    uint64_t new_pdpt_phys = 0;
+    uint64_t new_pd_phys = 0;
+    uint64_t new_pt_phys = 0;
+
     /* Get or create PDPT */
     uint64_t *pdpt;
     if(pml4[pml4_idx] & PTE_PRESENT) {
         pdpt = phys_to_virt(pml4[pml4_idx] & PTE_ADDR_MASK);
+        /* Upgrade to USER if needed (existing kernel mapping being shared with user) */
+        if ((flags & PTE_USER) && !(pml4[pml4_idx] & PTE_USER)) {
+            pml4[pml4_idx] |= PTE_USER;
+        }
     }else {
-        uint64_t pdpt_phys = alloc_page_table();
-        if(pdpt_phys == 0) return -1;
-        /* Set USER on intermediate entry if mapping user page */
-        pml4[pml4_idx] = pdpt_phys | PTE_PRESENT | PTE_WRITABLE | PTE_USER;
-        pdpt = phys_to_virt(pdpt_phys);
+        new_pdpt_phys = alloc_page_table();
+        if(new_pdpt_phys == 0) return -1;
+        pml4[pml4_idx] = new_pdpt_phys | intermediate_flags;
+        pdpt = phys_to_virt(new_pdpt_phys);
     }
 
     /* Get or create PD */
     uint64_t *pd;
     if(pdpt[pdpt_idx] & PTE_PRESENT) {
         pd = phys_to_virt(pdpt[pdpt_idx] & PTE_ADDR_MASK);
+        if ((flags & PTE_USER) && !(pdpt[pdpt_idx] & PTE_USER)) {
+            pdpt[pdpt_idx] |= PTE_USER;
+        }
     }else {
-        uint64_t pd_phys = alloc_page_table();
-        if(pd_phys == 0) return -1;
-        pdpt[pdpt_idx] = pd_phys | PTE_PRESENT | PTE_WRITABLE | PTE_USER;
-        pd = phys_to_virt(pd_phys);
+        new_pd_phys = alloc_page_table();
+        if(new_pd_phys == 0) {
+            /* Cleanup: free PDPT if we allocated it */
+            if (new_pdpt_phys) {
+                pml4[pml4_idx] = 0;
+                pmm_free(new_pdpt_phys);
+            }
+            return -1;
+        }
+        pdpt[pdpt_idx] = new_pd_phys | intermediate_flags;
+        pd = phys_to_virt(new_pd_phys);
     }
 
     /* Get or create PT */
     uint64_t *pt;
     if(pd[pd_idx] & PTE_PRESENT) {
         pt = phys_to_virt(pd[pd_idx] & PTE_ADDR_MASK);
+        if ((flags & PTE_USER) && !(pd[pd_idx] & PTE_USER)) {
+            pd[pd_idx] |= PTE_USER;
+        }
     }else {
-        uint64_t pt_phys = alloc_page_table();
-        if(pt_phys == 0) return -1;
-        pd[pd_idx] = pt_phys | PTE_PRESENT | PTE_WRITABLE | PTE_USER;
-        pt = phys_to_virt(pt_phys);
+        new_pt_phys = alloc_page_table();
+        if(new_pt_phys == 0) {
+            /* Cleanup: free PD and PDPT if we allocated them */
+            if (new_pd_phys) {
+                pdpt[pdpt_idx] = 0;
+                pmm_free(new_pd_phys);
+            }
+            if (new_pdpt_phys) {
+                pml4[pml4_idx] = 0;
+                pmm_free(new_pdpt_phys);
+            }
+            return -1;
+        }
+        pd[pd_idx] = new_pt_phys | intermediate_flags;
+        pt = phys_to_virt(new_pt_phys);
     }
 
     /* Map the page with requested flags */
@@ -232,6 +274,9 @@ int vmm_unmap_page(uint64_t pml4_phys, uint64_t virt) {
 
     /* Unmap the page */
     pt[pt_idx] = 0;
+
+    /* Flush TLB entry for this virtual address */
+    asm volatile("invlpg (%0)" :: "r"(virt) : "memory");
 
     return 0;
 }

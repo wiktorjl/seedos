@@ -10,7 +10,80 @@
 #include "idt.h"
 #include "pmm.h"
 #include "vmm.h"
+#include "heap.h"
 
+
+static void test_heap(void) {
+    log_info("HEAP: Running tests...");
+
+    /* Test 1: Basic allocation */
+    void *p1 = kmalloc(64);
+    if (p1 == NULL) {
+        log_error("HEAP: Test 1 FAILED - kmalloc(64) returned NULL");
+        return;
+    }
+    log_info("HEAP: Test 1 OK - kmalloc(64) = %p", p1);
+
+    /* Test 2: Zero-initialized allocation */
+    uint8_t *p2 = kzalloc(128);
+    if (p2 == NULL) {
+        log_error("HEAP: Test 2 FAILED - kzalloc(128) returned NULL");
+        return;
+    }
+    int zeroed = 1;
+    for (int i = 0; i < 128; i++) {
+        if (p2[i] != 0) {
+            zeroed = 0;
+            break;
+        }
+    }
+    if (!zeroed) {
+        log_error("HEAP: Test 2 FAILED - kzalloc memory not zeroed");
+        return;
+    }
+    log_info("HEAP: Test 2 OK - kzalloc(128) = %p (zeroed)", p2);
+
+    /* Test 3: Multiple allocations */
+    void *ptrs[10];
+    for (int i = 0; i < 10; i++) {
+        ptrs[i] = kmalloc(100 + i * 50);
+        if (ptrs[i] == NULL) {
+            log_error("HEAP: Test 3 FAILED - allocation %d returned NULL", i);
+            return;
+        }
+    }
+    log_info("HEAP: Test 3 OK - 10 allocations succeeded");
+
+    /* Test 4: Free and realloc */
+    kfree(p1);
+    kfree(p2);
+    for (int i = 0; i < 10; i++) {
+        kfree(ptrs[i]);
+    }
+    log_info("HEAP: Test 4 OK - all frees succeeded");
+
+    /* Test 5: Realloc */
+    void *p3 = kmalloc(32);
+    void *p4 = krealloc(p3, 256);
+    if (p4 == NULL) {
+        log_error("HEAP: Test 5 FAILED - krealloc returned NULL");
+        return;
+    }
+    log_info("HEAP: Test 5 OK - krealloc(32 -> 256) = %p", p4);
+    kfree(p4);
+
+    /* Test 6: Large allocation */
+    void *p5 = kmalloc(16384);
+    if (p5 == NULL) {
+        log_error("HEAP: Test 6 FAILED - kmalloc(16384) returned NULL");
+        return;
+    }
+    log_info("HEAP: Test 6 OK - kmalloc(16384) = %p", p5);
+    kfree(p5);
+
+    log_info("HEAP: All tests passed! Used: %llu bytes, Free: %llu bytes",
+             (uint64_t)kheap_get_used(), (uint64_t)kheap_get_free());
+}
 
 void kmain(void) {
     struct limine_framebuffer *fb = limine_get_framebuffer();
@@ -20,6 +93,9 @@ void kmain(void) {
     terminal_init();
     logo_display();
     log_info("TERM: Initialized");
+
+    log_info("STACK: Top: 0x%llx", cpu_get_stack_top());
+    log_info("STACK: Size: %llu bytes", (uint64_t)stack_size);
 
     idt_install();
     log_info("IDT: Initialized");
@@ -33,6 +109,13 @@ void kmain(void) {
     log_info("VMM: Kernel PML4 at physical address 0x%llx", vmm_get_kernel_pml4());
     log_info("VMM: Page size: %llu bytes", PAGE_SIZE);
     log_info("VMM: Initialized");
+
+    kheap_init();
+    log_info("HEAP: Initialized");
+
+    // Print location and size of heap and stack
+    log_info("HEAP: Used: %llu bytes, Free: %llu bytes",
+             (uint64_t)kheap_get_used(), (uint64_t)kheap_get_free());
 
     cpu_enable_interrupts();
     log_info("INT: Enabled");
