@@ -25,6 +25,7 @@
 #include "ioapic.h"
 #include "keyboard.h"
 #include "sysinfo.h"
+#include "kshell.h"
 
 /* =============================================================================
  * Kernel Main Entry Point
@@ -42,7 +43,7 @@
  *   5. ACPI/APIC/IOAPIC for hardware
  *   6. Keyboard for input
  *
- * Then enters an interactive echo loop.
+ * Then starts the kernel shell.
  */
 void kmain(void) {
     struct limine_framebuffer *fb = limine_get_framebuffer();
@@ -94,24 +95,7 @@ void kmain(void) {
     sysinfo_init();
     sysinfo_print_summary();
 
-    kprintf("\nWelcome to SeedOS!\n");
-    kprintf("Type something: ");
-
-    /* Simple echo loop */
-    for (;;) {
-        int c = keyboard_getchar();
-        if (c != -1) {
-            if (c == '\n' || c == '\r') {
-                kprintf("\n");
-            } else if (c == KEY_BACKSPACE) {
-                kprintf("\b \b");  /* Backspace, space, backspace */
-            } else if (c == KEY_TAB) {
-                kprintf("\t");
-            } else if (c >= 32 && c < 127) {
-                kprintf("%c", c);
-            }
-        } else {
-            __asm__ volatile ("hlt");  /* Wait for interrupt */
-        }
-    }
+    /* Start the kernel shell */
+    kshell_init();
+    kshell_run();  /* Does not return */
 }
