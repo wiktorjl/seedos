@@ -53,7 +53,7 @@ static uint64_t kernel_pml4_phys;
  */
 static uint64_t alloc_page_table(void) {
     uint64_t phys = pmm_alloc();
-    if (phys == 0) {
+    if (phys == PMM_ALLOC_FAILED) {
         return 0;
     }
 
