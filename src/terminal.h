@@ -3,7 +3,7 @@
 #ifndef TERMINAL_H
 #define TERMINAL_H
 
-#include <stdint.h>
+#include "types.h"
 
 // Terminal output backends
 #define TERM_BACKEND_NONE       0

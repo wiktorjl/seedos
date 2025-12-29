@@ -3,7 +3,7 @@
 #include "kprintf.h"
 #include "config.h"
 #include "terminal.h"
-#include <stdint.h>
+#include "types.h"
 #include <stddef.h>
 
 // Helper: print a single character

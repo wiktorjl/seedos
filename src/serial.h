@@ -1,7 +1,7 @@
 #ifndef SERIAL_H
 #define SERIAL_H 
 
-#include <stdint.h>
+#include "types.h"
 
 void serial_init(void);
 void serial_putchar(char c);

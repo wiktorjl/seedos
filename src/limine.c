@@ -1,8 +1,4 @@
 // Limine boot protocol requests
-//
-// Limine scans the kernel binary for magic byte sequences to find requests.
-// Each request has: [common_magic (2), request_id (2), revision, response_ptr]
-// On boot, Limine fills in response_ptr with a pointer to the response struct.
 
 #include "limine.h"
 
@@ -14,22 +10,26 @@ volatile uint64_t limine_base_revision[3] __attribute__((section(".limine_reques
     3                       // requested revision
 };
 
-// Framebuffer request: asks Limine to set up a linear framebuffer.
-static volatile uint64_t framebuffer_request[6] __attribute__((section(".limine_requests"))) = {
-    0xc7b1dd30df4c8b88,     // common_magic[0]
-    0x0a82e883a194f07b,     // common_magic[1]
-    0x9d5827dcd881dd75,     // framebuffer_request_id[0]
-    0xa3148604f6fab11b,     // framebuffer_request_id[1]
-    0,                      // revision
-    0                       // response (filled by Limine)
-};
+LIMINE_FRAMEBUFFER_REQUEST;
+LIMINE_HHDM_REQUEST;
+LIMINE_MEMMAP_REQUEST;
+
+struct limine_memmap_response *limine_get_memmap(void) {
+    if (memmap_request.response == NULL)
+        return 0;
+    return memmap_request.response;
+}
+
+uint64_t limine_get_hhdm_offset(void) {
+    if (hhdm_request.response == NULL)
+        return 0;
+    return hhdm_request.response->offset;
+}
 
 struct limine_framebuffer *limine_get_framebuffer(void) {
-    struct limine_framebuffer_response *response =
-        (struct limine_framebuffer_response *)framebuffer_request[5];
-
-    if (response == 0 || response->framebuffer_count == 0)
+    if (framebuffer_request.response == 0 ||
+        framebuffer_request.response->framebuffer_count == 0)
         return 0;
 
-    return response->framebuffers[0];
+    return framebuffer_request.response->framebuffers[0];
 }

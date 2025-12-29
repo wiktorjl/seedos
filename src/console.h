@@ -3,7 +3,7 @@
 #ifndef CONSOLE_H
 #define CONSOLE_H
 
-#include <stdint.h>
+#include "types.h"
 #include "limine.h"
 
 void console_init(struct limine_framebuffer *fb);

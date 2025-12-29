@@ -1,5 +1,11 @@
 # SeedOS entry point and embedded data
 
+.section .bss
+.align 16
+stack_bottom:
+    .skip 16384                 # 16 KiB kernel stack
+stack_top:
+
 .section .rodata
 
 .global font_data
@@ -23,6 +29,9 @@ _start:
     mov $0x6a7b384944536bdc, %rcx   # Original magic1 value
     cmp %rcx, %rax
     je .halt                        # Halt if protocol unsupported
+
+    # Set up our own kernel stack
+    lea stack_top(%rip), %rsp
 
     xor %rbp, %rbp                  # Zero frame pointer to terminate backtrace
     call kmain
