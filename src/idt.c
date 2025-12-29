@@ -73,10 +73,15 @@ extern void isr_29(void);
 extern void isr_30(void);
 extern void isr_31(void);
 
+/*
+ * TODO: Add hardware IRQ handlers (32-47) when implementing PIC/APIC support.
+ * Currently only CPU exceptions (0-31) are handled.
+ */
+
 static void (*isr_stubs[IDT_SIZE])(void) = {
-    isr_0, isr_1, isr_2, isr_3, isr_4, isr_5, isr_6, isr_7, isr_8, isr_9,  
-    isr_10, isr_11, isr_12, isr_13, isr_14, isr_15, isr_16, isr_17, isr_18, 
-    isr_19, isr_20, isr_21, isr_22, isr_23, isr_24, isr_25, isr_26, isr_27, 
+    isr_0, isr_1, isr_2, isr_3, isr_4, isr_5, isr_6, isr_7, isr_8, isr_9,
+    isr_10, isr_11, isr_12, isr_13, isr_14, isr_15, isr_16, isr_17, isr_18,
+    isr_19, isr_20, isr_21, isr_22, isr_23, isr_24, isr_25, isr_26, isr_27,
     isr_28, isr_29, isr_30, isr_31,
 };
 
@@ -101,6 +106,15 @@ void idt_install(void) {
     asm volatile ("lidt %0" : : "m"(idtr));
 }
 
+/*
+ * Check if a pointer looks like a valid kernel address.
+ * Valid kernel addresses are in the higher half (above canonical hole).
+ */
+static inline int is_valid_kernel_addr(uint64_t addr) {
+    /* Must be in higher half (kernel space) and 8-byte aligned for stack frames */
+    return (addr >= 0xFFFF800000000000ULL) && ((addr & 0x7) == 0);
+}
+
 void backtrace(uint64_t rip, uint64_t rbp) {
     log_debug("Backtrace:");
 
@@ -108,6 +122,12 @@ void backtrace(uint64_t rip, uint64_t rbp) {
     log_debug("  [0] 0x%016llx", rip);
 
     for (int i = 1; i < 10 && rbp != 0; i++) {
+        /* Validate RBP before dereferencing to avoid faulting in the exception handler */
+        if (!is_valid_kernel_addr(rbp)) {
+            log_debug("  [%d] <invalid frame pointer: 0x%016llx>", i, rbp);
+            break;
+        }
+
         uint64_t *frame = (uint64_t *)rbp;
         uint64_t ret_addr = frame[1];   // return address
         uint64_t prev_rbp = frame[0];   // previous frame pointer
@@ -128,13 +148,9 @@ void interrupt_handler(interrupt_frame_t *frame) {
 
     backtrace(frame->rip, frame->rbp);
 
-    if(frame->int_no == 1) {
-        log_panic("Debug Exception - Halting for debugging");
-    } else {
-       // Halt - don't return from fatal exceptions
-       log_panic("System halted.\n");
-        while (1) {
-            asm volatile ("hlt");
-        }
+    // Halt - don't return from fatal exceptions
+    log_panic("System halted.\n");
+    while (1) {
+        asm volatile ("hlt");
     }
 }

@@ -1,5 +1,10 @@
 #include "serial.h"
 
+/*
+ * TODO: Add spinlock/mutex protection for thread safety when kernel
+ * supports multiple threads/cores. Currently not thread-safe.
+ */
+
 #define COM1 0x3F8
 
 // x86 port I/O (inline assembly)

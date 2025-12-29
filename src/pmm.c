@@ -143,31 +143,38 @@ uint64_t pmm_alloc(void) {
      * Linear scan for a free page.
      * This is O(n) which is inefficient for large memory, but simple.
      * A production allocator would use a free list or buddy system.
+     *
+     * TODO: Cache last allocation position or use free-list for O(1) alloc.
+     *
+     * We start from page 1 to ensure page 0 is never returned, since
+     * returning 0 would be indistinguishable from PMM_ALLOC_FAILED.
      */
-    for(uint64_t i = 0; i < total_pages; i++) {
+    for(uint64_t i = 1; i < total_pages; i++) {
         if(!bitmap_is_used(i)) {
             bitmap_mark_used(i);
             free_pages--;
             return i * PAGE_SIZE;
         }
     }
-    return 0;  /* Out of memory - no free pages found */
+    return PMM_ALLOC_FAILED;  /* Out of memory - no free pages found */
 }
 
 void pmm_free(uint64_t phys_addr) {
     uint64_t page_index = phys_addr / PAGE_SIZE;
 
     /* Validate: must be in range and currently allocated */
-    if(page_index < total_pages && bitmap_is_used(page_index)) {
-        bitmap_mark_free(page_index);
-        free_pages++;
-    }else {
-        /* Invalid free (out of range or double-free) is ignored */
-        if(bitmap_is_used(page_index)) {
-            kprintf("ERROR: pmm_free: potential double free (bug?): %llx\n", phys_addr);
-        }
+    if (page_index >= total_pages) {
+        kprintf("ERROR: pmm_free: address out of range: 0x%llx\n", phys_addr);
+        return;
     }
 
+    if (!bitmap_is_used(page_index)) {
+        kprintf("ERROR: pmm_free: double free detected: 0x%llx\n", phys_addr);
+        return;
+    }
+
+    bitmap_mark_free(page_index);
+    free_pages++;
 }
 
 uint64_t pmm_get_free_pages(void) {

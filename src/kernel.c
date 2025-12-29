@@ -29,4 +29,9 @@ void kmain(void) {
     cpu_enable_interrupts();
     log_info("INT: Enabled");
     kprintf("\nWelcome to SeedOS!\n");
+
+    /* Idle loop - halt until interrupt, then loop back */
+    for (;;) {
+        asm volatile ("hlt");
+    }
 }

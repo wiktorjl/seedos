@@ -7,6 +7,8 @@
 #define PAGE_SIZE 4096
 #define CODE_PAGE_SIZE PAGE_SIZE
 
+#define PMM_ALLOC_FAILED 0  /* Returned when allocation fails (OOM) */
+
 void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset);
 
 uint64_t pmm_alloc(void);

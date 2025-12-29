@@ -3,7 +3,7 @@
 
 #include "types.h"
 
-#define IDT_SIZE 32
+#define IDT_SIZE 32  /* TODO: Expand to 256 when adding hardware IRQ support */
 
 #define IDT_GATE_INTERRUPT 0x8E  /* P=1, DPL=0, Type=0xE (interrupt gate) */
 #define IDT_GATE_TRAP      0x8F  /* P=1, DPL=0, Type=0xF (trap gate) */

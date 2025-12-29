@@ -1,4 +1,7 @@
 // Console output: text and image rendering to framebuffer
+//
+// TODO: Add spinlock/mutex protection for thread safety when kernel
+// supports multiple threads/cores. Currently not thread-safe.
 
 #include "console.h"
 
@@ -55,6 +58,12 @@ void console_clear(uint32_t color) {
     cursor_y = 0;
 }
 
+/*
+ * TODO: Optimize scroll performance. Current implementation copies pixel-by-pixel
+ * which is O(width * height). Consider:
+ * - Using memcpy() per row for better cache utilization
+ * - Ring buffer approach for O(1) logical scrolling
+ */
 void console_scroll(int lines) {
     if (!framebuffer || lines <= 0) return;
 
@@ -125,13 +134,23 @@ void console_puts(const char *str, uint32_t color) {
 void console_draw_char(char c, int x, int y, uint32_t color) {
     if (framebuffer == 0) return;
 
+    int fb_w = framebuffer->width;
+    int fb_h = framebuffer->height;
+
+    /* Bounds check: skip if character is fully outside framebuffer */
+    if (x < 0 || y < 0 || x >= fb_w || y >= fb_h) return;
+
     const uint8_t *glyph = font_data + (unsigned char)c * 16;
     uint32_t *fb = (uint32_t *)framebuffer->address;
     uint64_t pitch = framebuffer->pitch / 4;    // pixels per row (assuming 32bpp)
 
-    for (int row = 0; row < 16; row++) {
+    /* Calculate safe drawing bounds (clip to framebuffer edges) */
+    int max_row = (y + 16 > fb_h) ? fb_h - y : 16;
+    int max_col = (x + 8 > fb_w) ? fb_w - x : 8;
+
+    for (int row = 0; row < max_row; row++) {
         uint8_t bits = glyph[row];
-        for (int col = 0; col < 8; col++) {
+        for (int col = 0; col < max_col; col++) {
             if (bits & (0x80 >> col))
                 fb[(y + row) * pitch + (x + col)] = color;
         }
