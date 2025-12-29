@@ -186,7 +186,7 @@ void console_get_cursor(int *x, int *y) {
 void console_set_cursor(int x, int y) {
     /* Convert pixel position to column position for scrollback */
     current_col = x / 8;
-    if (current_col > MAX_COLS) current_col = MAX_COLS;
+    if (current_col >= MAX_COLS) current_col = MAX_COLS - 1;
 
     /* Adjust scrollback line count if cursor is positioned below current content */
     int target_row = y / 16;

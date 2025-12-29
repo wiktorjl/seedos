@@ -162,6 +162,12 @@ static free_block_t *heap_expand(size_t min_size) {
         pages_needed = HEAP_GROW_PAGES;
     }
 
+    /* Cap to maximum we can track for cleanup on failure */
+    if (pages_needed > 64) {
+        log_error("kheap: expansion request too large (%zu pages)", pages_needed);
+        return NULL;
+    }
+
     uint64_t pml4 = vmm_get_kernel_pml4();
     uint64_t new_region = heap_end;
 
@@ -295,10 +301,10 @@ void *kmalloc(size_t size) {
                 current->header.size_and_flags = total_size;
 
                 /*
-                 * Account for: the allocated portion + the new header we created.
-                 * The split creates a new block_header, reducing usable free space.
+                 * Subtract the usable portion of the allocated block.
+                 * The remaining block stays in free list with its own header.
                  */
-                total_free -= total_size + sizeof(block_header_t);
+                total_free -= total_size - sizeof(block_header_t);
             } else {
                 /* Use entire block */
                 total_size = current_size;
@@ -339,7 +345,7 @@ void *kmalloc(size_t size) {
         /* Adjust block size */
         new_block->header.size_and_flags = total_size;
 
-        total_free -= total_size + sizeof(block_header_t);
+        total_free -= total_size - sizeof(block_header_t);
     } else {
         /* Use entire block */
         total_size = new_block_size;

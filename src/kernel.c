@@ -77,9 +77,6 @@ void kmain(void) {
     log_info("HEAP: Used: %llu bytes, Free: %llu bytes",
              (uint64_t)kheap_get_used(), (uint64_t)kheap_get_free());
 
-    cpu_enable_interrupts();
-    log_info("INT: Enabled");
-
     acpi_init();
     log_info("ACPI: Initialized");
 
@@ -91,6 +88,10 @@ void kmain(void) {
 
     keyboard_init();
     log_info("KEYBOARD: Initialized");
+
+    /* Enable interrupts after all hardware is initialized */
+    cpu_enable_interrupts();
+    log_info("INT: Enabled");
 
     sysinfo_init();
     sysinfo_print_summary();
