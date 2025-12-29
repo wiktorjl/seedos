@@ -1,7 +1,20 @@
 /*
  * log.h - Logging Interface
  *
- * Provides level filtering and format string support for kernel logging.
+ * Provides leveled logging macros that filter based on CONFIG_LOG_LEVEL.
+ * Each log level has a distinct prefix and color for console output.
+ *
+ * Log Levels (in order of severity):
+ *   LOG_PANIC - System is unusable, will halt
+ *   LOG_ERROR - Error conditions
+ *   LOG_WARN  - Warning conditions
+ *   LOG_INFO  - Informational messages
+ *   LOG_DEBUG - Debug-level messages
+ *   LOG_TRACE - Fine-grained tracing
+ *
+ * Usage:
+ *   log_info("Initialized %s with %d pages", name, count);
+ *   log_error("Failed to allocate memory");
  */
 
 #ifndef LOG_H

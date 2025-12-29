@@ -1,14 +1,19 @@
-// Console output: text and image rendering to framebuffer
-//
-// TODO: Add spinlock/mutex protection for thread safety when kernel
-// supports multiple threads/cores. Currently not thread-safe.
+/*
+ * console.c - Console Output
+ *
+ * Text and graphics rendering to the framebuffer. Uses an 8x16 bitmap font
+ * for text output with automatic line wrapping and scrolling.
+ *
+ * TODO: Add spinlock/mutex protection for thread safety when kernel
+ * supports multiple threads/cores. Currently not thread-safe.
+ */
 
 #include "console.h"
 
-extern const uint8_t font_data[];   // 8x16 bitmap font (256 glyphs)
+extern const uint8_t font_data[];   /* 8x16 bitmap font (256 glyphs) */
 
 static struct limine_framebuffer *framebuffer;
-static int cursor_x, cursor_y;      // Cursor position in pixels
+static int cursor_x, cursor_y;      /* Cursor position in pixels */
 
 /* Cursor blinking state */
 static int cursor_visible;          /* Is cursor currently drawn? */
@@ -91,21 +96,21 @@ void console_scroll(int lines) {
         return;
     }
 
-    // Move framebuffer content up
+    /* Move framebuffer content up */
     for (int row = 0; row < fb_h - scroll_pixels; row++) {
         for (uint64_t col = 0; col < pitch; col++) {
             fb[row * pitch + col] = fb[(row + scroll_pixels) * pitch + col];
         }
     }
 
-    // Clear the bottom area
+    /* Clear the bottom area */
     for (int row = fb_h - scroll_pixels; row < fb_h; row++) {
         for (uint64_t col = 0; col < pitch; col++) {
             fb[row * pitch + col] = 0x000000;
         }
     }
 
-    // Adjust cursor
+    /* Adjust cursor */
     cursor_y -= scroll_pixels;
     if (cursor_y < 0) cursor_y = 0;
 }
@@ -134,13 +139,13 @@ void console_putchar(char c, uint32_t color) {
         cursor_x += 8;
     }
 
-    // Wrap at right edge
+    /* Wrap at right edge */
     if (cursor_x + 8 > fb_w) {
         cursor_x = 0;
         cursor_y += 16;
     }
 
-    // Scroll when cursor exceeds screen height
+    /* Scroll when cursor exceeds screen height */
     if (cursor_y + 16 > fb_h) {
         console_scroll(1);
     }
@@ -162,7 +167,7 @@ void console_draw_char(char c, int x, int y, uint32_t color) {
 
     const uint8_t *glyph = font_data + (unsigned char)c * 16;
     uint32_t *fb = (uint32_t *)framebuffer->address;
-    uint64_t pitch = framebuffer->pitch / 4;    // pixels per row (assuming 32bpp)
+    uint64_t pitch = framebuffer->pitch / 4;    /* pixels per row (assuming 32bpp) */
 
     /* Calculate safe drawing bounds (clip to framebuffer edges) */
     int max_row = (y + 16 > fb_h) ? fb_h - y : 16;

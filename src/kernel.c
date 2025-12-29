@@ -107,6 +107,19 @@ static void test_heap(void) {
  * =============================================================================
  */
 
+/*
+ * kmain - Kernel entry point after bootloader handoff.
+ *
+ * Initializes all kernel subsystems in dependency order:
+ *   1. Console/terminal for output
+ *   2. IDT for interrupt handling
+ *   3. PMM/VMM for memory management
+ *   4. Heap for dynamic allocation
+ *   5. ACPI/APIC/IOAPIC for hardware
+ *   6. Keyboard for input
+ *
+ * Then enters an interactive echo loop.
+ */
 void kmain(void) {
     struct limine_framebuffer *fb = limine_get_framebuffer();
     if (fb == NULL) return;

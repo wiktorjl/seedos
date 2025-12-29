@@ -52,6 +52,15 @@ static inline int bitmap_is_used(uint64_t page_index) {
  * =============================================================================
  */
 
+/*
+ * pmm_init - Initialize the physical memory manager.
+ *
+ * @memmap:      Memory map from bootloader describing usable regions.
+ * @hhdm_offset: Higher Half Direct Map offset for physical-to-virtual conversion.
+ *
+ * Allocates a bitmap to track all physical pages, marks usable regions as free,
+ * and reserves page 0 (NULL page) and the bitmap's own pages.
+ */
 void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
     g_hhdm_offset = hhdm_offset;
 
@@ -168,6 +177,12 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
     }
 }
 
+/*
+ * pmm_alloc - Allocate a single physical page.
+ *
+ * Returns: Physical address of the allocated page, or PMM_ALLOC_FAILED (0)
+ *          if no free pages are available.
+ */
 uint64_t pmm_alloc(void) {
     /*
      * Linear scan for a free page.
@@ -189,6 +204,13 @@ uint64_t pmm_alloc(void) {
     return PMM_ALLOC_FAILED;  /* Out of memory - no free pages found */
 }
 
+/*
+ * pmm_free - Free a previously allocated physical page.
+ *
+ * @phys_addr: Physical address of the page to free (must be page-aligned).
+ *
+ * Validates alignment, range, and detects double-free errors.
+ */
 void pmm_free(uint64_t phys_addr) {
     /* Validate: must be page-aligned */
     if (phys_addr & (PAGE_SIZE - 1)) {
@@ -213,14 +235,29 @@ void pmm_free(uint64_t phys_addr) {
     free_pages++;
 }
 
+/*
+ * pmm_get_free_pages - Get the number of currently free pages.
+ *
+ * Returns: Count of unallocated pages.
+ */
 uint64_t pmm_get_free_pages(void) {
     return free_pages;
 }
 
+/*
+ * pmm_get_total_pages - Get the total number of tracked pages.
+ *
+ * Returns: Total pages in the bitmap (includes unusable regions).
+ */
 uint64_t pmm_get_total_pages(void) {
     return total_pages;
 }
 
+/*
+ * pmm_get_usable_pages - Get the total usable RAM in pages.
+ *
+ * Returns: Sum of all usable memory regions divided by page size.
+ */
 uint64_t pmm_get_usable_pages(void) {
     return usable_pages;
 }

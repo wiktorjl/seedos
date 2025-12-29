@@ -1,3 +1,11 @@
+/*
+ * idt.h - Interrupt Descriptor Table
+ *
+ * Manages the x86-64 IDT which routes CPU exceptions and hardware interrupts
+ * to their handlers. Vectors 0-31 are CPU exceptions, 32-255 are available
+ * for hardware IRQs and software interrupts.
+ */
+
 #ifndef IDT_H
 #define IDT_H
 
@@ -33,7 +41,24 @@ typedef struct {
     uint64_t rip, cs, rflags, rsp, ss;
 } __attribute__((packed)) interrupt_frame_t;
 
+/*
+ * idt_set_gate - Configure a single IDT entry.
+ *
+ * @n:         Vector number (0-255).
+ * @handler:   Address of the ISR stub function.
+ * @selector:  Code segment selector (typically GDT_SELECTOR_FROM_LIMINE).
+ * @type_attr: Gate type and attributes (IDT_GATE_INTERRUPT, etc.).
+ * @ist:       Interrupt Stack Table index (0 for default stack, 1-7 for IST).
+ */
 void idt_set_gate(int n, uint64_t handler, uint16_t selector, uint8_t type_attr, uint8_t ist);
+
+/*
+ * idt_install - Initialize and load the IDT.
+ *
+ * Sets up all exception handlers (0-31), hardware IRQ handlers (32-47),
+ * and the spurious interrupt handler (255), then loads the IDT via LIDT.
+ * Must be called before enabling interrupts.
+ */
 void idt_install(void);
 
 /*

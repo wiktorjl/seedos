@@ -130,8 +130,28 @@ typedef struct {
     int has_pic;
 } acpi_info_t;
 
-/* Functions */
+/* =============================================================================
+ * Public API
+ * =============================================================================
+ */
+
+/*
+ * acpi_init - Parse ACPI tables and extract hardware information.
+ *
+ * Returns: 0 on success, -1 on failure (ACPI not available or parse error).
+ *
+ * Locates the RSDP, parses the RSDT/XSDT, and extracts Local APIC, I/O APIC,
+ * and CPU information from the MADT.
+ */
 int acpi_init(void);
+
+/*
+ * acpi_get_info - Get parsed ACPI information.
+ *
+ * Returns: Pointer to global acpi_info_t structure.
+ *
+ * Only valid after acpi_init() returns success.
+ */
 acpi_info_t *acpi_get_info(void);
 
 #endif /* ACPI_H */

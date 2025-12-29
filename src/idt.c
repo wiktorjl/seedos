@@ -1,3 +1,11 @@
+/*
+ * idt.c - Interrupt Descriptor Table
+ *
+ * Implements the x86-64 IDT for handling CPU exceptions and hardware IRQs.
+ * CPU exceptions (vectors 0-31) print diagnostic info and halt.
+ * Hardware IRQs (vectors 32-255) are dispatched to registered handlers.
+ */
+
 #include "idt.h"
 #include "kprintf.h"
 #include "log.h"
@@ -114,7 +122,19 @@ static void (*isr_stubs[IDT_SIZE])(void) = {
     [255] = isr_255,
 };
 
-void idt_set_gate(int n, uint64_t handler, uint16_t selector, uint8_t type_attr, uint8_t ist) {    
+/*
+ * idt_set_gate - Configure a single IDT entry.
+ *
+ * @n:         Vector number (0-255).
+ * @handler:   Address of the ISR stub function.
+ * @selector:  Code segment selector.
+ * @type_attr: Gate type and attributes.
+ * @ist:       Interrupt Stack Table index (0 = default stack).
+ *
+ * Populates the IDT entry with the handler address split across three fields
+ * (offset_low, offset_mid, offset_high) as required by x86-64 IDT format.
+ */
+void idt_set_gate(int n, uint64_t handler, uint16_t selector, uint8_t type_attr, uint8_t ist) {
     idt[n].offset_low = handler & 0xFFFF;
     idt[n].selector = selector;
     idt[n].ist = ist & 0x07;
@@ -124,6 +144,13 @@ void idt_set_gate(int n, uint64_t handler, uint16_t selector, uint8_t type_attr,
     idt[n].zero = 0;
 }
 
+/*
+ * idt_install - Initialize and load the IDT.
+ *
+ * Clears the IRQ handler table, installs ISR stubs for all defined vectors,
+ * and loads the IDT via the LIDT instruction. Must be called before enabling
+ * interrupts.
+ */
 void idt_install(void) {
     /* Initialize IRQ handler table */
     for (int i = 0; i < 256; i++) {
@@ -143,6 +170,12 @@ void idt_install(void) {
     asm volatile ("lidt %0" : : "m"(idtr));
 }
 
+/*
+ * idt_register_irq - Register a handler for an IRQ vector.
+ *
+ * @irq:     Vector number (0-255).
+ * @handler: Function to call when this vector fires.
+ */
 void idt_register_irq(int irq, irq_handler_t handler) {
     if (irq >= 0 && irq < 256) {
         irq_handlers[irq] = handler;
@@ -158,10 +191,20 @@ static inline int is_valid_kernel_addr(uint64_t addr) {
     return (addr >= 0xFFFF800000000000ULL) && ((addr & 0x7) == 0);
 }
 
+/*
+ * backtrace - Print a stack trace for debugging.
+ *
+ * @rip: Instruction pointer (starting address).
+ * @rbp: Base pointer (frame pointer for stack walk).
+ *
+ * Walks the call stack via frame pointers, printing up to 10 return addresses.
+ * Validates each frame pointer before dereferencing to avoid faulting in the
+ * exception handler.
+ */
 void backtrace(uint64_t rip, uint64_t rbp) {
     log_debug("Backtrace:");
 
-    // Frame 0: the faulting instruction
+    /* Frame 0: the faulting instruction */
     log_debug("  [0] 0x%016llx", rip);
 
     for (int i = 1; i < 10 && rbp != 0; i++) {
@@ -181,6 +224,15 @@ void backtrace(uint64_t rip, uint64_t rbp) {
     }
 }
 
+/*
+ * interrupt_handler - Common interrupt dispatcher.
+ *
+ * @frame: Pointer to saved register state pushed by ISR stub.
+ *
+ * Called by all ISR stubs after they push registers. Routes CPU exceptions
+ * (0-31) to the panic handler, ignores spurious interrupts (255), and
+ * dispatches hardware IRQs (32-254) to registered handlers.
+ */
 void interrupt_handler(interrupt_frame_t *frame) {
     uint64_t int_no = frame->int_no;
 
