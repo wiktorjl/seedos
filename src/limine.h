@@ -109,8 +109,31 @@ struct limine_framebuffer_request {
         .response = (void *)0 \
     }
 
+/* RSDP (Root System Description Pointer) request for ACPI */
+#define LIMINE_RSDP_REQUEST_MAGIC LIMINE_COMMON_MAGIC, 0xc5e77b6b397e7b43, 0x27637845accdcf3c
+
+struct limine_rsdp_response {
+    uint64_t revision;
+    void *address;  /* Physical address of the RSDP */
+};
+
+struct limine_rsdp_request {
+    uint64_t id[4];
+    uint64_t revision;
+    struct limine_rsdp_response *response;
+};
+
+#define LIMINE_RSDP_REQUEST \
+    __attribute__((used, section(".limine_requests"))) \
+    static volatile struct limine_rsdp_request rsdp_request = { \
+        .id = { LIMINE_RSDP_REQUEST_MAGIC }, \
+        .revision = 0, \
+        .response = (void *)0 \
+    }
+
 struct limine_framebuffer *limine_get_framebuffer(void);
 struct limine_memmap_response *limine_get_memmap(void);
 uint64_t limine_get_hhdm_offset(void);
+void *limine_get_rsdp(void);
 
 #endif

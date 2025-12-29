@@ -11,6 +11,7 @@
 #include "pmm.h"
 #include "vmm.h"
 #include "heap.h"
+#include "acpi.h"
 
 
 static void test_heap(void) {
@@ -119,6 +120,9 @@ void kmain(void) {
 
     cpu_enable_interrupts();
     log_info("INT: Enabled");
+
+    acpi_init();
+    log_info("ACPI: Initialized");
 
     kprintf("\nWelcome to SeedOS!\n");
 
