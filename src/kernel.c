@@ -36,8 +36,10 @@ void kmain(void) {
 
     kprintf("\nWelcome to SeedOS!\n");
 
+    /* To test interrupt handling and stack trace, uncomment the following */
+    /*
     int k = 42;
     int l = k / 0;
     kprintf("The answer to life, the universe, and everything is %d\n", k);
-
+    */
 }
