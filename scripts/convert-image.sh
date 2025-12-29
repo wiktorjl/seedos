@@ -50,6 +50,8 @@ cat > "$HEADER" << EOF
 #define LOGO_WIDTH $WIDTH
 #define LOGO_HEIGHT $HEIGHT
 
+void logo_display(void);
+
 #endif
 EOF
 
