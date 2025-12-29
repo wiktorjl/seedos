@@ -1,9 +1,13 @@
 #include "idt.h"
 #include "kprintf.h"
 #include "log.h"
+#include "apic.h"
 
 static idt_entry_t idt[IDT_SIZE];
 static idt_ptr_t idtr;
+
+/* IRQ handler table for vectors 32-255 */
+static irq_handler_t irq_handlers[256];
 
 static const char *exception_names[] = {
     "Divide Error",
@@ -73,16 +77,41 @@ extern void isr_29(void);
 extern void isr_30(void);
 extern void isr_31(void);
 
-/*
- * TODO: Add hardware IRQ handlers (32-47) when implementing PIC/APIC support.
- * Currently only CPU exceptions (0-31) are handled.
- */
+/* Hardware IRQ stubs (vectors 32-47) */
+extern void isr_32(void);
+extern void isr_33(void);
+extern void isr_34(void);
+extern void isr_35(void);
+extern void isr_36(void);
+extern void isr_37(void);
+extern void isr_38(void);
+extern void isr_39(void);
+extern void isr_40(void);
+extern void isr_41(void);
+extern void isr_42(void);
+extern void isr_43(void);
+extern void isr_44(void);
+extern void isr_45(void);
+extern void isr_46(void);
+extern void isr_47(void);
 
+/* Spurious interrupt stub */
+extern void isr_255(void);
+
+/* ISR stub table - entries 48-254 are NULL (unused) */
 static void (*isr_stubs[IDT_SIZE])(void) = {
+    /* CPU Exceptions (0-31) */
     isr_0, isr_1, isr_2, isr_3, isr_4, isr_5, isr_6, isr_7, isr_8, isr_9,
     isr_10, isr_11, isr_12, isr_13, isr_14, isr_15, isr_16, isr_17, isr_18,
     isr_19, isr_20, isr_21, isr_22, isr_23, isr_24, isr_25, isr_26, isr_27,
     isr_28, isr_29, isr_30, isr_31,
+    /* Hardware IRQs (32-47) */
+    isr_32, isr_33, isr_34, isr_35, isr_36, isr_37, isr_38, isr_39,
+    isr_40, isr_41, isr_42, isr_43, isr_44, isr_45, isr_46, isr_47,
+    /* Unused vectors 48-254 */
+    [48 ... 254] = 0,
+    /* Spurious interrupt (255) */
+    [255] = isr_255,
 };
 
 void idt_set_gate(int n, uint64_t handler, uint16_t selector, uint8_t type_attr, uint8_t ist) {    
@@ -96,14 +125,28 @@ void idt_set_gate(int n, uint64_t handler, uint16_t selector, uint8_t type_attr,
 }
 
 void idt_install(void) {
-    for(int i = 0; i < IDT_SIZE; i++) {
-        idt_set_gate(i, (uint64_t)isr_stubs[i], GDT_SELECTOR_FROM_LIMINE, IDT_GATE_INTERRUPT, 0);
+    /* Initialize IRQ handler table */
+    for (int i = 0; i < 256; i++) {
+        irq_handlers[i] = 0;
+    }
+
+    /* Install all ISR stubs that have handlers */
+    for (int i = 0; i < IDT_SIZE; i++) {
+        if (isr_stubs[i] != 0) {
+            idt_set_gate(i, (uint64_t)isr_stubs[i], GDT_SELECTOR_FROM_LIMINE, IDT_GATE_INTERRUPT, 0);
+        }
     }
 
     idtr.limit = sizeof(idt) - 1;
     idtr.base  = (uint64_t)&idt;
 
     asm volatile ("lidt %0" : : "m"(idtr));
+}
+
+void idt_register_irq(int irq, irq_handler_t handler) {
+    if (irq >= 0 && irq < 256) {
+        irq_handlers[irq] = handler;
+    }
 }
 
 /*
@@ -139,18 +182,35 @@ void backtrace(uint64_t rip, uint64_t rbp) {
 }
 
 void interrupt_handler(interrupt_frame_t *frame) {
+    uint64_t int_no = frame->int_no;
 
-    log_panic("EXCEPTION: %s (int %d, error=0x%x)",
-            exception_names[frame->int_no], frame->int_no, frame->error_code);
-    log_panic("RIP: 0x%016llx  RSP: 0x%016llx", frame->rip, frame->rsp);
-    log_panic("RAX: 0x%016llx  RBX: 0x%016llx", frame->rax, frame->rbx);
-    log_panic("RCX: 0x%016llx  RDX: 0x%016llx", frame->rcx, frame->rdx);
+    /* CPU Exceptions (0-31) */
+    if (int_no < 32) {
+        log_panic("EXCEPTION: %s (int %d, error=0x%x)",
+                exception_names[int_no], int_no, frame->error_code);
+        log_panic("RIP: 0x%016llx  RSP: 0x%016llx", frame->rip, frame->rsp);
+        log_panic("RAX: 0x%016llx  RBX: 0x%016llx", frame->rax, frame->rbx);
+        log_panic("RCX: 0x%016llx  RDX: 0x%016llx", frame->rcx, frame->rdx);
 
-    backtrace(frame->rip, frame->rbp);
+        backtrace(frame->rip, frame->rbp);
 
-    // Halt - don't return from fatal exceptions
-    log_panic("System halted.\n");
-    while (1) {
-        asm volatile ("hlt");
+        /* Halt - don't return from fatal exceptions */
+        log_panic("System halted.\n");
+        while (1) {
+            asm volatile ("hlt");
+        }
+    }
+
+    /* Spurious interrupt (255) - just ignore */
+    if (int_no == 255) {
+        return;
+    }
+
+    /* Hardware IRQs (32-254) */
+    if (irq_handlers[int_no] != 0) {
+        irq_handlers[int_no](frame);
+    } else {
+        /* Unhandled IRQ - send EOI anyway to prevent lockup */
+        apic_eoi();
     }
 }

@@ -99,3 +99,24 @@ ISR_NOERR 28   /* Reserved */
 ISR_NOERR 29   /* Reserved */
 ISR_ERR   30   /* Security Exception */
 ISR_NOERR 31   /* Reserved */
+
+/* Hardware IRQs (vectors 32-47) - none push error codes */
+ISR_NOERR 32   /* IRQ 0: APIC Timer */
+ISR_NOERR 33   /* IRQ 1 */
+ISR_NOERR 34   /* IRQ 2 */
+ISR_NOERR 35   /* IRQ 3 */
+ISR_NOERR 36   /* IRQ 4 */
+ISR_NOERR 37   /* IRQ 5 */
+ISR_NOERR 38   /* IRQ 6 */
+ISR_NOERR 39   /* IRQ 7 */
+ISR_NOERR 40   /* IRQ 8 */
+ISR_NOERR 41   /* IRQ 9 */
+ISR_NOERR 42   /* IRQ 10 */
+ISR_NOERR 43   /* IRQ 11 */
+ISR_NOERR 44   /* IRQ 12 */
+ISR_NOERR 45   /* IRQ 13 */
+ISR_NOERR 46   /* IRQ 14 */
+ISR_NOERR 47   /* IRQ 15 */
+
+/* Spurious interrupt vector */
+ISR_NOERR 255  /* Spurious interrupt */

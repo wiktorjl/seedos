@@ -3,7 +3,7 @@
 
 #include "types.h"
 
-#define IDT_SIZE 32  /* TODO: Expand to 256 when adding hardware IRQ support */
+#define IDT_SIZE 256  /* Full IDT: 0-31 exceptions, 32-255 IRQs */
 
 #define IDT_GATE_INTERRUPT 0x8E  /* P=1, DPL=0, Type=0xE (interrupt gate) */
 #define IDT_GATE_TRAP      0x8F  /* P=1, DPL=0, Type=0xF (trap gate) */
@@ -35,5 +35,20 @@ typedef struct {
 
 void idt_set_gate(int n, uint64_t handler, uint16_t selector, uint8_t type_attr, uint8_t ist);
 void idt_install(void);
+
+/*
+ * IRQ handler callback type.
+ * Called when an IRQ fires. The handler should perform any necessary
+ * processing and then return. EOI is handled by the caller.
+ */
+typedef void (*irq_handler_t)(interrupt_frame_t *frame);
+
+/*
+ * idt_register_irq - Register a handler for an IRQ.
+ *
+ * @irq: The IRQ number (vector number, 32-255)
+ * @handler: Function to call when the IRQ fires
+ */
+void idt_register_irq(int irq, irq_handler_t handler);
 
 #endif

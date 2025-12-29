@@ -12,6 +12,7 @@
 #include "vmm.h"
 #include "heap.h"
 #include "acpi.h"
+#include "apic.h"
 
 
 static void test_heap(void) {
@@ -123,6 +124,9 @@ void kmain(void) {
 
     acpi_init();
     log_info("ACPI: Initialized");
+
+    apic_init();
+    log_info("APIC: Initialized");
 
     kprintf("\nWelcome to SeedOS!\n");
 
