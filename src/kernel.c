@@ -25,9 +25,10 @@ void kmain(void) {
     pmm_init(limine_get_memmap(), limine_get_hhdm_offset());
     log_info("PMM: %llu/%llu pages free", pmm_get_free_pages(), pmm_get_usable_pages());
     log_info("PMM: Initialized");
-    
+
     cpu_enable_interrupts();
     log_info("INT: Enabled");
+    
     kprintf("\nWelcome to SeedOS!\n");
 
     /* Idle loop - halt until interrupt, then loop back */
