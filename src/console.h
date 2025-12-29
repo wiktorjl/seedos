@@ -77,15 +77,6 @@ void console_get_cursor(int *x, int *y);
 void console_clear(uint32_t color);
 
 /*
- * console_scroll - Scroll the screen up by a number of text lines.
- *
- * @lines: Number of 16-pixel text lines to scroll.
- *
- * Fills the bottom with black.
- */
-void console_scroll(int lines);
-
-/*
  * console_scroll_back - Scroll back into history (Page Up).
  *
  * @lines: Number of lines to scroll back.

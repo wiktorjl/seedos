@@ -51,7 +51,7 @@ void kmain(void) {
 
     console_init(fb);
     terminal_init();
-    logo_display();
+
     log_info("TERM: Initialized");
 
     log_info("STACK: Top: 0x%llx", cpu_get_stack_top());

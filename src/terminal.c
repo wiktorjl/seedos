@@ -102,3 +102,40 @@ void terminal_get_dimensions(terminal_t *term, int *cols, int *rows) {
     if (cols) *cols = 80;
     if (rows) *rows = 24;
 }
+
+void terminal_scroll_back(terminal_t *term, int lines) {
+    if (!term) term = active_terminal;
+
+#if CONFIG_OUTPUT_CONSOLE
+    if (term->backends & TERM_BACKEND_FB)
+        console_scroll_back(lines);
+#endif
+}
+
+void terminal_scroll_forward(terminal_t *term, int lines) {
+    if (!term) term = active_terminal;
+
+#if CONFIG_OUTPUT_CONSOLE
+    if (term->backends & TERM_BACKEND_FB)
+        console_scroll_forward(lines);
+#endif
+}
+
+void terminal_scroll_to_bottom(terminal_t *term) {
+    if (!term) term = active_terminal;
+
+#if CONFIG_OUTPUT_CONSOLE
+    if (term->backends & TERM_BACKEND_FB)
+        console_scroll_to_bottom();
+#endif
+}
+
+int terminal_is_scrolled_back(terminal_t *term) {
+    if (!term) term = active_terminal;
+
+#if CONFIG_OUTPUT_CONSOLE
+    if (term->backends & TERM_BACKEND_FB)
+        return console_is_scrolled_back();
+#endif
+    return 0;
+}

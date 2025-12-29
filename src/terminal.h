@@ -43,6 +43,12 @@ void terminal_clear(terminal_t *term);
 void terminal_get_cursor(terminal_t *term, int *col, int *row);
 void terminal_get_dimensions(terminal_t *term, int *cols, int *rows);
 
+/* Scrollback navigation (FB backend only) */
+void terminal_scroll_back(terminal_t *term, int lines);
+void terminal_scroll_forward(terminal_t *term, int lines);
+void terminal_scroll_to_bottom(terminal_t *term);
+int terminal_is_scrolled_back(terminal_t *term);
+
 /* Default terminal (outputs to all backends) */
 extern terminal_t terminal_default;
 
