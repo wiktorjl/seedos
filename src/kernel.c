@@ -6,6 +6,7 @@
 #include "logo.h"
 #include "terminal.h"
 #include "kprintf.h"
+#include "idt.h"
 
 extern const uint32_t logo_data[];
 
@@ -23,9 +24,20 @@ void kmain(void) {
     log_info("Initialized console");
     log_info("Initialized terminal");
 
+    idt_install();
+    log_info("Initialized IDT");
+
+    asm volatile ("sti");
+    log_info("Enabled interrupts");
+
     // Test log messages
     log_debug("This debug message is hidden (below LOG_INFO)");
     log_trace("This trace message is also hidden");
 
     kprintf("\nWelcome to SeedOS!\n");
+
+    int k = 42;
+    int l = k / 0;
+    kprintf("The answer to life, the universe, and everything is %d\n", k);
+
 }

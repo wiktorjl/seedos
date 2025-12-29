@@ -20,8 +20,9 @@ LIMINE_REPO   := https://github.com/limine-bootloader/limine.git
 LIMINE_BRANCH := v8.x-binary
 
 # Compiler flags for freestanding kernel
-CFLAGS := -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone \
-          -mno-sse -mno-sse2 -mno-mmx -mno-80387 -mcmodel=kernel
+CFLAGS := -g -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone \
+          -mno-sse -mno-sse2 -mno-mmx -mno-80387 -mcmodel=kernel \
+		  -fno-omit-frame-pointer
 
 # Source files
 C_SRCS   := $(wildcard $(SRC)/*.c)
@@ -48,7 +49,7 @@ $(BUILD)/%.o: $(SRC)/%.c | $(BUILD)
 
 # Pattern rule for assembly files
 $(BUILD)/%.o: $(SRC)/%.S | $(BUILD)
-	cc -I$(BUILD) -I$(DATA) -c $< -o $@
+	cc -g -I$(BUILD) -I$(DATA) -c $< -o $@
 
 # boot.S needs logo.bin and font.bin
 $(BUILD)/boot.o: $(DATA)/font.bin $(BUILD)/logo.bin

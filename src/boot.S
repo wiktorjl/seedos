@@ -24,6 +24,7 @@ _start:
     cmp %rcx, %rax
     je .halt                        # Halt if protocol unsupported
 
+    xor %rbp, %rbp                  # Zero frame pointer to terminate backtrace
     call kmain
 
 .halt:
