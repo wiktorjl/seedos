@@ -92,7 +92,7 @@ void ioapic_init(void) {
         ioapic_write_redir(i, entry);
     }
 
-    log_info("IOAPIC: Initialized, %d entries", ioapic_max_entry + 1);
+    log_info("IOAPIC: %d entries", ioapic_max_entry + 1);
 }
 
 void ioapic_route_irq(uint8_t irq, uint8_t vector, uint8_t apic_id) {

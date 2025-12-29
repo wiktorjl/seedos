@@ -24,6 +24,7 @@
 #include "apic.h"
 #include "ioapic.h"
 #include "keyboard.h"
+#include "sysinfo.h"
 
 /* =============================================================================
  * Test Functions
@@ -166,6 +167,9 @@ void kmain(void) {
 
     keyboard_init();
     log_info("KEYBOARD: Initialized");
+
+    sysinfo_init();
+    sysinfo_print_summary();
 
     kprintf("\nWelcome to SeedOS!\n");
     kprintf("Type something: ");

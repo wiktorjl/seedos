@@ -200,7 +200,7 @@ void keyboard_init(void) {
         inb(PS2_DATA);
     }
 
-    log_info("KEYBOARD: Initialized (vector %d)", IRQ_KEYBOARD);
+    log_info("KEYBOARD: vector %d", IRQ_KEYBOARD);
 }
 
 int keyboard_getchar(void) {
