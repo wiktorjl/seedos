@@ -25,4 +25,9 @@ void console_draw_string(const char *str, int x, int y, uint32_t color);
 void console_draw_image(const uint32_t *pixels, int w, int h, int x, int y);
 void console_fill_rect(int x, int y, int w, int h, uint32_t color);
 
+// Cursor management
+void console_update_cursor(uint64_t ticks);
+void console_hide_cursor(void);
+void console_show_cursor(void);
+
 #endif

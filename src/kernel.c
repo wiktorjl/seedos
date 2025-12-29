@@ -13,6 +13,8 @@
 #include "heap.h"
 #include "acpi.h"
 #include "apic.h"
+#include "ioapic.h"
+#include "keyboard.h"
 
 
 static void test_heap(void) {
@@ -128,10 +130,30 @@ void kmain(void) {
     apic_init();
     log_info("APIC: Initialized");
 
-    kprintf("\nWelcome to SeedOS!\n");
+    ioapic_init();
+    log_info("IOAPIC: Initialized");
 
-    /* Idle loop - halt until interrupt, then loop back */
+    keyboard_init();
+    log_info("KEYBOARD: Initialized");
+
+    kprintf("\nWelcome to SeedOS!\n");
+    kprintf("Type something: ");
+
+    /* Simple echo loop */
     for (;;) {
-        asm volatile ("hlt");
+        int c = keyboard_getchar();
+        if (c != -1) {
+            if (c == '\n' || c == '\r') {
+                kprintf("\n");
+            } else if (c == KEY_BACKSPACE) {
+                kprintf("\b \b");  /* Backspace, space, backspace */
+            } else if (c == KEY_TAB) {
+                kprintf("\t");
+            } else if (c >= 32 && c < 127) {
+                kprintf("%c", c);
+            }
+        } else {
+            asm volatile ("hlt");  /* Wait for interrupt */
+        }
     }
 }

@@ -11,6 +11,7 @@
 #include "vmm.h"
 #include "log.h"
 #include "idt.h"
+#include "console.h"
 
 /* =============================================================================
  * PIT (Programmable Interval Timer) for Calibration
@@ -261,6 +262,9 @@ void apic_eoi(void) {
 
 void apic_timer_handler(void) {
     tick_count++;
+
+    /* Update blinking cursor */
+    console_update_cursor(tick_count);
 
     /* Signal end of interrupt */
     apic_eoi();
