@@ -86,6 +86,34 @@ void console_clear(uint32_t color);
 void console_scroll(int lines);
 
 /*
+ * console_scroll_back - Scroll back into history (Page Up).
+ *
+ * @lines: Number of lines to scroll back.
+ */
+void console_scroll_back(int lines);
+
+/*
+ * console_scroll_forward - Scroll forward toward live view (Page Down).
+ *
+ * @lines: Number of lines to scroll forward.
+ */
+void console_scroll_forward(int lines);
+
+/*
+ * console_scroll_to_bottom - Return to live view.
+ *
+ * Call this when user types while scrolled back.
+ */
+void console_scroll_to_bottom(void);
+
+/*
+ * console_is_scrolled_back - Check if viewing history.
+ *
+ * Returns: 1 if scrolled back, 0 if at live view.
+ */
+int console_is_scrolled_back(void);
+
+/*
  * console_get_dimensions - Get screen size in character cells.
  *
  * @cols: Output pointer for column count (8px per column, may be NULL).
