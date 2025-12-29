@@ -2,6 +2,8 @@
 
 A minimal x86-64 bare-metal operating system kernel written in C and assembly.
 
+![SeedOS boot and shell](screenshots/screen1.png)
+
 ## Current Status
 
 SeedOS boots via UEFI using the Limine bootloader and provides an interactive kernel shell with basic system functionality. The project contains approximately 5,500 lines of code across 38 source files.
