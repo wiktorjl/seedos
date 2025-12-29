@@ -53,13 +53,13 @@ static uint64_t kernel_pml4_phys;
  */
 static uint64_t alloc_page_table(void) {
     uint64_t phys = pmm_alloc();
-    if(phys == 0) {
+    if (phys == 0) {
         return 0;
     }
 
     /* Zero all 512 entries via HHDM */
     uint64_t *table = phys_to_virt(phys);
-    for(int i = 0; i < PAGE_TABLE_ENTRIES; i++) {
+    for (int i = 0; i < PAGE_TABLE_ENTRIES; i++) {
         table[i] = 0;
     }
 
@@ -68,47 +68,47 @@ static uint64_t alloc_page_table(void) {
 
 bool vmm_validate_user_range(const void *ptr, size_t len) {
     uint64_t addr = (uint64_t)ptr;
-    // Check pointer is not null
-    if(addr == 0) return false;
-    // Check pointer is in user space
-    if(addr >= USER_SPACE_TOP) return false;
-    // Check length is non-zero
-    if(len == 0) return false;
-    // Check end doesn't overflow or wrap into kernel space
+    /* Check pointer is not null */
+    if (addr == 0) return false;
+    /* Check pointer is in user space */
+    if (addr >= USER_SPACE_TOP) return false;
+    /* Check length is non-zero */
+    if (len == 0) return false;
+    /* Check end doesn't overflow or wrap into kernel space */
     uint64_t end = addr + len;
-    if(end < addr || end > USER_SPACE_TOP) return false;
+    if (end < addr || end > USER_SPACE_TOP) return false;
     return true;
 }
 
 
 void vmm_free_user_address_space(uint64_t pml4_phys) {
     uint64_t *pml4 = phys_to_virt(pml4_phys);
-    
-    // Only walk user-space (entries 0-255)
-    for(int i = 0; i < PAGE_TABLE_ENTRIES_USER; i++) {
-        if(!(pml4[i] & PTE_PRESENT)) continue;
-        
+
+    /* Only walk user-space (entries 0-255) */
+    for (int i = 0; i < PAGE_TABLE_ENTRIES_USER; i++) {
+        if (!(pml4[i] & PTE_PRESENT)) continue;
+
         uint64_t *pdpt = phys_to_virt(pml4[i] & PTE_ADDR_MASK);
-        for(int j = 0; j < PAGE_TABLE_ENTRIES; j++) {
-            if(!(pdpt[j] & PTE_PRESENT)) continue;
-            
+        for (int j = 0; j < PAGE_TABLE_ENTRIES; j++) {
+            if (!(pdpt[j] & PTE_PRESENT)) continue;
+
             uint64_t *pd = phys_to_virt(pdpt[j] & PTE_ADDR_MASK);
-            for(int k = 0; k < PAGE_TABLE_ENTRIES; k++) {
-                if(!(pd[k] & PTE_PRESENT)) continue;
-                
+            for (int k = 0; k < PAGE_TABLE_ENTRIES; k++) {
+                if (!(pd[k] & PTE_PRESENT)) continue;
+
                 uint64_t *pt = phys_to_virt(pd[k] & PTE_ADDR_MASK);
-                for(int l = 0; l < PAGE_TABLE_ENTRIES; l++) {
-                    if(pt[l] & PTE_PRESENT) {
-                        pmm_free(pt[l] & PTE_ADDR_MASK);  // Free data page
+                for (int l = 0; l < PAGE_TABLE_ENTRIES; l++) {
+                    if (pt[l] & PTE_PRESENT) {
+                        pmm_free(pt[l] & PTE_ADDR_MASK);  /* Free data page */
                     }
                 }
-                pmm_free(pd[k] & PTE_ADDR_MASK);  // Free PT
+                pmm_free(pd[k] & PTE_ADDR_MASK);  /* Free PT */
             }
-            pmm_free(pdpt[j] & PTE_ADDR_MASK);  // Free PD
+            pmm_free(pdpt[j] & PTE_ADDR_MASK);  /* Free PD */
         }
-        pmm_free(pml4[i] & PTE_ADDR_MASK);  // Free PDPT
+        pmm_free(pml4[i] & PTE_ADDR_MASK);  /* Free PDPT */
     }
-    pmm_free(pml4_phys);  // Free PML4 itself
+    pmm_free(pml4_phys);  /* Free PML4 itself */
 }
 
 /* =============================================================================
@@ -125,14 +125,14 @@ void vmm_init(uint64_t hhdm_offset) {
      * We mask out the flags (bits 0-11) to get just the address.
      */
     uint64_t cr3;
-    asm volatile ("movq %%cr3, %0" : "=r"(cr3));
+    __asm__ volatile ("movq %%cr3, %0" : "=r"(cr3));
     kernel_pml4_phys = cr3 & PTE_ADDR_MASK;
 }
 
 uint64_t vmm_create_address_space(void) {
     /* Allocate new PML4 */
     uint64_t new_pml4_phys = alloc_page_table();
-    if(new_pml4_phys == 0) {
+    if (new_pml4_phys == 0) {
         log_panic("vmm_create_address_space: failed to allocate PML4\n");
         return 0;
     }
@@ -141,7 +141,7 @@ uint64_t vmm_create_address_space(void) {
     uint64_t *kernel_pml4 = phys_to_virt(kernel_pml4_phys);
 
     /* Copy kernel mappings (upper half: entries 256-511) */
-    for(int i = KERNEL_PML4_START; i < 512; i++) {
+    for (int i = KERNEL_PML4_START; i < 512; i++) {
         new_pml4[i] = kernel_pml4[i];
     }
 
@@ -174,29 +174,29 @@ int vmm_map_page(uint64_t pml4_phys, uint64_t virt, uint64_t phys, uint64_t flag
 
     /* Get or create PDPT */
     uint64_t *pdpt;
-    if(pml4[pml4_idx] & PTE_PRESENT) {
+    if (pml4[pml4_idx] & PTE_PRESENT) {
         pdpt = phys_to_virt(pml4[pml4_idx] & PTE_ADDR_MASK);
         /* Upgrade to USER if needed (existing kernel mapping being shared with user) */
         if ((flags & PTE_USER) && !(pml4[pml4_idx] & PTE_USER)) {
             pml4[pml4_idx] |= PTE_USER;
         }
-    }else {
+    } else {
         new_pdpt_phys = alloc_page_table();
-        if(new_pdpt_phys == 0) return -1;
+        if (new_pdpt_phys == 0) return -1;
         pml4[pml4_idx] = new_pdpt_phys | intermediate_flags;
         pdpt = phys_to_virt(new_pdpt_phys);
     }
 
     /* Get or create PD */
     uint64_t *pd;
-    if(pdpt[pdpt_idx] & PTE_PRESENT) {
+    if (pdpt[pdpt_idx] & PTE_PRESENT) {
         pd = phys_to_virt(pdpt[pdpt_idx] & PTE_ADDR_MASK);
         if ((flags & PTE_USER) && !(pdpt[pdpt_idx] & PTE_USER)) {
             pdpt[pdpt_idx] |= PTE_USER;
         }
-    }else {
+    } else {
         new_pd_phys = alloc_page_table();
-        if(new_pd_phys == 0) {
+        if (new_pd_phys == 0) {
             /* Cleanup: free PDPT if we allocated it */
             if (new_pdpt_phys) {
                 pml4[pml4_idx] = 0;
@@ -210,14 +210,14 @@ int vmm_map_page(uint64_t pml4_phys, uint64_t virt, uint64_t phys, uint64_t flag
 
     /* Get or create PT */
     uint64_t *pt;
-    if(pd[pd_idx] & PTE_PRESENT) {
+    if (pd[pd_idx] & PTE_PRESENT) {
         pt = phys_to_virt(pd[pd_idx] & PTE_ADDR_MASK);
         if ((flags & PTE_USER) && !(pd[pd_idx] & PTE_USER)) {
             pd[pd_idx] |= PTE_USER;
         }
-    }else {
+    } else {
         new_pt_phys = alloc_page_table();
-        if(new_pt_phys == 0) {
+        if (new_pt_phys == 0) {
             /* Cleanup: free PD and PDPT if we allocated them */
             if (new_pd_phys) {
                 pdpt[pdpt_idx] = 0;
@@ -250,25 +250,25 @@ int vmm_unmap_page(uint64_t pml4_phys, uint64_t virt) {
 
     /* Get PDPT */
     uint64_t *pdpt;
-    if(pml4[pml4_idx] & PTE_PRESENT) {
+    if (pml4[pml4_idx] & PTE_PRESENT) {
         pdpt = phys_to_virt(pml4[pml4_idx] & PTE_ADDR_MASK);
-    }else {
+    } else {
         return -1;  /* PDPT not present */
     }
 
     /* Get PD */
     uint64_t *pd;
-    if(pdpt[pdpt_idx] & PTE_PRESENT) {
+    if (pdpt[pdpt_idx] & PTE_PRESENT) {
         pd = phys_to_virt(pdpt[pdpt_idx] & PTE_ADDR_MASK);
-    }else {
+    } else {
         return -1;  /* PD not present */
     }
 
     /* Get PT */
     uint64_t *pt;
-    if(pd[pd_idx] & PTE_PRESENT) {
+    if (pd[pd_idx] & PTE_PRESENT) {
         pt = phys_to_virt(pd[pd_idx] & PTE_ADDR_MASK);
-    }else {
+    } else {
         return -1;  /* PT not present */
     }
 
@@ -276,13 +276,13 @@ int vmm_unmap_page(uint64_t pml4_phys, uint64_t virt) {
     pt[pt_idx] = 0;
 
     /* Flush TLB entry for this virtual address */
-    asm volatile("invlpg (%0)" :: "r"(virt) : "memory");
+    __asm__ volatile("invlpg (%0)" :: "r"(virt) : "memory");
 
     return 0;
 }
 
 void vmm_switch_address_space(uint64_t pml4_phys) {
-    asm volatile ("movq %0, %%cr3" : : "r"(pml4_phys) : "memory");
+    __asm__ volatile ("movq %0, %%cr3" : : "r"(pml4_phys) : "memory");
 }
 
 uint64_t vmm_get_kernel_pml4(void) {
@@ -301,32 +301,32 @@ uint64_t vmm_get_physical(uint64_t pml4_phys, uint64_t virt) {
 
     /* Get PDPT */
     uint64_t *pdpt;
-    if(pml4[pml4_idx] & PTE_PRESENT) {
+    if (pml4[pml4_idx] & PTE_PRESENT) {
         pdpt = phys_to_virt(pml4[pml4_idx] & PTE_ADDR_MASK);
-    }else {
+    } else {
         return 0;  /* Not mapped */
     }
 
     /* Get PD */
     uint64_t *pd;
-    if(pdpt[pdpt_idx] & PTE_PRESENT) {
+    if (pdpt[pdpt_idx] & PTE_PRESENT) {
         pd = phys_to_virt(pdpt[pdpt_idx] & PTE_ADDR_MASK);
-    }else {
+    } else {
         return 0;  /* Not mapped */
     }
 
     /* Get PT */
     uint64_t *pt;
-    if(pd[pd_idx] & PTE_PRESENT) {
+    if (pd[pd_idx] & PTE_PRESENT) {
         pt = phys_to_virt(pd[pd_idx] & PTE_ADDR_MASK);
-    }else {
+    } else {
         return 0;  /* Not mapped */
     }
 
     /* Get final physical address */
-    if(pt[pt_idx] & PTE_PRESENT) {
+    if (pt[pt_idx] & PTE_PRESENT) {
         return pt[pt_idx] & PTE_ADDR_MASK;
-    }else {
+    } else {
         return 0;  /* Not mapped */
     }
 }

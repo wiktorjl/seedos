@@ -51,4 +51,4 @@ typedef void (*irq_handler_t)(interrupt_frame_t *frame);
  */
 void idt_register_irq(int irq, irq_handler_t handler);
 
-#endif
+#endif /* IDT_H */

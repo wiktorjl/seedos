@@ -1,4 +1,6 @@
-// CPU primitives
+/*
+ * cpu.h - CPU Primitives
+ */
 
 #ifndef CPU_H
 #define CPU_H
@@ -12,20 +14,20 @@ extern char stack_top[];
 
 static inline uint64_t cpu_get_stack_top(void) {
     uint64_t rsp;
-    asm volatile("movq %%rsp, %0" : "=r"(rsp));
+    __asm__ volatile("movq %%rsp, %0" : "=r"(rsp));
     return rsp;
 }
 
 static inline void cpu_enable_interrupts(void) {
-    asm volatile("sti");
+    __asm__ volatile("sti");
 }
 
 static inline void cpu_disable_interrupts(void) {
-    asm volatile("cli");
+    __asm__ volatile("cli");
 }
 
 static inline void cpu_halt(void) {
-    asm volatile("hlt");
+    __asm__ volatile("hlt");
 }
 
-#endif
+#endif /* CPU_H */

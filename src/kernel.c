@@ -1,4 +1,13 @@
-// SeedOS kernel entry point
+/*
+ * kernel.c - SeedOS Kernel Entry Point
+ *
+ * Main kernel initialization and boot sequence.
+ */
+
+/* =============================================================================
+ * Includes
+ * =============================================================================
+ */
 
 #include "limine.h"
 #include "console.h"
@@ -16,6 +25,10 @@
 #include "ioapic.h"
 #include "keyboard.h"
 
+/* =============================================================================
+ * Test Functions
+ * =============================================================================
+ */
 
 static void test_heap(void) {
     log_info("HEAP: Running tests...");
@@ -89,9 +102,14 @@ static void test_heap(void) {
              (uint64_t)kheap_get_used(), (uint64_t)kheap_get_free());
 }
 
+/* =============================================================================
+ * Kernel Main Entry Point
+ * =============================================================================
+ */
+
 void kmain(void) {
     struct limine_framebuffer *fb = limine_get_framebuffer();
-    if (fb == 0) return;
+    if (fb == NULL) return;
 
     console_init(fb);
     terminal_init();
@@ -117,7 +135,7 @@ void kmain(void) {
     kheap_init();
     log_info("HEAP: Initialized");
 
-    // Print location and size of heap and stack
+    /* Print location and size of heap and stack */
     log_info("HEAP: Used: %llu bytes, Free: %llu bytes",
              (uint64_t)kheap_get_used(), (uint64_t)kheap_get_free());
 
@@ -153,7 +171,7 @@ void kmain(void) {
                 kprintf("%c", c);
             }
         } else {
-            asm volatile ("hlt");  /* Wait for interrupt */
+            __asm__ volatile ("hlt");  /* Wait for interrupt */
         }
     }
 }

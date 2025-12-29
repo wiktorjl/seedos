@@ -1,4 +1,8 @@
-// Logging interface with level filtering and format string support
+/*
+ * log.h - Logging Interface
+ *
+ * Provides level filtering and format string support for kernel logging.
+ */
 
 #ifndef LOG_H
 #define LOG_H
@@ -24,4 +28,4 @@
 #define log_trace(fmt, ...) \
     kprintf_log(LOG_TRACE, "[ trace ] ", CONFIG_CONSOLE_COLOR_TRACE, fmt, ##__VA_ARGS__)
 
-#endif
+#endif /* LOG_H */

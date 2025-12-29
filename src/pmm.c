@@ -1,8 +1,25 @@
+/*
+ * pmm.c - Physical Memory Manager
+ *
+ * Manages physical memory allocation using a bitmap allocator.
+ * Each bit represents a 4KB page: 1 = used, 0 = free.
+ */
+
+/* =============================================================================
+ * Includes
+ * =============================================================================
+ */
+
 #include "pmm.h"
 #include "limine.h"
 #include "log.h"
 #include "memory.h"
 #include "kprintf.h"
+
+/* =============================================================================
+ * Module State
+ * =============================================================================
+ */
 
 uint64_t g_hhdm_offset;
 
@@ -11,6 +28,11 @@ static uint64_t bitmap_size;      /* Size of bitmap in bytes */
 static uint64_t total_pages;      /* Total number of pages being tracked */
 static uint64_t free_pages;       /* Number of currently free pages */
 static uint64_t usable_pages;     /* Total usable RAM (sum of usable regions) */
+
+/* =============================================================================
+ * Bitmap Helper Functions
+ * =============================================================================
+ */
 
 static inline void bitmap_mark_used(uint64_t page_index) {
     bitmap[page_index / 8] |= (1 << (page_index % 8));
@@ -25,6 +47,11 @@ static inline int bitmap_is_used(uint64_t page_index) {
     return bitmap[page_index / 8] & (1 << (page_index % 8));
 }
 
+/* =============================================================================
+ * Public API
+ * =============================================================================
+ */
+
 void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
     g_hhdm_offset = hhdm_offset;
 
@@ -33,10 +60,10 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
      * how many pages we need to track.
      */
     uint64_t highest_addr = 0;
-    for(uint64_t i = 0; i < memmap->entry_count; i++) {
+    for (uint64_t i = 0; i < memmap->entry_count; i++) {
         struct limine_memmap_entry *entry = memmap->entries[i];
         uint64_t entry_end = entry->base + entry->length;
-        if(entry_end > highest_addr && entry->type == LIMINE_MEMMAP_USABLE) {
+        if (entry_end > highest_addr && entry->type == LIMINE_MEMMAP_USABLE) {
             highest_addr = entry_end;
         }
     }
@@ -49,9 +76,9 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
      * This is different from total_pages, which is just the tracking range.
      */
     usable_pages = 0;
-    for(uint64_t i = 0; i < memmap->entry_count; i++) {
+    for (uint64_t i = 0; i < memmap->entry_count; i++) {
         struct limine_memmap_entry *entry = memmap->entries[i];
-        if(entry->type == LIMINE_MEMMAP_USABLE) {
+        if (entry->type == LIMINE_MEMMAP_USABLE) {
             usable_pages += entry->length / PAGE_SIZE;
         }
     }
@@ -64,12 +91,12 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
     uint64_t bitmap_phys = 0;
     int bitmap_found = 0;
 
-    for(uint64_t i = 0; i < memmap->entry_count; i++) {
+    for (uint64_t i = 0; i < memmap->entry_count; i++) {
         struct limine_memmap_entry *entry = memmap->entries[i];
-        if(entry->type != LIMINE_MEMMAP_USABLE) {
+        if (entry->type != LIMINE_MEMMAP_USABLE) {
             continue;
         }
-        if(entry->length >= bitmap_pages * PAGE_SIZE) {
+        if (entry->length >= bitmap_pages * PAGE_SIZE) {
             bitmap_phys = entry->base;
             bitmap_found = 1;
             break;  /* Use first suitable region */
@@ -77,11 +104,11 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
     }
 
     /* If we couldn't find space, we're in trouble */
-    if(!bitmap_found) {
+    if (!bitmap_found) {
         /* Can't do much without serial here - just hang */
-        while(1) {
+        while (1) {
             log_panic("PMM init failed: no space for bitmap");
-            asm volatile ("hlt");
+            __asm__ volatile ("hlt");
         }
     } else {
         log_info("PMM: Bitmap allocated at physical address 0x%llx (%llu pages)", 
@@ -95,7 +122,7 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
      * Step 3: Initialize bitmap - mark ALL pages as used first.
      * This is safer: anything we don't explicitly mark free is used.
      */
-    for(uint64_t i = 0; i < bitmap_size; i++) {
+    for (uint64_t i = 0; i < bitmap_size; i++) {
         bitmap[i] = 0xFF;  /* All bits set = all pages used */
     }
     free_pages = 0;
@@ -103,9 +130,9 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
     /*
      * Step 4: Walk the memory map and mark usable regions as free.
      */
-    for(uint64_t i = 0; i < memmap->entry_count; i++) {
+    for (uint64_t i = 0; i < memmap->entry_count; i++) {
         struct limine_memmap_entry *entry = memmap->entries[i];
-        if(entry->type != LIMINE_MEMMAP_USABLE) {
+        if (entry->type != LIMINE_MEMMAP_USABLE) {
             continue;
         }
 
@@ -113,7 +140,7 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
         uint64_t base_page = entry->base / PAGE_SIZE;
         uint64_t page_count = entry->length / PAGE_SIZE;
 
-        for(uint64_t p = 0; p < page_count; p++) {
+        for (uint64_t p = 0; p < page_count; p++) {
             bitmap_mark_free(base_page + p);
             free_pages++;
         }
@@ -124,8 +151,8 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
      * We already placed data there, so they're not free!
      */
     uint64_t bitmap_base_page = bitmap_phys / PAGE_SIZE;
-    for(uint64_t p = 0; p < bitmap_pages; p++) {
-        if(!bitmap_is_used(bitmap_base_page + p)) {
+    for (uint64_t p = 0; p < bitmap_pages; p++) {
+        if (!bitmap_is_used(bitmap_base_page + p)) {
             bitmap_mark_used(bitmap_base_page + p);
             free_pages--;
         }
@@ -135,7 +162,7 @@ void pmm_init(struct limine_memmap_response *memmap, uint64_t hhdm_offset) {
      * Step 6: Mark page 0 as used (never allocate it).
      * NULL pointer dereferences should fault, not succeed.
      */
-    if(!bitmap_is_used(0)) {
+    if (!bitmap_is_used(0)) {
         bitmap_mark_used(0);
         free_pages--;
     }
@@ -152,8 +179,8 @@ uint64_t pmm_alloc(void) {
      * We start from page 1 to ensure page 0 is never returned, since
      * returning 0 would be indistinguishable from PMM_ALLOC_FAILED.
      */
-    for(uint64_t i = 1; i < total_pages; i++) {
-        if(!bitmap_is_used(i)) {
+    for (uint64_t i = 1; i < total_pages; i++) {
+        if (!bitmap_is_used(i)) {
             bitmap_mark_used(i);
             free_pages--;
             return i * PAGE_SIZE;

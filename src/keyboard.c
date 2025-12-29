@@ -6,6 +6,7 @@
  */
 
 #include "keyboard.h"
+#include "io.h"
 #include "ioapic.h"
 #include "apic.h"
 #include "idt.h"
@@ -23,17 +24,6 @@
 /* Status register bits */
 #define PS2_STATUS_OUTPUT   0x01    /* Output buffer full (can read) */
 #define PS2_STATUS_INPUT    0x02    /* Input buffer full (don't write) */
-
-/* I/O port access */
-static inline void outb(uint16_t port, uint8_t val) {
-    asm volatile("outb %0, %1" : : "a"(val), "Nd"(port));
-}
-
-static inline uint8_t inb(uint16_t port) {
-    uint8_t ret;
-    asm volatile("inb %1, %0" : "=a"(ret) : "Nd"(port));
-    return ret;
-}
 
 /* =============================================================================
  * Scancode Set 1 to ASCII Translation
@@ -220,7 +210,7 @@ int keyboard_getchar(void) {
 char keyboard_read(void) {
     int c;
     while ((c = keyboard_getchar()) == -1) {
-        asm volatile("hlt");  /* Wait for interrupt */
+        __asm__ volatile("hlt");  /* Wait for interrupt */
     }
     return (char)c;
 }

@@ -1,4 +1,8 @@
-// Limine boot protocol types (subset for framebuffer support)
+/*
+ * limine.h - Limine Boot Protocol Types
+ *
+ * Subset for framebuffer support.
+ */
 
 #ifndef LIMINE_H
 #define LIMINE_H
@@ -136,4 +140,4 @@ struct limine_memmap_response *limine_get_memmap(void);
 uint64_t limine_get_hhdm_offset(void);
 void *limine_get_rsdp(void);
 
-#endif
+#endif /* LIMINE_H */

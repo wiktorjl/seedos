@@ -7,4 +7,4 @@ void serial_init(void);
 void serial_putchar(char c);
 void serial_puts(const char *str);
 
-#endif
+#endif /* SERIAL_H */

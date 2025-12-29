@@ -1,8 +1,25 @@
+/*
+ * acpi.c - ACPI Table Parser
+ *
+ * Parses ACPI tables to discover hardware configuration including
+ * CPU topology, APIC addresses, and interrupt routing.
+ */
+
+/* =============================================================================
+ * Includes
+ * =============================================================================
+ */
+
 #include "acpi.h"
 #include "limine.h"
 #include "log.h"
 #include "vmm.h"
 #include "pmm.h"
+
+/* =============================================================================
+ * Module State
+ * =============================================================================
+ */
 
 static acpi_info_t acpi_info;
 
@@ -13,6 +30,11 @@ static acpi_info_t acpi_info;
  */
 #define ACPI_VIRT_BASE  0xFFFFFFFE00000000ULL
 static uint64_t acpi_virt_next = ACPI_VIRT_BASE;
+
+/* =============================================================================
+ * Internal Helper Functions
+ * =============================================================================
+ */
 
 /*
  * Map a physical memory region to kernel virtual address space.
@@ -73,7 +95,7 @@ static void parse_madt(madt_t *madt) {
     log_debug("MADT: Local APIC at 0x%08x, PIC present: %d",
               madt->local_apic_address, acpi_info.has_pic);
 
-    // Parse MADT entries
+    /* Parse MADT entries */
     uint8_t *entry_ptr = (uint8_t *)(madt + 1);
     uint8_t *end = (uint8_t *)madt + madt->header.length;
 
@@ -83,7 +105,7 @@ static void parse_madt(madt_t *madt) {
         switch (header->type) {
             case MADT_ENTRY_LOCAL_APIC: {
                 madt_local_apic_t *lapic = (madt_local_apic_t *)entry_ptr;
-                if (lapic->flags & 1) {  // Processor enabled
+                if (lapic->flags & 1) {  /* Processor enabled */
                     if (acpi_info.cpu_count < 256) {
                         acpi_info.cpu_apic_ids[acpi_info.cpu_count++] = lapic->apic_id;
                         log_debug("  CPU %d: APIC ID %d",
@@ -123,7 +145,7 @@ static void parse_madt(madt_t *madt) {
         }
 
         entry_ptr += header->length;
-        if (header->length == 0) break;  // Prevent infinite loop
+        if (header->length == 0) break;  /* Prevent infinite loop */
     }
 }
 
@@ -163,8 +185,13 @@ static acpi_sdt_header_t *find_table(void *root_sdt, const char *signature, int 
             }
         }
     }
-    return 0;
+    return NULL;
 }
+
+/* =============================================================================
+ * Public API
+ * =============================================================================
+ */
 
 int acpi_init(void) {
     /*
@@ -175,7 +202,7 @@ int acpi_init(void) {
      */
     void *rsdp_phys = limine_get_rsdp();
     log_debug("ACPI: RSDP physical address: %p", rsdp_phys);
-    if (rsdp_phys == 0) {
+    if (rsdp_phys == NULL) {
         log_error("ACPI: RSDP not found");
         return -1;
     }
@@ -187,7 +214,7 @@ int acpi_init(void) {
         return -1;
     }
 
-    // Verify RSDP signature
+    /* Verify RSDP signature */
     if (rsdp->signature[0] != 'R' || rsdp->signature[1] != 'S' ||
         rsdp->signature[2] != 'D' || rsdp->signature[3] != ' ' ||
         rsdp->signature[4] != 'P' || rsdp->signature[5] != 'T' ||
@@ -253,7 +280,7 @@ int acpi_init(void) {
 
     /* Find and parse MADT - find_table returns mapped virtual address */
     madt_t *madt = (madt_t *)find_table(root_sdt, "APIC", use_xsdt);
-    if (madt == 0) {
+    if (madt == NULL) {
         log_error("ACPI: MADT not found");
         return -1;
     }
