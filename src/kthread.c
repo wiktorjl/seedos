@@ -9,13 +9,21 @@ kthread_t genesis_kthread;
 kthread_t *current_kthread = NULL;
 
 void kthread_exit(void) {
-    // TODO: For now, just hang. Later: mark EXITED, schedule another thread
+    kthread_t *exiting = current_kthread;
     current_kthread->state = THREAD_EXITED;
-    while(1) { asm volatile("hlt"); }
+
+    kthread_set_current(&genesis_kthread);
+    kthread_switch(&exiting->rsp, genesis_kthread.rsp);
+
+    // while(1) { asm volatile("hlt"); }
 }
 
 kthread_t *kthread_current(void) {
     return current_kthread;
+}
+
+void kthread_set_current(kthread_t *kthread) {
+    current_kthread = kthread;
 }
 
 kthread_t * kthread_get_kthread(uint64_t kthread_id) {
@@ -107,6 +115,10 @@ uint64_t kthread_create(const char *kthread_friendly_name, void (*kthread_entry_
     new_thread->rsp = (uint64_t)stack_ptr;
 
     log_debug("KTHREAD: Created new kernel thread: %s (ID: %llu)", new_thread->name, new_thread->id);
+    log_debug("KTHREAD: stack_base=%p, stack_top=%p, rsp=%p",
+              new_thread->stack_base,
+              (void*)((uint64_t)new_thread->stack_base + KTHREAD_STACK_SIZE),
+              (void*)new_thread->rsp);
     return new_thread->id;
 }
 

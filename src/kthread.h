@@ -36,6 +36,8 @@ void kthread_exit(void);
 
 kthread_t *kthread_current(void);
 
+void kthread_set_current(kthread_t *kthread);
+
 void kthread_schedule(void);
 
 void kthreads_list(void);

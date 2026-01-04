@@ -27,9 +27,11 @@
 #include "sysinfo.h"
 #include "kthread.h"
 #include "kshell.h"
+#include <stdint.h>
 
 void dummy_function(void *arg) {
     log_info("Hello from a kernel thread! Argument: %llu", (uint64_t)arg);
+    kthread_exit();
 }
 
 /* =============================================================================
@@ -107,7 +109,7 @@ void kmain(void) {
     log_info("KTHREAD: Initialized");
 
     log_debug("Attempting to create a kernel thread...");
-    uint64_t kthread_id = kthread_create("example-kthread", dummy_function, (void *)1234);
+    uint64_t kthread_id = kthread_create("example-kthread", dummy_function, (void *)1337);
     if (kthread_id != 0) {
         log_info("KTHREAD: Created example kernel thread with ID %llu", kthread_id);
     } else {
@@ -117,13 +119,17 @@ void kmain(void) {
     kthread_t * newkthread = kthread_get_kthread(kthread_id);
     if (newkthread != NULL) {
         log_info("KTHREAD: Retrieved kernel thread with ID %llu", newkthread->id);
-        kthread_switch(&(kthread_current()->rsp), newkthread->rsp);
+        log_debug("KTHREAD: About to switch. new_rsp=%p", (void*)newkthread->rsp);
 
+        kthread_t * oldkthread = kthread_current();
+        kthread_set_current(newkthread);
+        kthread_switch(&oldkthread->rsp, newkthread->rsp);
+        log_debug("KTHREAD: Returned from switch to thread ID %llu", kthread_current()->id);
     } else {
         log_panic("KTHREAD: Failed to retrieve kernel thread with ID %llu", kthread_id);
     }
 
     /* Start the kernel shell */
-    //kshell_init();
-    //kshell_run();  /* Does not return */
+    kshell_init();
+    kshell_run();  /* Does not return */
 }
