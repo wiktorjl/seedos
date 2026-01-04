@@ -129,6 +129,10 @@ void vmm_init(uint64_t hhdm_offset) {
     kernel_pml4_phys = cr3 & PTE_ADDR_MASK;
 }
 
+/*
+ * Create a new user address space by allocating a new PML4
+ * and copying the kernel mappings from the kernel's PML4. 
+ */
 uint64_t vmm_create_address_space(void) {
     /* Allocate new PML4 */
     uint64_t new_pml4_phys = alloc_page_table();

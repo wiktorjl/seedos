@@ -128,18 +128,12 @@ static void parse_madt(madt_t *madt) {
                 madt_interrupt_override_t *ovr = (madt_interrupt_override_t *)entry_ptr;
                 log_debug("  IRQ Override: IRQ %d -> GSI %d (flags: 0x%04x)",
                           ovr->irq_source, ovr->global_system_interrupt, ovr->flags);
-                /*
-                 * TODO: Store this override instead of discarding it.
-                 *
-                 * This entry tells us that ISA IRQ ovr->irq_source is actually
-                 * wired to I/O APIC pin ovr->global_system_interrupt.
-                 * The flags field contains polarity (bits 0-1) and trigger mode
-                 * (bits 2-3) which may differ from ISA defaults.
-                 *
-                 * Without applying these overrides, drivers that program the
-                 * I/O APIC assuming GSI=IRQ may fail on systems where the
-                 * wiring differs (e.g., IRQ 0 -> GSI 2 for PIT timer).
-                 */
+                if (acpi_info.override_count < MAX_IRQ_OVERRIDES) {
+                    irq_override_t *entry = &acpi_info.overrides[acpi_info.override_count++];
+                    entry->irq_source = ovr->irq_source;
+                    entry->gsi = ovr->global_system_interrupt;
+                    entry->flags = ovr->flags;
+                }
                 break;
             }
             case MADT_ENTRY_LOCAL_APIC_NMI: {

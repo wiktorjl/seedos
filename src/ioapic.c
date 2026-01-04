@@ -96,44 +96,68 @@ void ioapic_init(void) {
 }
 
 /*
- * TODO: This function should translate IRQ to GSI using ACPI overrides.
+ * Translate ISA IRQ to GSI and get polarity/trigger flags.
  *
- * Currently callers pass ISA IRQ numbers directly, assuming GSI = IRQ.
- * This works on most systems but fails when ACPI specifies overrides.
- *
- * Options to fix:
- * 1. Add irq_to_gsi() helper that checks acpi_info.overrides[]
- * 2. Call it here: uint8_t gsi = irq_to_gsi(irq);
- * 3. Also apply polarity/trigger flags from the override entry
- *
- * The flags field in override entries specifies:
- * - Bits 0-1: Polarity (0=default, 1=active high, 3=active low)
- * - Bits 2-3: Trigger (0=default, 1=edge, 3=level)
+ * Returns the GSI for the given IRQ (may be different due to ACPI overrides).
+ * Also sets *polarity and *trigger to the appropriate IOAPIC flags.
  */
+static uint32_t irq_to_gsi(uint8_t irq, uint64_t *polarity, uint64_t *trigger) {
+    acpi_info_t *acpi = acpi_get_info();
+
+    /* Search for an override matching this IRQ */
+    for (int i = 0; i < acpi->override_count; i++) {
+        if (acpi->overrides[i].irq_source == irq) {
+            uint16_t flags = acpi->overrides[i].flags;
+
+            /* Decode polarity (bits 0-1): 0=default, 1=high, 3=low */
+            uint8_t pol = flags & 0x03;
+            if (pol == 3) {
+                *polarity = IOAPIC_POLARITY_LOW;
+            } else {
+                *polarity = IOAPIC_POLARITY_HIGH;  /* Default or explicit high */
+            }
+
+            /* Decode trigger mode (bits 2-3): 0=default, 1=edge, 3=level */
+            uint8_t trig = (flags >> 2) & 0x03;
+            if (trig == 3) {
+                *trigger = IOAPIC_TRIGGER_LEVEL;
+            } else {
+                *trigger = IOAPIC_TRIGGER_EDGE;  /* Default or explicit edge */
+            }
+
+            return acpi->overrides[i].gsi;
+        }
+    }
+
+    /* No override found, use ISA defaults */
+    *polarity = IOAPIC_POLARITY_HIGH;
+    *trigger = IOAPIC_TRIGGER_EDGE;
+    return irq;
+}
+
 void ioapic_route_irq(uint8_t irq, uint8_t vector, uint8_t apic_id) {
-    if (irq > ioapic_max_entry) {
-        log_error("IOAPIC: IRQ %d exceeds max entry %d", irq, ioapic_max_entry);
+    uint64_t polarity, trigger;
+    uint32_t gsi = irq_to_gsi(irq, &polarity, &trigger);
+
+    if (gsi > ioapic_max_entry) {
+        log_error("IOAPIC: GSI %d exceeds max entry %d", gsi, ioapic_max_entry);
         return;
     }
 
-    /*
-     * Configure redirection entry:
-     * - Fixed delivery mode
-     * - Physical destination mode
-     * - Active high polarity (ISA default)
-     * - Edge triggered (ISA default)
-     * - Not masked (enabled)
-     */
     uint64_t entry = vector
                    | IOAPIC_DELIVERY_FIXED
                    | IOAPIC_DESTMODE_PHYSICAL
-                   | IOAPIC_POLARITY_HIGH
-                   | IOAPIC_TRIGGER_EDGE
+                   | polarity
+                   | trigger
                    | IOAPIC_DEST(apic_id);
 
-    ioapic_write_redir(irq, entry);
+    ioapic_write_redir(gsi, entry);
 
-    log_debug("IOAPIC: IRQ %d -> vector %d, APIC ID %d", irq, vector, apic_id);
+    if (gsi != irq) {
+        log_debug("IOAPIC: IRQ %d (GSI %d) -> vector %d, APIC ID %d", irq, gsi, vector, apic_id);
+    } else {
+        log_debug("IOAPIC: IRQ %d -> vector %d, APIC ID %d", irq, vector, apic_id);
+    }
 }
 
 void ioapic_mask_irq(uint8_t irq) {

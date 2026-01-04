@@ -4,16 +4,11 @@ Issues identified during code review. These are lower priority and documented fo
 
 ## High Severity
 
-### ACPI Interrupt Overrides Ignored
-**File:** `src/acpi.c:127-131`
-
-The MADT interrupt override entries are parsed and logged but never applied. If the BIOS specifies that ISA IRQ X should map to I/O APIC GSI Y, this is ignored. Keyboard and other devices use hardcoded GSI values.
-
-**Impact:** Keyboard/devices may not work on systems with non-standard interrupt routing.
-
-**Fix:** Store overrides in a table and apply them during IRQ routing in `ioapic_route_irq()`.
+*(No high severity issues remaining)*
 
 ---
+
+## Medium Severity
 
 ### Weak Memory Barrier in LAPIC Write
 **File:** `src/apic.c:56-60`
@@ -33,8 +28,6 @@ __asm__ volatile("" ::: "memory");
 ```
 
 ---
-
-## Medium Severity
 
 ### ACPI MADT Zero-Length Entry Check Order
 **File:** `src/acpi.c` (MADT parsing loop)
