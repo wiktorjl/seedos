@@ -119,6 +119,22 @@ typedef struct {
     uint64_t local_apic_address;
 } __attribute__((packed)) madt_local_apic_override_t;
 
+/*
+ * TODO: Add interrupt override storage for correct IRQ-to-GSI translation.
+ *
+ * MADT Interrupt Source Override entries tell us when an ISA IRQ is wired
+ * to a different GSI (Global System Interrupt) pin on the I/O APIC.
+ * Common example: IRQ 0 (PIT timer) is often wired to GSI 2.
+ *
+ * Currently these overrides are parsed in acpi.c but discarded. To fix:
+ * 1. Add storage here (e.g., irq_override_t overrides[16] + override_count)
+ * 2. Store overrides in parse_madt() instead of just logging them
+ * 3. Create irq_to_gsi() translation function
+ * 4. Update ioapic_route_irq() callers to use translation
+ *
+ * See: ACPI spec section 5.2.12.5 "Interrupt Source Override Structure"
+ */
+
 /* Parsed ACPI information */
 typedef struct {
     uint64_t local_apic_address;
@@ -128,6 +144,7 @@ typedef struct {
     int cpu_count;
     uint8_t cpu_apic_ids[256];
     int has_pic;
+    /* TODO: Add override_count and overrides[] array here */
 } acpi_info_t;
 
 /* =============================================================================

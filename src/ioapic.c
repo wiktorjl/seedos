@@ -95,6 +95,21 @@ void ioapic_init(void) {
     log_info("IOAPIC: %d entries", ioapic_max_entry + 1);
 }
 
+/*
+ * TODO: This function should translate IRQ to GSI using ACPI overrides.
+ *
+ * Currently callers pass ISA IRQ numbers directly, assuming GSI = IRQ.
+ * This works on most systems but fails when ACPI specifies overrides.
+ *
+ * Options to fix:
+ * 1. Add irq_to_gsi() helper that checks acpi_info.overrides[]
+ * 2. Call it here: uint8_t gsi = irq_to_gsi(irq);
+ * 3. Also apply polarity/trigger flags from the override entry
+ *
+ * The flags field in override entries specifies:
+ * - Bits 0-1: Polarity (0=default, 1=active high, 3=active low)
+ * - Bits 2-3: Trigger (0=default, 1=edge, 3=level)
+ */
 void ioapic_route_irq(uint8_t irq, uint8_t vector, uint8_t apic_id) {
     if (irq > ioapic_max_entry) {
         log_error("IOAPIC: IRQ %d exceeds max entry %d", irq, ioapic_max_entry);
