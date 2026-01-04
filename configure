@@ -1,0 +1,91 @@
+#!/bin/sh
+# configure - Check build dependencies for SeedOS
+# Run this script before building to verify your system has required tools.
+
+set -e
+
+# Colors for output (disabled if not a terminal)
+if [ -t 1 ]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    NC='\033[0m' # No Color
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    NC=''
+fi
+
+# Track missing dependencies
+MISSING_REQUIRED=""
+MISSING_OPTIONAL=""
+
+# check_tool <command> <required|optional> [description]
+check_tool() {
+    cmd="$1"
+    type="$2"
+    desc="${3:-$cmd}"
+
+    if command -v "$cmd" >/dev/null 2>&1; then
+        printf "  ${GREEN}✓${NC} %-20s %s\n" "$cmd" "$desc"
+    elif [ "$type" = "required" ]; then
+        printf "  ${RED}✗${NC} %-20s %s ${RED}(missing)${NC}\n" "$cmd" "$desc"
+        MISSING_REQUIRED="$MISSING_REQUIRED $cmd"
+    else
+        printf "  ${YELLOW}○${NC} %-20s %s ${YELLOW}(not found)${NC}\n" "$cmd" "$desc"
+        MISSING_OPTIONAL="$MISSING_OPTIONAL $cmd"
+    fi
+}
+
+echo "Checking SeedOS build dependencies..."
+echo "======================================"
+echo ""
+
+echo "Required tools:"
+check_tool cc        required "C compiler (gcc or clang)"
+check_tool ld        required "Linker"
+check_tool make      required "Build system"
+check_tool xorriso   required "ISO creation tool"
+check_tool git       required "Version control"
+
+echo ""
+echo "Optional tools:"
+check_tool bear               optional "Compilation database generator"
+check_tool qemu-system-x86_64 optional "x86_64 emulator for testing"
+check_tool gdb                optional "Debugger"
+
+echo ""
+
+# Check for OVMF firmware
+echo "Checking UEFI firmware..."
+OVMF_PATHS="/usr/share/ovmf/OVMF.fd /usr/share/OVMF/OVMF_CODE.fd /usr/share/edk2/ovmf/OVMF_CODE.fd"
+OVMF_FOUND=""
+for path in $OVMF_PATHS; do
+    if [ -f "$path" ]; then
+        OVMF_FOUND="$path"
+        break
+    fi
+done
+
+if [ -n "$OVMF_FOUND" ]; then
+    printf "  ${GREEN}✓${NC} OVMF firmware: %s\n" "$OVMF_FOUND"
+else
+    printf "  ${YELLOW}○${NC} OVMF firmware: not found (needed for 'make run')\n"
+    MISSING_OPTIONAL="$MISSING_OPTIONAL ovmf"
+fi
+
+echo ""
+echo "======================================"
+
+# Final summary
+if [ -n "$MISSING_REQUIRED" ]; then
+    printf "${RED}ERROR: Missing required tools:${NC}%s\n" "$MISSING_REQUIRED"
+    echo "Please install them before building."
+    exit 1
+elif [ -n "$MISSING_OPTIONAL" ]; then
+    printf "${YELLOW}Note: Some optional tools are missing:${NC}%s\n" "$MISSING_OPTIONAL"
+    printf "${GREEN}Ready to build!${NC} Run 'make' to compile.\n"
+else
+    printf "${GREEN}All dependencies satisfied!${NC} Run 'make' to compile.\n"
+fi

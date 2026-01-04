@@ -1,4 +1,4 @@
-.PHONY: all clean run debug limine
+.PHONY: all clean run debug limine compdb
 
 # Directories
 SRC      := src
@@ -91,3 +91,9 @@ run: $(ISO)
 # Remove build artifacts
 clean:
 	rm -rf $(BUILD)
+
+# Generate compile_commands.json for IDE/clangd support
+compdb:
+	rm -f compile_commands.json
+	bear -- $(MAKE) clean
+	bear -- $(MAKE)
