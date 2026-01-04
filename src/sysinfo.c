@@ -51,4 +51,5 @@ void sysinfo_print_summary(void) {
     kprintf("  RAM:  %llu %s total, %llu %s free\n", total_val, total_unit, free_val, free_unit);
     kprintf("  Heap: %llu %s available\n", heap_val, heap_unit);
     kprintf("================================================================================\n");
+    kprintf("\n");
 }

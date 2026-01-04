@@ -25,7 +25,12 @@
 #include "ioapic.h"
 #include "keyboard.h"
 #include "sysinfo.h"
+#include "kthread.h"
 #include "kshell.h"
+
+void dummy_function(void *arg) {
+    log_info("Hello from a kernel thread! Argument: %llu", (uint64_t)arg);
+}
 
 /* =============================================================================
  * Kernel Main Entry Point
@@ -93,10 +98,32 @@ void kmain(void) {
     cpu_enable_interrupts();
     log_info("INT: Enabled");
 
+    /* Print system summary */
     sysinfo_init();
     sysinfo_print_summary();
 
+    /* Init kernel threads */
+    kthread_init();
+    log_info("KTHREAD: Initialized");
+
+    log_debug("Attempting to create a kernel thread...");
+    uint64_t kthread_id = kthread_create("example-kthread", dummy_function, (void *)1234);
+    if (kthread_id != 0) {
+        log_info("KTHREAD: Created example kernel thread with ID %llu", kthread_id);
+    } else {
+        log_warn("KTHREAD: Failed to create example kernel thread");
+    }   
+
+    kthread_t * newkthread = kthread_get_kthread(kthread_id);
+    if (newkthread != NULL) {
+        log_info("KTHREAD: Retrieved kernel thread with ID %llu", newkthread->id);
+        kthread_switch(&(kthread_current()->rsp), newkthread->rsp);
+
+    } else {
+        log_panic("KTHREAD: Failed to retrieve kernel thread with ID %llu", kthread_id);
+    }
+
     /* Start the kernel shell */
-    kshell_init();
-    kshell_run();  /* Does not return */
+    //kshell_init();
+    //kshell_run();  /* Does not return */
 }
