@@ -13,6 +13,8 @@
 #include "idt.h"
 #include "console.h"
 #include "io.h"
+#include "config.h"
+#include "kthread.h"
 
 /* =============================================================================
  * PIT (Programmable Interval Timer) for Calibration
@@ -256,8 +258,19 @@ void apic_timer_handler(void) {
     /* Update blinking cursor */
     console_update_cursor(tick_count);
 
-    /* Signal end of interrupt */
+    /* Signal end of interrupt BEFORE any context switch */
     apic_eoi();
+
+    /* Only do threading operations if threading is initialized */
+    if (kthread_current() != NULL) {
+        /* Wake any sleeping threads whose time has expired */
+        kthread_wake_sleepers();
+
+#if CONFIG_KTHREAD_PREEMPTIVE
+        /* Preemptive mode: force a context switch */
+        kthread_schedule();
+#endif
+    }
 }
 
 uint64_t apic_get_ticks(void) {

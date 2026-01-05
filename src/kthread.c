@@ -2,6 +2,8 @@
 #include "heap.h"
 #include "log.h"
 #include "pmm.h"
+#include "apic.h"
+#include <stdint.h>
 
 extern void kthread_switch(uint64_t *old_rsp, uint64_t new_rsp);
 
@@ -55,9 +57,6 @@ void kthread_init(void) {
 void kthread_trampoline(void) {
     kthread_t *self = kthread_current();
     self->entry(self->arg);    // Call the real entry point
-    log_debug("Calling yield");
-    kthread_yield();            
-    log_debug("Calling exit");
     kthread_exit();
 }
 
@@ -73,6 +72,7 @@ uint64_t kthread_create(const char *kthread_friendly_name, void (*kthread_entry_
     new_thread->id = 0;
     new_thread->name = kthread_friendly_name;
     new_thread->state = THREAD_READY;
+    new_thread->wake_tick = 0;  /* Not sleeping */
     new_thread->stack_base = kmalloc(KTHREAD_STACK_SIZE);
     
     if (new_thread->stack_base == NULL) {
@@ -131,22 +131,63 @@ void kthread_yield(void) {
 }
 
 void kthread_schedule(void) {
-    // Simple round-robin scheduler
+    // 1. First, wake any sleeping threads
+    uint64_t now = apic_get_ticks();
+    kthread_t *t = &genesis_kthread;
+    while (t != NULL) {
+        if (t->state == THREAD_BLOCKED && t->wake_tick != 0 && t->wake_tick <= now) {
+            t->state = THREAD_READY;
+            t->wake_tick = 0;
+        }
+        t = t->next;
+    }
+
+    // 2. Find next READY thread (after current)
     kthread_t *next_thread = current_kthread->next;
-    while(next_thread != NULL && next_thread->state != THREAD_READY) {
+    while (next_thread != NULL && next_thread->state != THREAD_READY) {
         next_thread = next_thread->next;
     }
-    if(next_thread == NULL) {
-        // Wrap around to the beginning
+
+    // 3. Wrap around if needed
+    if (next_thread == NULL) {
         next_thread = &genesis_kthread;
-        while(next_thread != current_kthread && next_thread->state != THREAD_READY) {
-            next_thread = next_thread->next;
-        }
+            while (next_thread != current_kthread &&
+                next_thread->state != THREAD_READY) {
+                    next_thread = next_thread->next;
+                }
     }
-    if(next_thread != NULL && next_thread != current_kthread) {
+
+    // 4. Switch if we found a different READY thread
+    if (next_thread != NULL && next_thread != current_kthread) {
         kthread_t *old_thread = current_kthread;
+
+        // If old thread was RUNNING (interrupted), mark it READY so it can be scheduled again.
+        // Don't change if it's BLOCKED (sleeping) - it needs to stay blocked.
+        if (old_thread->state == THREAD_RUNNING) {
+            old_thread->state = THREAD_READY;
+        }
+
         current_kthread = next_thread;
         current_kthread->state = THREAD_RUNNING;
         kthread_switch(&old_thread->rsp, current_kthread->rsp);
+    }
+}
+
+void kthread_sleep(uint64_t ms) {
+    uint64_t ticks = (ms + 9) / 10;  // Round up: 10ms per tick
+    current_kthread->wake_tick = apic_get_ticks() + ticks;
+    current_kthread->state = THREAD_BLOCKED;
+    kthread_schedule();
+}
+
+void kthread_wake_sleepers(void) {
+    uint64_t now = apic_get_ticks();
+    kthread_t *t = &genesis_kthread;
+    while (t != NULL) {
+        if (t->state == THREAD_BLOCKED && t->wake_tick != 0 && t->wake_tick <= now) {
+            t->state = THREAD_READY;
+            t->wake_tick = 0;
+        }
+        t = t->next;
     }
 }

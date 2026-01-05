@@ -20,6 +20,14 @@
 #define CONFIG_OUTPUT_CONSOLE       1
 #define CONFIG_OUTPUT_SERIAL        1
 
+/* =============================================================================
+ * Kernel Thread Scheduling
+ * =============================================================================
+ */
+
+/* Scheduling mode: 0 = cooperative, 1 = preemptive */
+#define CONFIG_KTHREAD_PREEMPTIVE   0
+
 /* Console colors */
 #define CONFIG_CONSOLE_COLOR_DEFAULT 0xFFFFFF  /* White - user-facing output */
 #define CONFIG_CONSOLE_COLOR_PANIC   0xFF0000  /* Red */

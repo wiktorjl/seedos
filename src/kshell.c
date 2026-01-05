@@ -16,6 +16,8 @@
 #include "pmm.h"
 #include "heap.h"
 #include "types.h"
+#include "kthread.h"
+#include "config.h"
 
 /* =============================================================================
  * Module State
@@ -323,7 +325,13 @@ void kshell_run(void) {
     for (;;) {
         int c = keyboard_getchar();
         if (c == -1) {
-            __asm__ volatile ("hlt");  /* Wait for interrupt */
+#if CONFIG_KTHREAD_PREEMPTIVE == 0
+            /* Cooperative mode: yield to let other threads run */
+            kthread_yield();
+#else
+            /* Preemptive mode: just wait for interrupt */
+            __asm__ volatile ("hlt");
+#endif
             continue;
         }
 

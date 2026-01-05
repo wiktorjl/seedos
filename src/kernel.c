@@ -28,9 +28,18 @@
 #include "kthread.h"
 #include "kshell.h"
 #include <stdint.h>
+#include <threads.h>
 
 void dummy_function(void *arg) {
     log_info("Hello from a kernel thread! Argument: %llu", (uint64_t)arg);
+}
+
+void printA(void *arg) {
+    for(volatile int i = 0; i < 1000000; i++) {
+        kthread_sleep(500);
+        log_info("A");
+    }
+    log_info("A - DONE");
 }
 
 /* =============================================================================
@@ -108,7 +117,7 @@ void kmain(void) {
     log_info("KTHREAD: Initialized");
 
     log_debug("Attempting to create a kernel thread...");
-    uint64_t kthread_id = kthread_create("example-kthread", dummy_function, (void *)1337);
+    uint64_t kthread_id = kthread_create("example-kthread", printA, (void *)1337);
     if (kthread_id != 0) {
         log_info("KTHREAD: Created example kernel thread with ID %llu", kthread_id);
     } else {

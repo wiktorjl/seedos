@@ -21,6 +21,7 @@ typedef struct kthread {
     struct kthread *next;
     void (*entry)(void *);
     void *arg;
+    uint64_t wake_tick;
 } kthread_t;
 
 
@@ -43,5 +44,15 @@ void kthread_schedule(void);
 void kthreads_list(void);
 
 kthread_t * kthread_get_kthread(uint64_t kthread_id);
+
+void kthread_sleep(uint64_t ms);
+
+/*
+ * kthread_wake_sleepers - Wake threads whose sleep time has expired.
+ *
+ * Called from the timer interrupt to wake BLOCKED threads that have
+ * reached their wake_tick time. Does NOT perform a context switch.
+ */
+void kthread_wake_sleepers(void);
 
 #endif /* KTHREAD_H */

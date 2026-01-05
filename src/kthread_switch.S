@@ -46,4 +46,8 @@ kthread_switch:
     pop %rbp
     pop %rbx
 
+    # Re-enable interrupts (they may have been disabled if we switched from
+    # inside an interrupt handler which never returned via iretq)
+    sti
+
     ret
