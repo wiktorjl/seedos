@@ -10,6 +10,21 @@ extern void kthread_switch(uint64_t *old_rsp, uint64_t new_rsp);
 kthread_t genesis_kthread;
 kthread_t *current_kthread = NULL;
 
+/* Preemption control - when > 0, scheduler won't switch threads */
+static int preempt_count = 0;
+
+void preempt_disable(void) {
+    preempt_count++;
+}
+
+void preempt_enable(void) {
+    preempt_count--;
+}
+
+int preempt_enabled(void) {
+    return preempt_count == 0;
+}
+
 void kthread_exit(void) {
     kthread_t *exiting = current_kthread;
     current_kthread->state = THREAD_EXITED;
@@ -62,10 +77,13 @@ void kthread_trampoline(void) {
 
 
 uint64_t kthread_create(const char *kthread_friendly_name, void (*kthread_entry_point)(void *), void *arg) {
+    preempt_disable();
+
     kthread_t *new_thread = (kthread_t *)kmalloc(sizeof(kthread_t));
-    
+
     if (new_thread == NULL) {
         log_error("KTHREAD: Failed to allocate memory for new kernel thread");
+        preempt_enable();
         return 0;
     }
 
@@ -78,6 +96,7 @@ uint64_t kthread_create(const char *kthread_friendly_name, void (*kthread_entry_
     if (new_thread->stack_base == NULL) {
         log_error("KTHREAD: Failed to allocate stack for new kernel thread");
         kfree(new_thread);
+        preempt_enable();
         return 0;
     }
     
@@ -122,6 +141,8 @@ uint64_t kthread_create(const char *kthread_friendly_name, void (*kthread_entry_
               new_thread->stack_base,
               (void*)((uint64_t)new_thread->stack_base + KTHREAD_STACK_SIZE),
               (void*)new_thread->rsp);
+
+    preempt_enable();
     return new_thread->id;
 }
 
@@ -131,6 +152,11 @@ void kthread_yield(void) {
 }
 
 void kthread_schedule(void) {
+    /* Don't switch if preemption is disabled */
+    if (preempt_count > 0) {
+        return;
+    }
+
     // 1. First, wake any sleeping threads
     uint64_t now = apic_get_ticks();
     kthread_t *t = &genesis_kthread;

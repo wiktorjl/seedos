@@ -55,4 +55,15 @@ void kthread_sleep(uint64_t ms);
  */
 void kthread_wake_sleepers(void);
 
+/*
+ * Preemption control - prevents context switches in critical sections.
+ * Usage:
+ *   preempt_disable();
+ *   // ... modify shared data structures safely ...
+ *   preempt_enable();
+ */
+void preempt_disable(void);
+void preempt_enable(void);
+int preempt_enabled(void);
+
 #endif /* KTHREAD_H */
