@@ -10,19 +10,23 @@ extern void kthread_switch(uint64_t *old_rsp, uint64_t new_rsp);
 kthread_t genesis_kthread;
 kthread_t *current_kthread = NULL;
 
-/* Preemption control - when > 0, scheduler won't switch threads */
-static int preempt_count = 0;
+/* Monotonic thread ID counter - never reused */
+static volatile uint64_t next_thread_id = 1;
+
+/* Preemption control - when > 0, scheduler won't switch threads.
+ * Use atomic operations to ensure interrupt safety. */
+static volatile int preempt_count = 0;
 
 void preempt_disable(void) {
-    preempt_count++;
+    __sync_fetch_and_add(&preempt_count, 1);
 }
 
 void preempt_enable(void) {
-    preempt_count--;
+    __sync_fetch_and_sub(&preempt_count, 1);
 }
 
 int preempt_enabled(void) {
-    return preempt_count == 0;
+    return __sync_fetch_and_add(&preempt_count, 0) == 0;
 }
 
 void kthread_exit(void) {
@@ -87,7 +91,8 @@ uint64_t kthread_create(const char *kthread_friendly_name, void (*kthread_entry_
         return 0;
     }
 
-    new_thread->id = 0;
+    /* Assign unique monotonic ID - atomically fetch and increment */
+    new_thread->id = __sync_fetch_and_add(&next_thread_id, 1);
     new_thread->name = kthread_friendly_name;
     new_thread->state = THREAD_READY;
     new_thread->wake_tick = 0;   /* Not sleeping */
@@ -107,17 +112,16 @@ uint64_t kthread_create(const char *kthread_friendly_name, void (*kthread_entry_
     new_thread->rsp = stack_top;
     new_thread->next = NULL;
 
-    // Now we need to place this thread in the list
+    /* Add to thread list (append at end) */
     if(current_kthread == NULL) {
         current_kthread = new_thread;
         log_panic("KTHREAD: No current thread, setting new thread as current (this should not happen)");
     } else {
-        kthread_t *iter = current_kthread;
+        kthread_t *iter = &genesis_kthread;
         while(iter->next != NULL) {
             iter = iter->next;
         }
         iter->next = new_thread;
-        new_thread->id = iter->id + 1;
     }
 
     new_thread->entry = kthread_entry_point;
@@ -270,4 +274,78 @@ void kthread_unblock(kthread_t *thread) {
     if (thread->state == THREAD_BLOCKED) {
         thread->state = THREAD_READY;
     }
+}
+
+/* =============================================================================
+ * Thread Cleanup / Reaping
+ *
+ * Removes EXITED threads from the list and frees their resources.
+ * Should be called periodically (e.g., from the genesis thread or scheduler).
+ * =============================================================================
+ */
+
+void kthread_reap(void) {
+    preempt_disable();
+
+    kthread_t *prev = &genesis_kthread;
+    kthread_t *iter = genesis_kthread.next;
+
+    while (iter != NULL) {
+        if (iter->state == THREAD_EXITED) {
+            /* Remove from list */
+            kthread_t *to_free = iter;
+            prev->next = iter->next;
+            iter = iter->next;
+
+            /* Free resources */
+            log_debug("KTHREAD: Reaping thread ID %llu (%s)", to_free->id, to_free->name);
+            if (to_free->stack_base != NULL) {
+                kfree(to_free->stack_base);
+            }
+            kfree(to_free);
+        } else {
+            prev = iter;
+            iter = iter->next;
+        }
+    }
+
+    preempt_enable();
+}
+
+/* =============================================================================
+ * Thread Listing
+ * =============================================================================
+ */
+
+static const char *state_to_string(thread_state_t state) {
+    switch (state) {
+        case THREAD_READY:   return "READY";
+        case THREAD_RUNNING: return "RUNNING";
+        case THREAD_BLOCKED: return "BLOCKED";
+        case THREAD_EXITED:  return "EXITED";
+        default:             return "UNKNOWN";
+    }
+}
+
+void kthreads_list(void) {
+    preempt_disable();
+
+    log_info("=== Kernel Threads ===");
+    log_info("%-4s %-20s %-10s %s", "ID", "Name", "State", "Stack");
+
+    kthread_t *t = &genesis_kthread;
+    int count = 0;
+    while (t != NULL) {
+        log_info("%-4llu %-20s %-10s %p",
+                 t->id,
+                 t->name ? t->name : "(null)",
+                 state_to_string(t->state),
+                 t->stack_base);
+        count++;
+        t = t->next;
+    }
+
+    log_info("Total: %d threads", count);
+
+    preempt_enable();
 }

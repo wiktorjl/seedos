@@ -75,4 +75,16 @@ int preempt_enabled(void);
 void kthread_block(void);
 void kthread_unblock(kthread_t *thread);
 
+/*
+ * kthread_reap - Clean up exited threads.
+ *
+ * Removes THREAD_EXITED threads from the list and frees their
+ * stack and control block memory. Should be called periodically
+ * from a thread that can safely block (e.g., genesis thread).
+ *
+ * Note: Thread IDs are never reused, so references by ID remain
+ * unambiguous even after reaping.
+ */
+void kthread_reap(void);
+
 #endif /* KTHREAD_H */
