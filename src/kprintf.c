@@ -12,17 +12,43 @@ static void kputc(terminal_t *term, char c, int *count) {
     (*count)++;
 }
 
-// Helper: print a string
-static void kputs(terminal_t *term, const char *s, int *count) {
+// Helper: print a string with optional width and alignment
+static void kputs_padded(terminal_t *term, const char *s, int width, int left_align, int *count) {
     if (!s) s = "(null)";
+
+    // Calculate string length
+    int len = 0;
+    const char *p = s;
+    while (*p++) len++;
+
+    // Right-align: print padding first
+    if (!left_align && width > len) {
+        for (int i = 0; i < width - len; i++) {
+            kputc(term, ' ', count);
+        }
+    }
+
+    // Print the string
     while (*s) {
         kputc(term, *s++, count);
     }
+
+    // Left-align: print padding after
+    if (left_align && width > len) {
+        for (int i = 0; i < width - len; i++) {
+            kputc(term, ' ', count);
+        }
+    }
 }
 
-// Helper: print unsigned integer in given base with optional width/padding
+// Helper: print a string (simple version for compatibility)
+static void kputs(terminal_t *term, const char *s, int *count) {
+    kputs_padded(term, s, 0, 0, count);
+}
+
+// Helper: print unsigned integer in given base with optional width/padding/alignment
 static void print_uint_padded(terminal_t *term, uint64_t value, int base, int uppercase,
-                               int width, int zero_pad, int *count) {
+                               int width, int zero_pad, int left_align, int *count) {
     char buf[65];  // Enough for 64-bit in binary
     const char *digits = uppercase ? "0123456789ABCDEF" : "0123456789abcdef";
     int i = 0;
@@ -36,21 +62,32 @@ static void print_uint_padded(terminal_t *term, uint64_t value, int base, int up
         }
     }
 
-    // Add padding
-    char pad_char = zero_pad ? '0' : ' ';
-    while (i < width) {
-        kputc(term, pad_char, count);
-        width--;
+    int num_len = i;
+    int padding = (width > num_len) ? width - num_len : 0;
+
+    // Right-align: print padding first
+    if (!left_align && padding > 0) {
+        char pad_char = zero_pad ? '0' : ' ';
+        for (int p = 0; p < padding; p++) {
+            kputc(term, pad_char, count);
+        }
     }
 
     // Print digits in reverse order
     while (i > 0) {
         kputc(term, buf[--i], count);
     }
+
+    // Left-align: print padding after
+    if (left_align && padding > 0) {
+        for (int p = 0; p < padding; p++) {
+            kputc(term, ' ', count);
+        }
+    }
 }
 
-// Helper: print signed integer with optional width/padding
-static void print_int_padded(terminal_t *term, int64_t value, int width, int zero_pad, int *count) {
+// Helper: print signed integer with optional width/padding/alignment
+static void print_int_padded(terminal_t *term, int64_t value, int width, int zero_pad, int left_align, int *count) {
     int negative = 0;
     uint64_t uval;
 
@@ -75,24 +112,35 @@ static void print_int_padded(terminal_t *term, int64_t value, int width, int zer
     }
 
     int num_len = i + (negative ? 1 : 0);
+    int padding = (width > num_len) ? width - num_len : 0;
 
-    if (zero_pad && negative) {
+    // Right-align: print padding first (before sign for space, after for zero)
+    if (!left_align && padding > 0) {
+        if (zero_pad && negative) {
+            kputc(term, '-', count);
+            negative = 0;  // Already printed
+        }
+        char pad_char = zero_pad ? '0' : ' ';
+        for (int p = 0; p < padding; p++) {
+            kputc(term, pad_char, count);
+        }
+    }
+
+    // Print sign
+    if (negative) {
         kputc(term, '-', count);
-        width--;
     }
 
-    char pad_char = zero_pad ? '0' : ' ';
-    while (num_len < width) {
-        kputc(term, pad_char, count);
-        width--;
-    }
-
-    if (!zero_pad && negative) {
-        kputc(term, '-', count);
-    }
-
+    // Print digits in reverse order
     while (i > 0) {
         kputc(term, buf[--i], count);
+    }
+
+    // Left-align: print padding after
+    if (left_align && padding > 0) {
+        for (int p = 0; p < padding; p++) {
+            kputc(term, ' ', count);
+        }
     }
 }
 
@@ -110,15 +158,25 @@ int tkvprintf(terminal_t *term, const char *fmt, va_list args) {
 
         fmt++;  // Skip '%'
 
-        // Handle flags (simplified)
+        // Handle flags
         int zero_pad = 0;
+        int left_align = 0;
         int width = 0;
         int is_long = 0;
 
-        // Check for '0' padding flag
-        if (*fmt == '0') {
-            zero_pad = 1;
+        // Parse flags (can appear in any order)
+        while (*fmt == '-' || *fmt == '0') {
+            if (*fmt == '-') {
+                left_align = 1;
+            } else if (*fmt == '0') {
+                zero_pad = 1;
+            }
             fmt++;
+        }
+
+        // Left-align overrides zero-padding (standard printf behavior)
+        if (left_align) {
+            zero_pad = 0;
         }
 
         // Parse width
@@ -144,7 +202,7 @@ int tkvprintf(terminal_t *term, const char *fmt, va_list args) {
                 break;
 
             case 's':
-                kputs(term, va_arg(args, const char *), &count);
+                kputs_padded(term, va_arg(args, const char *), width, left_align, &count);
                 break;
 
             case 'd':
@@ -156,7 +214,7 @@ int tkvprintf(terminal_t *term, const char *fmt, va_list args) {
                     val = va_arg(args, long);
                 else
                     val = va_arg(args, int);
-                print_int_padded(term, val, width, zero_pad, &count);
+                print_int_padded(term, val, width, zero_pad, left_align, &count);
                 break;
             }
 
@@ -168,7 +226,7 @@ int tkvprintf(terminal_t *term, const char *fmt, va_list args) {
                     val = va_arg(args, unsigned long);
                 else
                     val = va_arg(args, unsigned int);
-                print_uint_padded(term, val, 10, 0, width, zero_pad, &count);
+                print_uint_padded(term, val, 10, 0, width, zero_pad, left_align, &count);
                 break;
             }
 
@@ -181,7 +239,7 @@ int tkvprintf(terminal_t *term, const char *fmt, va_list args) {
                     val = va_arg(args, unsigned long);
                 else
                     val = va_arg(args, unsigned int);
-                print_uint_padded(term, val, 16, *fmt == 'X', width, zero_pad, &count);
+                print_uint_padded(term, val, 16, *fmt == 'X', width, zero_pad, left_align, &count);
                 break;
             }
 
@@ -193,7 +251,7 @@ int tkvprintf(terminal_t *term, const char *fmt, va_list args) {
                     val = va_arg(args, unsigned long);
                 else
                     val = va_arg(args, unsigned int);
-                print_uint_padded(term, val, 8, 0, width, zero_pad, &count);
+                print_uint_padded(term, val, 8, 0, width, zero_pad, left_align, &count);
                 break;
             }
 
@@ -205,14 +263,14 @@ int tkvprintf(terminal_t *term, const char *fmt, va_list args) {
                     val = va_arg(args, unsigned long);
                 else
                     val = va_arg(args, unsigned int);
-                print_uint_padded(term, val, 2, 0, width, zero_pad, &count);
+                print_uint_padded(term, val, 2, 0, width, zero_pad, left_align, &count);
                 break;
             }
 
             case 'p': {
                 void *ptr = va_arg(args, void *);
                 kputs(term, "0x", &count);
-                print_uint_padded(term, (uint64_t)(uintptr_t)ptr, 16, 0, 0, 0, &count);
+                print_uint_padded(term, (uint64_t)(uintptr_t)ptr, 16, 0, 0, 0, 0, &count);
                 break;
             }
 
