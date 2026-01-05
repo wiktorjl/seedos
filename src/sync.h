@@ -11,10 +11,37 @@
 #include "kthread.h"
 
 /* =============================================================================
+ * Interrupt Flag Helpers
+ *
+ * Used by spinlocks to save/restore interrupt state, preventing deadlock
+ * when an interrupt handler tries to acquire a lock held by interrupted code.
+ * =============================================================================
+ */
+
+typedef uint64_t irqflags_t;
+
+static inline irqflags_t irq_save(void) {
+    irqflags_t flags;
+    __asm__ volatile("pushfq; popq %0; cli" : "=r"(flags) :: "memory");
+    return flags;
+}
+
+static inline void irq_restore(irqflags_t flags) {
+    __asm__ volatile("pushq %0; popfq" :: "r"(flags) : "memory", "cc");
+}
+
+/* =============================================================================
  * Spinlock - Busy-wait synchronization
  *
  * Use for very short critical sections (< 1 microsecond).
  * Thread spins (burns CPU) while waiting for lock.
+ *
+ * spin_lock/unlock: Use when you KNOW interrupts are already disabled
+ *                   or the lock is never taken in interrupt context.
+ *
+ * spin_lock_irqsave/unlock_irqrestore: Use when lock may be taken from
+ *                   both process and interrupt context. Saves and restores
+ *                   interrupt state to prevent deadlock.
  * =============================================================================
  */
 
@@ -28,6 +55,10 @@ void spin_init(spinlock_t *lock);
 void spin_lock(spinlock_t *lock);
 void spin_unlock(spinlock_t *lock);
 int spin_trylock(spinlock_t *lock);
+
+/* Interrupt-safe variants - use these when lock may be taken in ISR context */
+irqflags_t spin_lock_irqsave(spinlock_t *lock);
+void spin_unlock_irqrestore(spinlock_t *lock, irqflags_t flags);
 
 /* =============================================================================
  * Mutex - Sleep-wait synchronization

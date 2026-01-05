@@ -35,6 +35,20 @@ int spin_trylock(spinlock_t *lock) {
     return __sync_lock_test_and_set(&lock->locked, 1) == 0;
 }
 
+irqflags_t spin_lock_irqsave(spinlock_t *lock) {
+    irqflags_t flags = irq_save();
+    while (__sync_lock_test_and_set(&lock->locked, 1)) {
+        /* Spin until we acquire the lock */
+        __asm__ volatile("pause");
+    }
+    return flags;
+}
+
+void spin_unlock_irqrestore(spinlock_t *lock, irqflags_t flags) {
+    __sync_lock_release(&lock->locked);
+    irq_restore(flags);
+}
+
 /* =============================================================================
  * Wait Queue Helpers
  *
@@ -84,16 +98,16 @@ void mutex_init(mutex_t *m) {
 void mutex_lock(mutex_t *m) {
     preempt_disable();
 
-    while (m->locked) {
+    /* Use atomic compare-and-swap to avoid race between check and set */
+    while (!__sync_bool_compare_and_swap(&m->locked, 0, 1)) {
         /* Lock is held - add ourselves to wait queue and sleep */
         waitq_add(&m->wait_head, &m->wait_tail, kthread_current());
         preempt_enable();   /* Must enable before blocking! */
         kthread_block();
-        preempt_disable();  /* Re-disable to safely check m->locked */
+        preempt_disable();  /* Re-disable to safely retry CAS */
     }
 
     /* Acquired the lock */
-    m->locked = 1;
     m->owner = kthread_current();
 
     preempt_enable();
@@ -117,12 +131,12 @@ void mutex_unlock(mutex_t *m) {
 int mutex_trylock(mutex_t *m) {
     preempt_disable();
 
-    if (m->locked) {
+    /* Atomic compare-and-swap: try to set locked from 0 to 1 */
+    if (!__sync_bool_compare_and_swap(&m->locked, 0, 1)) {
         preempt_enable();
         return 0;  /* Failed to acquire */
     }
 
-    m->locked = 1;
     m->owner = kthread_current();
 
     preempt_enable();
