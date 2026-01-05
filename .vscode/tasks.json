@@ -1,0 +1,45 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build",
+            "type": "shell",
+            "command": "make",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$gcc"
+        },
+        {
+            "label": "Start QEMU Debug Server",
+            "type": "shell",
+            "command": "echo 'QEMU GDB server ready on port 1234' && exec make debug",
+            "dependsOn": "Build",
+            "isBackground": true,
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^$"
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^qemu",
+                    "endsPattern": "QEMU GDB server ready"
+                }
+            }
+        },
+        {
+            "label": "Run QEMU",
+            "type": "shell",
+            "command": "make run",
+            "dependsOn": "Build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Clean",
+            "type": "shell",
+            "command": "make clean",
+            "problemMatcher": []
+        }
+    ]
+}

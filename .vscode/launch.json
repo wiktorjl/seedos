@@ -1,0 +1,34 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Attach to QEMU (manual)",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/kernel.elf",
+            "cwd": "${workspaceFolder}",
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "targetArchitecture": "x64",
+            "stopAtConnect": true,
+            "setupCommands": [
+                {
+                    "text": "set architecture i386:x86-64",
+                    "ignoreFailures": false
+                },
+                {
+                    "text": "file \"${workspaceFolder}/build/kernel.elf\"",
+                    "ignoreFailures": false
+                },
+                {
+                    "text": "target remote localhost:1234",
+                    "ignoreFailures": false
+                }
+            ],
+            "launchCompleteCommand": "None",
+            "logging": {
+                "engineLogging": true
+            }
+        }
+    ]
+}
