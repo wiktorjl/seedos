@@ -1,3 +1,10 @@
+/*
+ * kthread.c - Kernel Threading Implementation
+ *
+ * Implements kernel threads with cooperative and preemptive scheduling.
+ * See kthread.h for API documentation and usage notes.
+ */
+
 #include "kthread.h"
 #include "heap.h"
 #include "log.h"
@@ -5,17 +12,38 @@
 #include "apic.h"
 #include <stdint.h>
 
+/* Assembly context switch routine (see kthread_switch.S) */
 extern void kthread_switch(uint64_t *old_rsp, uint64_t new_rsp);
 
+/* =============================================================================
+ * Global State
+ * =============================================================================
+ */
+
+/* The genesis thread - wraps the initial kernel execution context */
 kthread_t genesis_kthread;
+
+/* Currently executing thread */
 kthread_t *current_kthread = NULL;
 
-/* Monotonic thread ID counter - never reused */
+/*
+ * Monotonic thread ID counter.
+ * IDs are never reused, ensuring stale references can be detected.
+ * Starts at 1 because genesis thread is ID 0.
+ */
 static volatile uint64_t next_thread_id = 1;
 
-/* Preemption control - when > 0, scheduler won't switch threads.
- * Use atomic operations to ensure interrupt safety. */
+/*
+ * Preemption nesting counter.
+ * When > 0, the scheduler will not perform context switches.
+ * Uses atomic operations for interrupt safety.
+ */
 static volatile int preempt_count = 0;
+
+/* =============================================================================
+ * Preemption Control
+ * =============================================================================
+ */
 
 void preempt_disable(void) {
     __sync_fetch_and_add(&preempt_count, 1);
@@ -28,6 +56,11 @@ void preempt_enable(void) {
 int preempt_enabled(void) {
     return __sync_fetch_and_add(&preempt_count, 0) == 0;
 }
+
+/* =============================================================================
+ * Thread Lifecycle
+ * =============================================================================
+ */
 
 void kthread_exit(void) {
     kthread_t *exiting = current_kthread;
@@ -151,6 +184,11 @@ uint64_t kthread_create(const char *kthread_friendly_name, void (*kthread_entry_
     return new_thread->id;
 }
 
+/* =============================================================================
+ * Scheduling
+ * =============================================================================
+ */
+
 void kthread_yield(void) {
     current_kthread->state = THREAD_READY;
     kthread_schedule();
@@ -245,6 +283,14 @@ void kthread_schedule(void) {
     }
 }
 
+/* =============================================================================
+ * Sleep / Wake
+ *
+ * Note: Sleep granularity is 10ms because the APIC timer runs at 100Hz.
+ * The ticks calculation rounds UP to ensure minimum sleep duration.
+ * =============================================================================
+ */
+
 void kthread_sleep(uint64_t ms) {
     uint64_t ticks = (ms + 9) / 10;  // Round up: 10ms per tick
     current_kthread->wake_tick = apic_get_ticks() + ticks;
@@ -263,6 +309,17 @@ void kthread_wake_sleepers(void) {
         t = t->next;
     }
 }
+
+/* =============================================================================
+ * Block / Unblock
+ *
+ * Used by synchronization primitives (mutex, condvar) to sleep threads
+ * until a specific event occurs (lock released, condition signaled).
+ *
+ * IMPORTANT: Caller must ensure preemption is enabled before calling
+ * kthread_block(), otherwise the scheduler cannot switch threads.
+ * =============================================================================
+ */
 
 void kthread_block(void) {
     current_kthread->state = THREAD_BLOCKED;

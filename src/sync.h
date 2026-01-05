@@ -3,6 +3,26 @@
  *
  * Provides spinlocks, mutexes, and condition variables for thread
  * synchronization in kernel space.
+ *
+ * IMPORTANT USAGE NOTES:
+ *
+ * 1. Spinlock Deadlock Prevention:
+ *    If a spinlock may be acquired from BOTH normal code AND interrupt
+ *    handlers (ISRs), you MUST use spin_lock_irqsave/spin_unlock_irqrestore.
+ *    Otherwise, if an interrupt fires while the lock is held and the ISR
+ *    tries to acquire the same lock, the system will deadlock forever.
+ *
+ * 2. Mutex vs Spinlock:
+ *    - Use spinlocks for very short critical sections (< 1 microsecond)
+ *    - Use mutexes when the critical section may block or take longer
+ *    - Mutexes CANNOT be used in interrupt context (they may sleep)
+ *
+ * 3. Condition Variable Pattern:
+ *    Always use cond_wait() inside a while loop checking your condition:
+ *      while (!condition) {
+ *          cond_wait(&cv, &mutex);
+ *      }
+ *    This handles spurious wakeups correctly.
  */
 
 #ifndef SYNC_H
@@ -15,6 +35,9 @@
  *
  * Used by spinlocks to save/restore interrupt state, preventing deadlock
  * when an interrupt handler tries to acquire a lock held by interrupted code.
+ *
+ * irq_save():    Saves current interrupt state and DISABLES interrupts.
+ * irq_restore(): Restores previous interrupt state (may re-enable interrupts).
  * =============================================================================
  */
 
