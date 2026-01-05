@@ -116,28 +116,28 @@ void kmain(void) {
     kthread_init();
     log_info("KTHREAD: Initialized");
 
-    log_debug("Attempting to create a kernel thread...");
-    uint64_t kthread_id = kthread_create("example-kthread", printA, (void *)1337);
-    if (kthread_id != 0) {
-        log_info("KTHREAD: Created example kernel thread with ID %llu", kthread_id);
-    } else {
-        log_warn("KTHREAD: Failed to create example kernel thread");
-    }   
+    // log_debug("Attempting to create a kernel thread...");
+    // uint64_t kthread_id = kthread_create("example-kthread", printA, (void *)1337);
+    // if (kthread_id != 0) {
+    //     log_info("KTHREAD: Created example kernel thread with ID %llu", kthread_id);
+    // } else {
+    //     log_warn("KTHREAD: Failed to create example kernel thread");
+    // }   
 
-    kthread_t * newkthread = kthread_get_kthread(kthread_id);
-    if (newkthread != NULL) {
-        log_info("KTHREAD: Retrieved kernel thread with ID %llu", newkthread->id);
-        log_debug("KTHREAD: About to switch. new_rsp=%p", (void*)newkthread->rsp);
+    // kthread_t * newkthread = kthread_get_kthread(kthread_id);
+    // if (newkthread != NULL) {
+    //     log_info("KTHREAD: Retrieved kernel thread with ID %llu", newkthread->id);
+    //     log_debug("KTHREAD: About to switch. new_rsp=%p", (void*)newkthread->rsp);
 
-        kthread_t * oldkthread = kthread_current();
-        oldkthread->state = THREAD_READY;
-        kthread_set_current(newkthread);
-        newkthread->state = THREAD_RUNNING;
-        kthread_switch(&oldkthread->rsp, newkthread->rsp);
-        log_debug("KTHREAD: Returned from switch to thread ID %llu", kthread_current()->id);
-    } else {
-        log_panic("KTHREAD: Failed to retrieve kernel thread with ID %llu", kthread_id);
-    }
+    //     kthread_t * oldkthread = kthread_current();
+    //     oldkthread->state = THREAD_READY;
+    //     kthread_set_current(newkthread);
+    //     newkthread->state = THREAD_RUNNING;
+    //     kthread_switch(&oldkthread->rsp, newkthread->rsp);
+    //     log_debug("KTHREAD: Returned from switch to thread ID %llu", kthread_current()->id);
+    // } else {
+    //     log_panic("KTHREAD: Failed to retrieve kernel thread with ID %llu", kthread_id);
+    // }
 
     /* Start the kernel shell */
     kshell_init();

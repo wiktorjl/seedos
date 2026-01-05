@@ -185,4 +185,26 @@ void console_hide_cursor(void);
  */
 void console_show_cursor(void);
 
+/* =============================================================================
+ * Fullscreen Mode
+ * =============================================================================
+ */
+
+/*
+ * console_set_fullscreen - Enable/disable fullscreen mode.
+ *
+ * @enabled: 1 to suppress normal text output, 0 to restore.
+ *
+ * When enabled, console_putchar does nothing, allowing demos to
+ * draw directly to the framebuffer without interference.
+ */
+void console_set_fullscreen(int enabled);
+
+/*
+ * console_get_fullscreen - Check if fullscreen mode is active.
+ *
+ * Returns: 1 if fullscreen, 0 if normal.
+ */
+int console_get_fullscreen(void);
+
 #endif /* CONSOLE_H */

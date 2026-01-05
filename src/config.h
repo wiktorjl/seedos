@@ -26,7 +26,7 @@
  */
 
 /* Scheduling mode: 0 = cooperative, 1 = preemptive */
-#define CONFIG_KTHREAD_PREEMPTIVE   0
+#define CONFIG_KTHREAD_PREEMPTIVE   1
 
 /* Console colors */
 #define CONFIG_CONSOLE_COLOR_DEFAULT 0xFFFFFF  /* White - user-facing output */

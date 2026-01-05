@@ -90,7 +90,8 @@ uint64_t kthread_create(const char *kthread_friendly_name, void (*kthread_entry_
     new_thread->id = 0;
     new_thread->name = kthread_friendly_name;
     new_thread->state = THREAD_READY;
-    new_thread->wake_tick = 0;  /* Not sleeping */
+    new_thread->wake_tick = 0;   /* Not sleeping */
+    new_thread->wait_next = NULL; /* Not in any wait queue */
     new_thread->stack_base = kmalloc(KTHREAD_STACK_SIZE);
     
     if (new_thread->stack_base == NULL) {
@@ -196,6 +197,47 @@ void kthread_schedule(void) {
         current_kthread = next_thread;
         current_kthread->state = THREAD_RUNNING;
         kthread_switch(&old_thread->rsp, current_kthread->rsp);
+    } else if (current_kthread->state == THREAD_BLOCKED) {
+        /*
+         * Current thread is blocked but no READY thread to switch to.
+         * We need to wait for an interrupt (timer tick) that might wake
+         * a sleeping thread. Enable interrupts and halt until one arrives.
+         */
+        while (current_kthread->state == THREAD_BLOCKED) {
+            /* Enable interrupts and halt atomically */
+            __asm__ volatile ("sti; hlt");
+
+            /* Timer interrupt happened - check for newly ready threads */
+            uint64_t now = apic_get_ticks();
+            kthread_t *t = &genesis_kthread;
+            while (t != NULL) {
+                if (t->state == THREAD_BLOCKED && t->wake_tick != 0 && t->wake_tick <= now) {
+                    t->state = THREAD_READY;
+                    t->wake_tick = 0;
+                }
+                t = t->next;
+            }
+
+            /* If current thread is still blocked, look for someone else to run */
+            if (current_kthread->state == THREAD_BLOCKED) {
+                /* Look for any READY thread */
+                t = &genesis_kthread;
+                while (t != NULL) {
+                    if (t->state == THREAD_READY) {
+                        kthread_t *old_thread = current_kthread;
+                        current_kthread = t;
+                        current_kthread->state = THREAD_RUNNING;
+                        kthread_switch(&old_thread->rsp, current_kthread->rsp);
+                        return;  /* When we resume, we're done */
+                    }
+                    t = t->next;
+                }
+            }
+            /* If current thread was unblocked by signal/broadcast, loop will exit */
+        }
+
+        /* Thread was unblocked while waiting - mark it running */
+        current_kthread->state = THREAD_RUNNING;
     }
 }
 
@@ -215,5 +257,17 @@ void kthread_wake_sleepers(void) {
             t->wake_tick = 0;
         }
         t = t->next;
+    }
+}
+
+void kthread_block(void) {
+    current_kthread->state = THREAD_BLOCKED;
+    current_kthread->wake_tick = 0;  /* Not timer-based, wait for explicit unblock */
+    kthread_schedule();
+}
+
+void kthread_unblock(kthread_t *thread) {
+    if (thread->state == THREAD_BLOCKED) {
+        thread->state = THREAD_READY;
     }
 }

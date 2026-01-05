@@ -18,7 +18,8 @@ typedef struct kthread {
     uint64_t rsp;
     void *stack_base;
     thread_state_t state;
-    struct kthread *next;
+    struct kthread *next;       /* Global thread list */
+    struct kthread *wait_next;  /* Wait queue linkage (mutex/condvar) */
     void (*entry)(void *);
     void *arg;
     uint64_t wake_tick;
@@ -65,5 +66,13 @@ void kthread_wake_sleepers(void);
 void preempt_disable(void);
 void preempt_enable(void);
 int preempt_enabled(void);
+
+/*
+ * Block/unblock threads (for synchronization primitives).
+ * kthread_block() - blocks current thread until explicitly unblocked
+ * kthread_unblock() - wakes a specific thread
+ */
+void kthread_block(void);
+void kthread_unblock(kthread_t *thread);
 
 #endif /* KTHREAD_H */

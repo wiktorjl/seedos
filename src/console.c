@@ -48,6 +48,9 @@ static int screen_rows, screen_cols; /* Screen dimensions in characters */
 static int cursor_visible;          /* Is cursor currently drawn? */
 static int cursor_enabled;          /* Is cursor blinking enabled? */
 static uint64_t cursor_last_toggle; /* Tick count at last toggle */
+
+/* Fullscreen mode - suppresses normal text output for demos */
+static int fullscreen_mode = 0;
 static int cursor_draw_x, cursor_draw_y; /* Position where cursor was last drawn */
 
 #define CURSOR_BLINK_TICKS  50      /* Toggle every 50 ticks (500ms at 100Hz) */
@@ -223,6 +226,7 @@ void console_clear(uint32_t color) {
 
 void console_putchar(char c, uint32_t color) {
     if (!framebuffer) return;
+    if (fullscreen_mode) return;  /* Suppress output in fullscreen mode */
 
     /* If scrolled back, return to live view on any input */
     if (view_offset > 0) {
@@ -419,4 +423,22 @@ void console_show_cursor(void) {
         draw_cursor();
         cursor_visible = 1;
     }
+}
+
+/* =============================================================================
+ * Fullscreen Mode (for demos)
+ * =============================================================================
+ */
+
+void console_set_fullscreen(int enabled) {
+    fullscreen_mode = enabled;
+    if (enabled) {
+        console_hide_cursor();
+    } else {
+        console_show_cursor();
+    }
+}
+
+int console_get_fullscreen(void) {
+    return fullscreen_mode;
 }
