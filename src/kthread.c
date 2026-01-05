@@ -55,7 +55,10 @@ void kthread_init(void) {
 void kthread_trampoline(void) {
     kthread_t *self = kthread_current();
     self->entry(self->arg);    // Call the real entry point
-    kthread_exit();            // If entry returns, exit
+    log_debug("Calling yield");
+    kthread_yield();            
+    log_debug("Calling exit");
+    kthread_exit();
 }
 
 
@@ -122,6 +125,28 @@ uint64_t kthread_create(const char *kthread_friendly_name, void (*kthread_entry_
     return new_thread->id;
 }
 
-void kthread_yield(void);
+void kthread_yield(void) {
+    current_kthread->state = THREAD_READY;
+    kthread_schedule();
+}
 
-void kthread_schedule(void);
+void kthread_schedule(void) {
+    // Simple round-robin scheduler
+    kthread_t *next_thread = current_kthread->next;
+    while(next_thread != NULL && next_thread->state != THREAD_READY) {
+        next_thread = next_thread->next;
+    }
+    if(next_thread == NULL) {
+        // Wrap around to the beginning
+        next_thread = &genesis_kthread;
+        while(next_thread != current_kthread && next_thread->state != THREAD_READY) {
+            next_thread = next_thread->next;
+        }
+    }
+    if(next_thread != NULL && next_thread != current_kthread) {
+        kthread_t *old_thread = current_kthread;
+        current_kthread = next_thread;
+        current_kthread->state = THREAD_RUNNING;
+        kthread_switch(&old_thread->rsp, current_kthread->rsp);
+    }
+}

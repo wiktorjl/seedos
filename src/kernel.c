@@ -31,7 +31,6 @@
 
 void dummy_function(void *arg) {
     log_info("Hello from a kernel thread! Argument: %llu", (uint64_t)arg);
-    kthread_exit();
 }
 
 /* =============================================================================
@@ -122,7 +121,9 @@ void kmain(void) {
         log_debug("KTHREAD: About to switch. new_rsp=%p", (void*)newkthread->rsp);
 
         kthread_t * oldkthread = kthread_current();
+        oldkthread->state = THREAD_READY;
         kthread_set_current(newkthread);
+        newkthread->state = THREAD_RUNNING;
         kthread_switch(&oldkthread->rsp, newkthread->rsp);
         log_debug("KTHREAD: Returned from switch to thread ID %llu", kthread_current()->id);
     } else {

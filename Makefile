@@ -80,9 +80,13 @@ limine:
 		$(MAKE) -C $(LIMINE_DIR); \
 	fi
 
-# Run with GDB server
+# Run with GDB server (stops at startup, waiting for debugger)
 debug: $(ISO)
 	qemu-system-x86_64 -bios $(OVMF) -cdrom $(ISO) -serial stdio -s -S
+
+# VS Code debug target (serial to file to avoid terminal conflicts)
+debug-vscode: $(ISO)
+	qemu-system-x86_64 -bios $(OVMF) -cdrom $(ISO) -serial file:$(BUILD)/serial.log -s -S
 
 # Run without debugging
 run: $(ISO)
