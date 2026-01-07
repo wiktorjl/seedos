@@ -75,11 +75,11 @@ $(KERNEL): $(OBJS) arch/x86/boot/linker.ld
 	ld -nostdlib -static -T arch/x86/boot/linker.ld -o $@ $(OBJS)
 
 # Create bootable ISO
-$(ISO): $(KERNEL) config/limine.conf | limine
+$(ISO): $(KERNEL) arch/x86/boot/limine.conf | limine
 	rm -rf $(ISO_ROOT)
 	mkdir -p $(ISO_ROOT)/boot/limine $(ISO_ROOT)/EFI/BOOT
 	cp $(KERNEL) $(ISO_ROOT)/boot/
-	cp config/limine.conf $(ISO_ROOT)/boot/limine/
+	cp arch/x86/boot/limine.conf $(ISO_ROOT)/boot/limine/
 	cp $(LIMINE_DIR)/limine-uefi-cd.bin $(ISO_ROOT)/boot/limine/
 	cp $(LIMINE_DIR)/BOOTX64.EFI $(ISO_ROOT)/EFI/BOOT/
 	xorriso -as mkisofs -R -r -J \
