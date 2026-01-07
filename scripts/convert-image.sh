@@ -11,7 +11,7 @@ fi
 
 INPUT="$1"
 OUTPUT="build/logo.bin"
-HEADER="src/logo.h"
+HEADER="lib/logo.h"
 
 # Get image dimensions
 WIDTH=$(identify -format '%w' "$INPUT")

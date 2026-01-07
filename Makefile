@@ -1,10 +1,9 @@
 .PHONY: all clean run debug limine compdb
 
-# Directories
-SRC      := src
+# Directories (Linux-style layout)
+BUILD    := build
 DATA     := data
 SCRIPTS  := scripts
-BUILD    := build
 
 # Output files
 KERNEL   := $(BUILD)/kernel.elf
@@ -19,19 +18,36 @@ LIMINE_DIR    := limine
 LIMINE_REPO   := https://github.com/limine-bootloader/limine.git
 LIMINE_BRANCH := v8.x-binary
 
+# Include paths (all directories with headers)
+INCLUDES := -Iinclude \
+            -Iinclude/seedos \
+            -Iarch/x86/include \
+            -Iarch/x86/include/asm \
+            -Iarch/x86/boot \
+            -Iarch/x86/kernel \
+            -Ikernel \
+            -Imm \
+            -Idrivers/tty \
+            -Idrivers/input \
+            -Iinit \
+            -Ilib
+
 # Compiler flags for freestanding kernel
 CFLAGS := -g -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone \
           -mno-sse -mno-sse2 -mno-mmx -mno-80387 -mcmodel=kernel \
-		  -fno-omit-frame-pointer
+          -fno-omit-frame-pointer $(INCLUDES)
 
-# Source files
-C_SRCS   := $(wildcard $(SRC)/*.c)
-ASM_SRCS := $(wildcard $(SRC)/*.S)
+# Find all source files in new structure
+C_SRCS := $(shell find arch kernel mm drivers init lib -name '*.c' 2>/dev/null)
+ASM_SRCS := $(shell find arch kernel -name '*.S' 2>/dev/null)
 
-# Object files
-C_OBJS   := $(patsubst $(SRC)/%.c,$(BUILD)/%.o,$(C_SRCS))
-ASM_OBJS := $(patsubst $(SRC)/%.S,$(BUILD)/%.o,$(ASM_SRCS))
-OBJS     := $(C_OBJS) $(ASM_OBJS)
+# Object files - flatten into build directory
+C_OBJS := $(patsubst %.c,$(BUILD)/%.o,$(notdir $(C_SRCS)))
+ASM_OBJS := $(patsubst %.S,$(BUILD)/%.o,$(notdir $(ASM_SRCS)))
+OBJS := $(C_OBJS) $(ASM_OBJS)
+
+# VPATH for finding source files
+VPATH := arch/x86/boot:arch/x86/kernel:kernel:mm:drivers/tty:drivers/input:init:lib
 
 # Default target
 all: $(ISO)
@@ -39,24 +55,24 @@ all: $(ISO)
 $(BUILD):
 	mkdir -p $(BUILD)
 
-# Convert logo image to raw BGRA (run manually: scripts/convert-image.sh data/seedos.png)
+# Convert logo image to raw BGRA
 $(BUILD)/logo.bin: $(DATA)/seedos.png $(SCRIPTS)/convert-image.sh | $(BUILD)
 	$(SCRIPTS)/convert-image.sh $(DATA)/seedos.png
 
 # Pattern rule for C files
-$(BUILD)/%.o: $(SRC)/%.c | $(BUILD)
+$(BUILD)/%.o: %.c | $(BUILD)
 	cc $(CFLAGS) -c $< -o $@
 
 # Pattern rule for assembly files
-$(BUILD)/%.o: $(SRC)/%.S | $(BUILD)
-	cc -g -I$(BUILD) -I$(DATA) -c $< -o $@
+$(BUILD)/%.o: %.S | $(BUILD)
+	cc -g $(INCLUDES) -I$(BUILD) -I$(DATA) -c $< -o $@
 
 # boot.S needs logo.bin and font.bin
 $(BUILD)/boot.o: $(DATA)/font.bin $(BUILD)/logo.bin
 
-# Link kernel
-$(KERNEL): $(OBJS) $(SRC)/linker.ld
-	ld -nostdlib -static -T $(SRC)/linker.ld -o $@ $(OBJS)
+# Link kernel (linker script moved to arch/x86/boot/)
+$(KERNEL): $(OBJS) arch/x86/boot/linker.ld
+	ld -nostdlib -static -T arch/x86/boot/linker.ld -o $@ $(OBJS)
 
 # Create bootable ISO
 $(ISO): $(KERNEL) config/limine.conf | limine
@@ -80,11 +96,11 @@ limine:
 		$(MAKE) -C $(LIMINE_DIR); \
 	fi
 
-# Run with GDB server (stops at startup, waiting for debugger)
+# Run with GDB server
 debug: $(ISO)
 	qemu-system-x86_64 -bios $(OVMF) -cdrom $(ISO) -serial stdio -s -S
 
-# VS Code debug target (serial to file to avoid terminal conflicts)
+# VS Code debug target
 debug-vscode: $(ISO)
 	qemu-system-x86_64 -bios $(OVMF) -cdrom $(ISO) -serial file:$(BUILD)/serial.log -s -S
 
@@ -101,3 +117,9 @@ compdb:
 	rm -f compile_commands.json
 	bear -- $(MAKE) clean
 	bear -- $(MAKE)
+
+# Show found sources (for debugging Makefile)
+show-sources:
+	@echo "C sources: $(C_SRCS)"
+	@echo "ASM sources: $(ASM_SRCS)"
+	@echo "Objects: $(OBJS)"
