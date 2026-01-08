@@ -1,46 +1,34 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * io.h - x86 Port I/O Functions
- *
- * Provides inline functions for reading and writing to I/O ports.
- * Used by drivers that communicate with hardware via port-mapped I/O.
+ * x86 port I/O primitives
  */
 
-#ifndef IO_H
-#define IO_H
+#ifndef _ASM_X86_IO_H
+#define _ASM_X86_IO_H
 
 #include "types.h"
 
-/* =============================================================================
- * Port Output Functions
- * =============================================================================
+/**
+ * outb - Write byte to I/O port
+ * @port: I/O port address
+ * @val: byte value to write
  */
-
-/*
- * outb - Write a byte to an I/O port.
- *
- * @port: The I/O port address.
- * @val:  The byte value to write.
- */
-static inline void outb(uint16_t port, uint8_t val) {
+static inline void outb(uint16_t port, uint8_t val)
+{
     __asm__ volatile ("outb %0, %1" : : "a"(val), "Nd"(port));
 }
 
-/* =============================================================================
- * Port Input Functions
- * =============================================================================
- */
-
-/*
- * inb - Read a byte from an I/O port.
+/**
+ * inb - Read byte from I/O port
+ * @port: I/O port address
  *
- * @port: The I/O port address.
- *
- * Returns: The byte value read from the port.
+ * Return: byte value read from the port
  */
-static inline uint8_t inb(uint16_t port) {
+static inline uint8_t inb(uint16_t port)
+{
     uint8_t ret;
     __asm__ volatile ("inb %1, %0" : "=a"(ret) : "Nd"(port));
     return ret;
 }
 
-#endif /* IO_H */
+#endif /* _ASM_X86_IO_H */

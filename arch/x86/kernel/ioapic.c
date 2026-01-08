@@ -1,7 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * ioapic.c - I/O APIC Driver
- *
- * Configures the I/O APIC to route external device interrupts to CPUs.
+ * I/O APIC driver
  */
 
 #include "ioapic.h"
@@ -9,62 +8,46 @@
 #include "vmm.h"
 #include "log.h"
 
-/* =============================================================================
- * I/O APIC State
- * =============================================================================
- */
+static volatile uint32_t *ioapic_base;
+static uint8_t ioapic_max_entry;
 
-static volatile uint32_t *ioapic_base;  /* Virtual address of I/O APIC registers */
-static uint8_t ioapic_max_entry;        /* Maximum redirection entry (usually 23) */
-
-/* =============================================================================
- * I/O APIC Register Access
- * =============================================================================
- */
-
-static uint32_t ioapic_read(uint32_t reg) {
+static uint32_t ioapic_read(uint32_t reg)
+{
     ioapic_base[IOAPIC_REGSEL / 4] = reg;
     return ioapic_base[IOAPIC_WIN / 4];
 }
 
-static void ioapic_write(uint32_t reg, uint32_t value) {
+static void ioapic_write(uint32_t reg, uint32_t value)
+{
     ioapic_base[IOAPIC_REGSEL / 4] = reg;
     ioapic_base[IOAPIC_WIN / 4] = value;
 }
 
-/*
- * Read a 64-bit redirection entry.
- * Each entry spans two 32-bit registers.
- */
-static uint64_t ioapic_read_redir(uint8_t entry) {
+/* Read 64-bit redirection entry (spans two registers) */
+static uint64_t ioapic_read_redir(uint8_t entry)
+{
     uint32_t lo = ioapic_read(IOAPIC_REDTBL_BASE + entry * 2);
     uint32_t hi = ioapic_read(IOAPIC_REDTBL_BASE + entry * 2 + 1);
     return ((uint64_t)hi << 32) | lo;
 }
 
-/*
- * Write a 64-bit redirection entry.
- */
-static void ioapic_write_redir(uint8_t entry, uint64_t value) {
+static void ioapic_write_redir(uint8_t entry, uint64_t value)
+{
     ioapic_write(IOAPIC_REDTBL_BASE + entry * 2, (uint32_t)value);
     ioapic_write(IOAPIC_REDTBL_BASE + entry * 2 + 1, (uint32_t)(value >> 32));
 }
 
-/* =============================================================================
- * Public API
- * =============================================================================
+/**
+ * ioapic_init - Initialize the I/O APIC
+ *
+ * Maps I/O APIC registers and masks all interrupts.
+ * Must be called after acpi_init().
  */
-
-void ioapic_init(void) {
+void ioapic_init(void)
+{
     acpi_info_t *acpi = acpi_get_info();
-
-    /*
-     * Map the I/O APIC registers into virtual memory.
-     */
     uint64_t ioapic_phys = acpi->io_apic_address;
     uint64_t pml4 = vmm_get_kernel_pml4();
-
-    /* Map at a fixed virtual address in kernel space */
     uint64_t ioapic_virt = 0xFFFFFFFD00001000ULL;
 
     int result = vmm_map_page(pml4, ioapic_virt, ioapic_phys,
@@ -76,7 +59,6 @@ void ioapic_init(void) {
 
     ioapic_base = (volatile uint32_t *)ioapic_virt;
 
-    /* Read version register to get max redirection entries */
     uint32_t ver = ioapic_read(IOAPIC_VER);
     ioapic_max_entry = (ver >> 16) & 0xFF;
 
@@ -85,7 +67,6 @@ void ioapic_init(void) {
     log_debug("IOAPIC: Version 0x%02x, max entries: %d",
               ver & 0xFF, ioapic_max_entry + 1);
 
-    /* Mask all interrupts initially */
     for (int i = 0; i <= ioapic_max_entry; i++) {
         uint64_t entry = ioapic_read_redir(i);
         entry |= IOAPIC_MASKED;
@@ -95,47 +76,51 @@ void ioapic_init(void) {
     log_info("IOAPIC: %d entries", ioapic_max_entry + 1);
 }
 
-/*
- * Translate ISA IRQ to GSI and get polarity/trigger flags.
+/**
+ * irq_to_gsi - Translate ISA IRQ to GSI with ACPI override handling
+ * @irq: ISA IRQ number
+ * @polarity: output for polarity flags
+ * @trigger: output for trigger mode flags
  *
- * Returns the GSI for the given IRQ (may be different due to ACPI overrides).
- * Also sets *polarity and *trigger to the appropriate IOAPIC flags.
+ * Return: GSI number (may differ from IRQ due to ACPI overrides)
  */
-static uint32_t irq_to_gsi(uint8_t irq, uint64_t *polarity, uint64_t *trigger) {
+static uint32_t irq_to_gsi(uint8_t irq, uint64_t *polarity, uint64_t *trigger)
+{
     acpi_info_t *acpi = acpi_get_info();
 
-    /* Search for an override matching this IRQ */
     for (int i = 0; i < acpi->override_count; i++) {
         if (acpi->overrides[i].irq_source == irq) {
             uint16_t flags = acpi->overrides[i].flags;
 
-            /* Decode polarity (bits 0-1): 0=default, 1=high, 3=low */
             uint8_t pol = flags & 0x03;
-            if (pol == 3) {
+            if (pol == 3)
                 *polarity = IOAPIC_POLARITY_LOW;
-            } else {
-                *polarity = IOAPIC_POLARITY_HIGH;  /* Default or explicit high */
-            }
+            else
+                *polarity = IOAPIC_POLARITY_HIGH;
 
-            /* Decode trigger mode (bits 2-3): 0=default, 1=edge, 3=level */
             uint8_t trig = (flags >> 2) & 0x03;
-            if (trig == 3) {
+            if (trig == 3)
                 *trigger = IOAPIC_TRIGGER_LEVEL;
-            } else {
-                *trigger = IOAPIC_TRIGGER_EDGE;  /* Default or explicit edge */
-            }
+            else
+                *trigger = IOAPIC_TRIGGER_EDGE;
 
             return acpi->overrides[i].gsi;
         }
     }
 
-    /* No override found, use ISA defaults */
     *polarity = IOAPIC_POLARITY_HIGH;
     *trigger = IOAPIC_TRIGGER_EDGE;
     return irq;
 }
 
-void ioapic_route_irq(uint8_t irq, uint8_t vector, uint8_t apic_id) {
+/**
+ * ioapic_route_irq - Route an ISA IRQ to a CPU
+ * @irq: ISA IRQ number (0-15)
+ * @vector: interrupt vector to deliver (32-254)
+ * @apic_id: destination Local APIC ID
+ */
+void ioapic_route_irq(uint8_t irq, uint8_t vector, uint8_t apic_id)
+{
     uint64_t polarity, trigger;
     uint32_t gsi = irq_to_gsi(irq, &polarity, &trigger);
 
@@ -153,23 +138,34 @@ void ioapic_route_irq(uint8_t irq, uint8_t vector, uint8_t apic_id) {
 
     ioapic_write_redir(gsi, entry);
 
-    if (gsi != irq) {
+    if (gsi != irq)
         log_debug("IOAPIC: IRQ %d (GSI %d) -> vector %d, APIC ID %d", irq, gsi, vector, apic_id);
-    } else {
+    else
         log_debug("IOAPIC: IRQ %d -> vector %d, APIC ID %d", irq, vector, apic_id);
-    }
 }
 
-void ioapic_mask_irq(uint8_t irq) {
-    if (irq > ioapic_max_entry) return;
+/**
+ * ioapic_mask_irq - Mask (disable) an IRQ
+ * @irq: IRQ number
+ */
+void ioapic_mask_irq(uint8_t irq)
+{
+    if (irq > ioapic_max_entry)
+        return;
 
     uint64_t entry = ioapic_read_redir(irq);
     entry |= IOAPIC_MASKED;
     ioapic_write_redir(irq, entry);
 }
 
-void ioapic_unmask_irq(uint8_t irq) {
-    if (irq > ioapic_max_entry) return;
+/**
+ * ioapic_unmask_irq - Unmask (enable) an IRQ
+ * @irq: IRQ number
+ */
+void ioapic_unmask_irq(uint8_t irq)
+{
+    if (irq > ioapic_max_entry)
+        return;
 
     uint64_t entry = ioapic_read_redir(irq);
     entry &= ~IOAPIC_MASKED;

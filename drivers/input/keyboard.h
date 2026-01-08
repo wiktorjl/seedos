@@ -1,36 +1,23 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * keyboard.h - PS/2 Keyboard Driver
- *
- * Implements interrupt-driven keyboard input using the PS/2 controller.
- * Scancodes are translated to ASCII and buffered for retrieval.
+ * PS/2 Keyboard Driver Interface
  */
 
-#ifndef KEYBOARD_H
-#define KEYBOARD_H
+#ifndef _KEYBOARD_H
+#define _KEYBOARD_H
 
 #include "types.h"
 
-/* =============================================================================
- * Keyboard Configuration
- * =============================================================================
- */
+#define KBD_BUFFER_SIZE     64
+#define IRQ_KEYBOARD        33
 
-#define KBD_BUFFER_SIZE     64      /* Keyboard input buffer size */
-#define IRQ_KEYBOARD        33      /* Interrupt vector for keyboard (ISA IRQ 1 + 32) */
-
-/* =============================================================================
- * Special Key Codes
- *
- * Non-printable keys are represented as codes >= 0x80
- * =============================================================================
- */
-
+/* Special key codes */
 #define KEY_ESCAPE      0x1B
 #define KEY_BACKSPACE   0x08
 #define KEY_TAB         0x09
 #define KEY_ENTER       0x0A
 
-/* Extended keys (returned as negative values or special codes) */
+/* Extended keys (codes >= 0x80) */
 #define KEY_F1          0x80
 #define KEY_F2          0x81
 #define KEY_F3          0x82
@@ -56,40 +43,33 @@
 #define KEY_INSERT      0x98
 #define KEY_DELETE      0x99
 
-/* =============================================================================
- * Public API
- * =============================================================================
- */
-
-/*
- * keyboard_init - Initialize the PS/2 keyboard driver.
+/**
+ * keyboard_init - Initialize the PS/2 keyboard driver
  *
- * Sets up the keyboard interrupt handler via I/O APIC.
+ * Sets up keyboard interrupt handler via I/O APIC.
  * Must be called after ioapic_init().
  */
 void keyboard_init(void);
 
-/*
- * keyboard_getchar - Get a character from the keyboard buffer.
+/**
+ * keyboard_getchar - Get a character from the keyboard buffer
  *
- * Returns: ASCII character, or -1 if buffer is empty (non-blocking).
+ * Return: ASCII character, or -1 if buffer is empty
  */
 int keyboard_getchar(void);
 
-/*
- * keyboard_read - Read a character, blocking until one is available.
+/**
+ * keyboard_read - Read a character, blocking until available
  *
- * Returns: ASCII character.
- *
- * This function halts the CPU while waiting for input.
+ * Return: ASCII character
  */
 char keyboard_read(void);
 
-/*
- * keyboard_has_input - Check if keyboard input is available.
+/**
+ * keyboard_has_input - Check if keyboard input is available
  *
- * Returns: 1 if there's input in the buffer, 0 otherwise.
+ * Return: non-zero if input pending, 0 otherwise
  */
 int keyboard_has_input(void);
 
-#endif /* KEYBOARD_H */
+#endif /* _KEYBOARD_H */

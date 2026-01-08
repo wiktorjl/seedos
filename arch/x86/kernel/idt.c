@@ -1,9 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * idt.c - Interrupt Descriptor Table
- *
- * Implements the x86-64 IDT for handling CPU exceptions and hardware IRQs.
- * CPU exceptions (vectors 0-31) print diagnostic info and halt.
- * Hardware IRQs (vectors 32-255) are dispatched to registered handlers.
+ * Interrupt Descriptor Table setup and dispatch
  */
 
 #include "idt.h"
@@ -13,8 +10,6 @@
 
 static idt_entry_t idt[IDT_SIZE];
 static idt_ptr_t idtr;
-
-/* IRQ handler table for vectors 32-255 */
 static irq_handler_t irq_handlers[256];
 
 static const char *exception_names[] = {
@@ -40,13 +35,13 @@ static const char *exception_names[] = {
     "SIMD FP Exception",
     "Virtualization Exception",
     "Control Protection Exception",
-    "Reserved", 
-    "Reserved", 
-    "Reserved", 
     "Reserved",
-    "Reserved", 
-    "Reserved", 
-    "Reserved", 
+    "Reserved",
+    "Reserved",
+    "Reserved",
+    "Reserved",
+    "Reserved",
+    "Reserved",
     "Reserved",
     "Security Exception",
     "Reserved"
@@ -84,8 +79,6 @@ extern void isr_28(void);
 extern void isr_29(void);
 extern void isr_30(void);
 extern void isr_31(void);
-
-/* Hardware IRQ stubs (vectors 32-47) */
 extern void isr_32(void);
 extern void isr_33(void);
 extern void isr_34(void);
@@ -102,167 +95,132 @@ extern void isr_44(void);
 extern void isr_45(void);
 extern void isr_46(void);
 extern void isr_47(void);
-
-/* Spurious interrupt stub */
 extern void isr_255(void);
 
-/* ISR stub table - entries 48-254 are NULL (unused) */
 static void (*isr_stubs[IDT_SIZE])(void) = {
-    /* CPU Exceptions (0-31) */
     isr_0, isr_1, isr_2, isr_3, isr_4, isr_5, isr_6, isr_7, isr_8, isr_9,
     isr_10, isr_11, isr_12, isr_13, isr_14, isr_15, isr_16, isr_17, isr_18,
     isr_19, isr_20, isr_21, isr_22, isr_23, isr_24, isr_25, isr_26, isr_27,
     isr_28, isr_29, isr_30, isr_31,
-    /* Hardware IRQs (32-47) */
     isr_32, isr_33, isr_34, isr_35, isr_36, isr_37, isr_38, isr_39,
     isr_40, isr_41, isr_42, isr_43, isr_44, isr_45, isr_46, isr_47,
-    /* Unused vectors 48-254 */
     [48 ... 254] = 0,
-    /* Spurious interrupt (255) */
     [255] = isr_255,
 };
 
-/*
- * idt_set_gate - Configure a single IDT entry.
- *
- * @n:         Vector number (0-255).
- * @handler:   Address of the ISR stub function.
- * @selector:  Code segment selector.
- * @type_attr: Gate type and attributes.
- * @ist:       Interrupt Stack Table index (0 = default stack).
- *
- * Populates the IDT entry with the handler address split across three fields
- * (offset_low, offset_mid, offset_high) as required by x86-64 IDT format.
+/**
+ * idt_set_gate - Configure a single IDT entry
+ * @n: vector number (0-255)
+ * @handler: ISR stub address
+ * @selector: code segment selector
+ * @type_attr: gate type and attributes
+ * @ist: IST index (0 = default stack)
  */
-void idt_set_gate(int n, uint64_t handler, uint16_t selector, uint8_t type_attr, uint8_t ist) {
-    idt[n].offset_low = handler & 0xFFFF;
-    idt[n].selector = selector;
-    idt[n].ist = ist & 0x07;
-    idt[n].type_attr = type_attr;
-    idt[n].offset_mid = (handler >> 16) & 0xFFFF;
-    idt[n].offset_high = (handler >> 32) & 0xFFFFFFFF;
-    idt[n].zero = 0;
+void idt_set_gate(int n, uint64_t handler, uint16_t selector, uint8_t type_attr, uint8_t ist)
+{
+	idt[n].offset_low = handler & 0xFFFF;
+	idt[n].selector = selector;
+	idt[n].ist = ist & 0x07;
+	idt[n].type_attr = type_attr;
+	idt[n].offset_mid = (handler >> 16) & 0xFFFF;
+	idt[n].offset_high = (handler >> 32) & 0xFFFFFFFF;
+	idt[n].zero = 0;
 }
 
-/*
- * idt_install - Initialize and load the IDT.
+/**
+ * idt_install - Initialize and load the IDT
  *
- * Clears the IRQ handler table, installs ISR stubs for all defined vectors,
- * and loads the IDT via the LIDT instruction. Must be called before enabling
- * interrupts.
+ * Installs ISR stubs for all defined vectors and loads the IDT.
+ * Must be called before enabling interrupts.
  */
-void idt_install(void) {
-    /* Initialize IRQ handler table */
-    for (int i = 0; i < 256; i++) {
-        irq_handlers[i] = 0;
-    }
+void idt_install(void)
+{
+	for (int i = 0; i < 256; i++)
+		irq_handlers[i] = 0;
 
-    /* Install all ISR stubs that have handlers */
-    for (int i = 0; i < IDT_SIZE; i++) {
-        if (isr_stubs[i] != 0) {
-            idt_set_gate(i, (uint64_t)isr_stubs[i], GDT_SELECTOR_FROM_LIMINE, IDT_GATE_INTERRUPT, 0);
-        }
-    }
+	for (int i = 0; i < IDT_SIZE; i++) {
+		if (isr_stubs[i] != 0)
+			idt_set_gate(i, (uint64_t)isr_stubs[i], GDT_SELECTOR_FROM_LIMINE, IDT_GATE_INTERRUPT, 0);
+	}
 
-    idtr.limit = sizeof(idt) - 1;
-    idtr.base  = (uint64_t)&idt;
+	idtr.limit = sizeof(idt) - 1;
+	idtr.base  = (uint64_t)&idt;
 
-    asm volatile ("lidt %0" : : "m"(idtr));
+	asm volatile ("lidt %0" : : "m"(idtr));
 }
 
-/*
- * idt_register_irq - Register a handler for an IRQ vector.
- *
- * @irq:     Vector number (0-255).
- * @handler: Function to call when this vector fires.
+/**
+ * idt_register_irq - Register a handler for an IRQ vector
+ * @irq: vector number (0-255)
+ * @handler: function to call when vector fires
  */
-void idt_register_irq(int irq, irq_handler_t handler) {
-    if (irq >= 0 && irq < 256) {
-        irq_handlers[irq] = handler;
-    }
+void idt_register_irq(int irq, irq_handler_t handler)
+{
+	if (irq >= 0 && irq < 256)
+		irq_handlers[irq] = handler;
 }
 
-/*
- * Check if a pointer looks like a valid kernel address.
- * Valid kernel addresses are in the higher half (above canonical hole).
- */
-static inline int is_valid_kernel_addr(uint64_t addr) {
-    /* Must be in higher half (kernel space) and 8-byte aligned for stack frames */
-    return (addr >= 0xFFFF800000000000ULL) && ((addr & 0x7) == 0);
+/* Validate kernel address (higher half, aligned) */
+static inline int is_valid_kernel_addr(uint64_t addr)
+{
+	return (addr >= 0xFFFF800000000000ULL) && ((addr & 0x7) == 0);
 }
 
-/*
- * backtrace - Print a stack trace for debugging.
- *
- * @rip: Instruction pointer (starting address).
- * @rbp: Base pointer (frame pointer for stack walk).
- *
- * Walks the call stack via frame pointers, printing up to 10 return addresses.
- * Validates each frame pointer before dereferencing to avoid faulting in the
- * exception handler.
+/**
+ * backtrace - Print stack trace via frame pointers
+ * @rip: faulting instruction pointer
+ * @rbp: frame pointer for stack walk
  */
-void backtrace(uint64_t rip, uint64_t rbp) {
-    log_debug("Backtrace:");
+void backtrace(uint64_t rip, uint64_t rbp)
+{
+	log_debug("Backtrace:");
+	log_debug("  [0] 0x%016llx", rip);
 
-    /* Frame 0: the faulting instruction */
-    log_debug("  [0] 0x%016llx", rip);
+	for (int i = 1; i < 10 && rbp != 0; i++) {
+		if (!is_valid_kernel_addr(rbp)) {
+			log_debug("  [%d] <invalid frame pointer: 0x%016llx>", i, rbp);
+			break;
+		}
 
-    for (int i = 1; i < 10 && rbp != 0; i++) {
-        /* Validate RBP before dereferencing to avoid faulting in the exception handler */
-        if (!is_valid_kernel_addr(rbp)) {
-            log_debug("  [%d] <invalid frame pointer: 0x%016llx>", i, rbp);
-            break;
-        }
+		uint64_t *frame = (uint64_t *)rbp;
+		uint64_t ret_addr = frame[1];
+		uint64_t prev_rbp = frame[0];
 
-        uint64_t *frame = (uint64_t *)rbp;
-        uint64_t ret_addr = frame[1];   // return address
-        uint64_t prev_rbp = frame[0];   // previous frame pointer
-
-        log_debug("  [%d] 0x%016llx", i, ret_addr - 1); // -1 to get inside the calling instruction
-
-        rbp = prev_rbp;
-    }
+		log_debug("  [%d] 0x%016llx", i, ret_addr - 1);
+		rbp = prev_rbp;
+	}
 }
 
-/*
- * interrupt_handler - Common interrupt dispatcher.
+/**
+ * interrupt_handler - Common interrupt dispatcher
+ * @frame: saved register state from ISR stub
  *
- * @frame: Pointer to saved register state pushed by ISR stub.
- *
- * Called by all ISR stubs after they push registers. Routes CPU exceptions
- * (0-31) to the panic handler, ignores spurious interrupts (255), and
- * dispatches hardware IRQs (32-254) to registered handlers.
+ * Routes exceptions (0-31) to panic, dispatches IRQs (32-254) to
+ * registered handlers, ignores spurious (255).
  */
-void interrupt_handler(interrupt_frame_t *frame) {
-    uint64_t int_no = frame->int_no;
+void interrupt_handler(interrupt_frame_t *frame)
+{
+	uint64_t int_no = frame->int_no;
 
-    /* CPU Exceptions (0-31) */
-    if (int_no < 32) {
-        log_panic("EXCEPTION: %s (int %d, error=0x%x)",
-                exception_names[int_no], int_no, frame->error_code);
-        log_panic("RIP: 0x%016llx  RSP: 0x%016llx", frame->rip, frame->rsp);
-        log_panic("RAX: 0x%016llx  RBX: 0x%016llx", frame->rax, frame->rbx);
-        log_panic("RCX: 0x%016llx  RDX: 0x%016llx", frame->rcx, frame->rdx);
+	if (int_no < 32) {
+		log_panic("EXCEPTION: %s (int %d, error=0x%x)",
+			exception_names[int_no], int_no, frame->error_code);
+		log_panic("RIP: 0x%016llx  RSP: 0x%016llx", frame->rip, frame->rsp);
+		log_panic("RAX: 0x%016llx  RBX: 0x%016llx", frame->rax, frame->rbx);
+		log_panic("RCX: 0x%016llx  RDX: 0x%016llx", frame->rcx, frame->rdx);
 
-        backtrace(frame->rip, frame->rbp);
+		backtrace(frame->rip, frame->rbp);
 
-        /* Halt - don't return from fatal exceptions */
-        log_panic("System halted.\n");
-        while (1) {
-            asm volatile ("hlt");
-        }
-    }
+		log_panic("System halted.\n");
+		while (1)
+			asm volatile ("hlt");
+	}
 
-    /* Spurious interrupt (255) - just ignore */
-    if (int_no == 255) {
-        return;
-    }
+	if (int_no == 255)
+		return;
 
-    /* Hardware IRQs (32-254) */
-    if (irq_handlers[int_no] != 0) {
-        irq_handlers[int_no](frame);
-    } else {
-        /* Unhandled IRQ - send EOI anyway to prevent lockup */
-        apic_eoi();
-    }
+	if (irq_handlers[int_no] != 0)
+		irq_handlers[int_no](frame);
+	else
+		apic_eoi();
 }

@@ -1,11 +1,10 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * acpi.h - ACPI Table Definitions
- *
- * Advanced Configuration and Power Interface structures.
+ * ACPI table structure definitions
  */
 
-#ifndef ACPI_H
-#define ACPI_H
+#ifndef _ACPI_H
+#define _ACPI_H
 
 #include <stdint.h>
 
@@ -146,28 +145,23 @@ typedef struct {
     irq_override_t overrides[MAX_IRQ_OVERRIDES];
 } acpi_info_t;
 
-/* =============================================================================
- * Public API
- * =============================================================================
- */
-
-/*
- * acpi_init - Parse ACPI tables and extract hardware information.
+/**
+ * acpi_init - Parse ACPI tables and extract hardware information
  *
- * Returns: 0 on success, -1 on failure (ACPI not available or parse error).
+ * Locates RSDP, parses RSDT/XSDT, extracts Local APIC, I/O APIC,
+ * and CPU information from MADT.
  *
- * Locates the RSDP, parses the RSDT/XSDT, and extracts Local APIC, I/O APIC,
- * and CPU information from the MADT.
+ * Return: 0 on success, -1 on failure
  */
 int acpi_init(void);
 
-/*
- * acpi_get_info - Get parsed ACPI information.
+/**
+ * acpi_get_info - Get parsed ACPI information
  *
- * Returns: Pointer to global acpi_info_t structure.
+ * Only valid after successful acpi_init().
  *
- * Only valid after acpi_init() returns success.
+ * Return: pointer to global acpi_info structure
  */
 acpi_info_t *acpi_get_info(void);
 
-#endif /* ACPI_H */
+#endif /* _ACPI_H */

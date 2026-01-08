@@ -1,13 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * acpi.c - ACPI Table Parser
- *
- * Parses ACPI tables to discover hardware configuration including
- * CPU topology, APIC addresses, and interrupt routing.
- */
-
-/* =============================================================================
- * Includes
- * =============================================================================
+ * ACPI table parser for MADT/APIC discovery
  */
 
 #include "acpi.h"
@@ -16,37 +9,23 @@
 #include "vmm.h"
 #include "pmm.h"
 
-/* =============================================================================
- * Module State
- * =============================================================================
- */
-
 static acpi_info_t acpi_info;
 
-/*
- * Virtual address region for ACPI mappings.
- * We use a fixed region in kernel space for mapping ACPI tables.
- * This is separate from the kernel heap to avoid conflicts.
- */
+/* Fixed virtual region for ACPI table mappings */
 #define ACPI_VIRT_BASE  0xFFFFFFFE00000000ULL
 static uint64_t acpi_virt_next = ACPI_VIRT_BASE;
 
-/* =============================================================================
- * Internal Helper Functions
- * =============================================================================
- */
-
-/*
- * Map a physical memory region to kernel virtual address space.
- * Used for ACPI tables that aren't in the HHDM with Limine revision 3.
+/**
+ * acpi_map_region - Map physical ACPI region to kernel address space
+ * @phys: physical address (page-aligned down internally)
+ * @size: region size in bytes
  *
- * @phys: Physical address to map (will be page-aligned down)
- * @size: Size of the region in bytes
+ * Maps ACPI tables not present in HHDM (Limine revision 3+).
  *
- * Returns: Virtual address corresponding to the physical address,
- *          or NULL on failure.
+ * Return: virtual address or NULL on failure
  */
-static void *acpi_map_region(uint64_t phys, size_t size) {
+static void *acpi_map_region(uint64_t phys, size_t size)
+{
     uint64_t pml4 = vmm_get_kernel_pml4();
 
     /* Calculate page-aligned boundaries */
@@ -75,7 +54,8 @@ static void *acpi_map_region(uint64_t phys, size_t size) {
     return (void *)(virt_base + offset);
 }
 
-static int acpi_checksum(void *ptr, uint32_t length) {
+static int acpi_checksum(void *ptr, uint32_t length)
+{
     uint8_t sum = 0;
     uint8_t *bytes = (uint8_t *)ptr;
     for (uint32_t i = 0; i < length; i++) {
@@ -84,11 +64,13 @@ static int acpi_checksum(void *ptr, uint32_t length) {
     return sum == 0;
 }
 
-static int sig_match(const char *a, const char *b) {
+static int sig_match(const char *a, const char *b)
+{
     return (a[0] == b[0] && a[1] == b[1] && a[2] == b[2] && a[3] == b[3]);
 }
 
-static void parse_madt(madt_t *madt) {
+static void parse_madt(madt_t *madt)
+{
     acpi_info.local_apic_address = madt->local_apic_address;
     acpi_info.has_pic = madt->flags & 1;
 
@@ -151,11 +133,13 @@ static void parse_madt(madt_t *madt) {
         }
 
         entry_ptr += header->length;
-        if (header->length == 0) break;  /* Prevent infinite loop */
+        if (header->length == 0)
+            break;  /* malformed entry */
     }
 }
 
-static acpi_sdt_header_t *find_table(void *root_sdt, const char *signature, int use_xsdt) {
+static acpi_sdt_header_t *find_table(void *root_sdt, const char *signature, int use_xsdt)
+{
     if (use_xsdt) {
         xsdt_t *xsdt = (xsdt_t *)root_sdt;
         int entries = (xsdt->header.length - sizeof(acpi_sdt_header_t)) / sizeof(uint64_t);
@@ -194,18 +178,17 @@ static acpi_sdt_header_t *find_table(void *root_sdt, const char *signature, int 
     return NULL;
 }
 
-/* =============================================================================
- * Public API
- * =============================================================================
+/**
+ * acpi_init - Parse ACPI tables and extract hardware information
+ *
+ * Locates RSDP, parses RSDT/XSDT, extracts Local APIC, I/O APIC,
+ * and CPU information from MADT.
+ *
+ * Return: 0 on success, -1 on failure
  */
-
-int acpi_init(void) {
-    /*
-     * Get RSDP from Limine.
-     * Note: Limine base revision 3 returns a physical address.
-     * With revision 3, ACPI regions are NOT in the HHDM, so we must
-     * manually map them before access.
-     */
+int acpi_init(void)
+{
+    /* Limine rev 3+ returns physical RSDP address, must map before access */
     void *rsdp_phys = limine_get_rsdp();
     log_debug("ACPI: RSDP physical address: %p", rsdp_phys);
     if (rsdp_phys == NULL) {
@@ -229,10 +212,7 @@ int acpi_init(void) {
         return -1;
     }
 
-    /*
-     * Verify RSDP checksum.
-     * ACPI 1.0 RSDP checksum covers exactly the first 20 bytes.
-     */
+    /* ACPI 1.0 RSDP checksum covers first 20 bytes */
     if (!acpi_checksum(rsdp, 20)) {
         log_error("ACPI: RSDP checksum failed");
         return -1;
@@ -260,10 +240,7 @@ int acpi_init(void) {
         log_debug("ACPI: Using RSDT at 0x%08x", rsdp->rsdt_address);
     }
 
-    /*
-     * First map just the header to read the table length,
-     * then map the full table.
-     */
+    /* Map header first to determine full table length */
     acpi_sdt_header_t *root_header = (acpi_sdt_header_t *)acpi_map_region(
         root_sdt_phys, sizeof(acpi_sdt_header_t));
     if (root_header == NULL) {
@@ -305,6 +282,14 @@ int acpi_init(void) {
     return 0;
 }
 
-acpi_info_t *acpi_get_info(void) {
+/**
+ * acpi_get_info - Get parsed ACPI information
+ *
+ * Only valid after successful acpi_init().
+ *
+ * Return: pointer to global acpi_info structure
+ */
+acpi_info_t *acpi_get_info(void)
+{
     return &acpi_info;
 }

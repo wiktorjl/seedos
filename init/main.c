@@ -1,12 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * kernel.c - SeedOS Kernel Entry Point
+ * Kernel entry point
  *
  * Main kernel initialization and boot sequence.
- */
-
-/* =============================================================================
- * Includes
- * =============================================================================
  */
 
 #include "limine.h"
@@ -30,25 +26,22 @@
 #include <stdint.h>
 #include <threads.h>
 
-void dummy_function(void *arg) {
-    log_info("Hello from a kernel thread! Argument: %llu", (uint64_t)arg);
+void dummy_function(void *arg)
+{
+	log_info("Hello from a kernel thread! Argument: %llu", (uint64_t)arg);
 }
 
-void printA(void *arg) {
-    for(volatile int i = 0; i < 1000000; i++) {
-        kthread_sleep(500);
-        log_info("A");
-    }
-    log_info("A - DONE");
+void printA(void *arg)
+{
+	for (volatile int i = 0; i < 1000000; i++) {
+		kthread_sleep(500);
+		log_info("A");
+	}
+	log_info("A - DONE");
 }
 
-/* =============================================================================
- * Kernel Main Entry Point
- * =============================================================================
- */
-
-/*
- * kmain - Kernel entry point after bootloader handoff.
+/**
+ * kmain - Kernel entry point after bootloader handoff
  *
  * Initializes all kernel subsystems in dependency order:
  *   1. Console/terminal for output
@@ -60,86 +53,66 @@ void printA(void *arg) {
  *
  * Then starts the kernel shell.
  */
-void kmain(void) {
-    struct limine_framebuffer *fb = limine_get_framebuffer();
-    if (fb == NULL) return;
+void kmain(void)
+{
+	struct limine_framebuffer *fb = limine_get_framebuffer();
 
-    console_init(fb);
-    terminal_init();
+	if (fb == NULL)
+		return;
 
-    log_info("TERM: Initialized");
+	console_init(fb);
+	terminal_init();
 
-    log_info("STACK: Top: 0x%llx", cpu_get_stack_top());
-    log_info("STACK: Size: %llu bytes", (uint64_t)stack_size);
+	log_info("TERM: Initialized");
 
-    idt_install();
-    log_info("IDT: Initialized");
+	log_info("STACK: Top: 0x%llx", cpu_get_stack_top());
+	log_info("STACK: Size: %llu bytes", (uint64_t)stack_size);
 
-    pmm_init(limine_get_memmap(), limine_get_hhdm_offset());
-    log_info("PMM: %llu/%llu pages free", pmm_get_free_pages(), pmm_get_usable_pages());
-    log_info("PMM: Initialized");
+	idt_install();
+	log_info("IDT: Initialized");
 
-    vmm_init(limine_get_hhdm_offset());
-    /* Print some info about vmm */
-    log_info("VMM: Kernel PML4 at physical address 0x%llx", vmm_get_kernel_pml4());
-    log_info("VMM: Page size: %llu bytes", PAGE_SIZE);
-    log_info("VMM: Initialized");
+	pmm_init(limine_get_memmap(), limine_get_hhdm_offset());
+	log_info("PMM: %llu/%llu pages free", pmm_get_free_pages(), pmm_get_usable_pages());
+	log_info("PMM: Initialized");
 
-    kheap_init();
-    log_info("HEAP: Initialized");
+	vmm_init(limine_get_hhdm_offset());
+	/* Print some info about vmm */
+	log_info("VMM: Kernel PML4 at physical address 0x%llx", vmm_get_kernel_pml4());
+	log_info("VMM: Page size: %llu bytes", PAGE_SIZE);
+	log_info("VMM: Initialized");
 
-    /* Print location and size of heap and stack */
-    log_info("HEAP: Used: %llu bytes, Free: %llu bytes",
-             (uint64_t)kheap_get_used(), (uint64_t)kheap_get_free());
+	kheap_init();
+	log_info("HEAP: Initialized");
 
-    acpi_init();
-    log_info("ACPI: Initialized");
+	/* Print location and size of heap and stack */
+	log_info("HEAP: Used: %llu bytes, Free: %llu bytes",
+		 (uint64_t)kheap_get_used(), (uint64_t)kheap_get_free());
 
-    apic_init();
-    log_info("APIC: Initialized");
+	acpi_init();
+	log_info("ACPI: Initialized");
 
-    ioapic_init();
-    log_info("IOAPIC: Initialized");
+	apic_init();
+	log_info("APIC: Initialized");
 
-    keyboard_init();
-    log_info("KEYBOARD: Initialized");
+	ioapic_init();
+	log_info("IOAPIC: Initialized");
 
-    /* Enable interrupts after all hardware is initialized */
-    cpu_enable_interrupts();
-    log_info("INT: Enabled");
+	keyboard_init();
+	log_info("KEYBOARD: Initialized");
 
-    /* Print system summary */
-    sysinfo_init();
-    sysinfo_print_summary();
+	/* Enable interrupts after all hardware is initialized */
+	cpu_enable_interrupts();
+	log_info("INT: Enabled");
 
-    /* Init kernel threads */
-    kthread_init();
-    log_info("KTHREAD: Initialized");
+	/* Print system summary */
+	sysinfo_init();
+	sysinfo_print_summary();
 
-    // log_debug("Attempting to create a kernel thread...");
-    // uint64_t kthread_id = kthread_create("example-kthread", printA, (void *)1337);
-    // if (kthread_id != 0) {
-    //     log_info("KTHREAD: Created example kernel thread with ID %llu", kthread_id);
-    // } else {
-    //     log_warn("KTHREAD: Failed to create example kernel thread");
-    // }   
+	/* Init kernel threads */
+	kthread_init();
+	log_info("KTHREAD: Initialized");
 
-    // kthread_t * newkthread = kthread_get_kthread(kthread_id);
-    // if (newkthread != NULL) {
-    //     log_info("KTHREAD: Retrieved kernel thread with ID %llu", newkthread->id);
-    //     log_debug("KTHREAD: About to switch. new_rsp=%p", (void*)newkthread->rsp);
-
-    //     kthread_t * oldkthread = kthread_current();
-    //     oldkthread->state = THREAD_READY;
-    //     kthread_set_current(newkthread);
-    //     newkthread->state = THREAD_RUNNING;
-    //     kthread_switch(&oldkthread->rsp, newkthread->rsp);
-    //     log_debug("KTHREAD: Returned from switch to thread ID %llu", kthread_current()->id);
-    // } else {
-    //     log_panic("KTHREAD: Failed to retrieve kernel thread with ID %llu", kthread_id);
-    // }
-
-    /* Start the kernel shell */
-    kshell_init();
-    kshell_run();  /* Does not return */
+	/* Start the kernel shell */
+	kshell_init();
+	kshell_run();  /* Does not return */
 }

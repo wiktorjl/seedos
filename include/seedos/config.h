@@ -1,9 +1,10 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * config.h - SeedOS Build Configuration
+ * Build configuration
  */
 
-#ifndef CONFIG_H
-#define CONFIG_H
+#ifndef _CONFIG_H
+#define _CONFIG_H
 
 /* Log levels (0 = most severe, 5 = most verbose) */
 #define LOG_PANIC   0
@@ -20,11 +21,6 @@
 #define CONFIG_OUTPUT_CONSOLE       1
 #define CONFIG_OUTPUT_SERIAL        1
 
-/* =============================================================================
- * Kernel Thread Scheduling
- * =============================================================================
- */
-
 /* Scheduling mode: 0 = cooperative, 1 = preemptive */
 #define CONFIG_KTHREAD_PREEMPTIVE   1
 
@@ -37,4 +33,4 @@
 #define CONFIG_CONSOLE_COLOR_DEBUG   0x888888  /* Gray */
 #define CONFIG_CONSOLE_COLOR_TRACE   0x666666  /* Dark gray */
 
-#endif /* CONFIG_H */
+#endif /* _CONFIG_H */

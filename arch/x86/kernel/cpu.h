@@ -1,33 +1,51 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * cpu.h - CPU Primitives
+ * x86-64 CPU primitives
  */
 
-#ifndef CPU_H
-#define CPU_H
+#ifndef _CPU_H
+#define _CPU_H
 
 #include "types.h"
 
-/* Stack symbols from boot.S */
 extern uint64_t stack_size;
 extern char stack_bottom[];
 extern char stack_top[];
 
-static inline uint64_t cpu_get_stack_top(void) {
-    uint64_t rsp;
-    __asm__ volatile("movq %%rsp, %0" : "=r"(rsp));
-    return rsp;
+/**
+ * cpu_get_stack_top - Get current stack pointer
+ *
+ * Return: current RSP value
+ */
+static inline uint64_t cpu_get_stack_top(void)
+{
+	uint64_t rsp;
+	__asm__ volatile("movq %%rsp, %0" : "=r"(rsp));
+	return rsp;
 }
 
-static inline void cpu_enable_interrupts(void) {
-    __asm__ volatile("sti");
+/**
+ * cpu_enable_interrupts - Enable interrupts (STI)
+ */
+static inline void cpu_enable_interrupts(void)
+{
+	__asm__ volatile("sti");
 }
 
-static inline void cpu_disable_interrupts(void) {
-    __asm__ volatile("cli");
+/**
+ * cpu_disable_interrupts - Disable interrupts (CLI)
+ */
+static inline void cpu_disable_interrupts(void)
+{
+	__asm__ volatile("cli");
 }
 
-static inline void cpu_halt(void) {
-    __asm__ volatile("hlt");
+/**
+ * cpu_halt - Halt CPU until next interrupt (HLT)
+ */
+static inline void cpu_halt(void)
+{
+	__asm__ volatile("hlt");
 }
 
-#endif /* CPU_H */
+#endif /* _CPU_H */

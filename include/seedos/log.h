@@ -1,8 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * log.h - Logging Interface
+ * Logging interface
  *
- * Provides leveled logging macros that filter based on CONFIG_LOG_LEVEL.
- * Each log level has a distinct prefix and color for console output.
+ * Leveled logging macros filtered by CONFIG_LOG_LEVEL.
  *
  * Log Levels (in order of severity):
  *   LOG_PANIC - System is unusable, will halt
@@ -17,8 +17,8 @@
  *   log_error("Failed to allocate memory");
  */
 
-#ifndef LOG_H
-#define LOG_H
+#ifndef _LOG_H
+#define _LOG_H
 
 #include "config.h"
 #include "kprintf.h"
@@ -41,4 +41,4 @@
 #define log_trace(fmt, ...) \
     kprintf_log(LOG_TRACE, "[ trace ] ", CONFIG_CONSOLE_COLOR_TRACE, fmt, ##__VA_ARGS__)
 
-#endif /* LOG_H */
+#endif /* _LOG_H */
