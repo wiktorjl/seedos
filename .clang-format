@@ -1,0 +1,19 @@
+# Linux kernel coding style for clang-format
+# See: https://www.kernel.org/doc/html/latest/process/coding-style.html
+
+BasedOnStyle: Linux
+IndentWidth: 8
+UseTab: Always
+TabWidth: 8
+ColumnLimit: 80
+BreakBeforeBraces: Linux
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+IndentCaseLabels: false
+AlignConsecutiveMacros: true
+AlignEscapedNewlines: Left
+AlignTrailingComments: true
+PointerAlignment: Right
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
