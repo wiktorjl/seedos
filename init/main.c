@@ -14,6 +14,7 @@
 #include "kprintf.h"
 #include "gdt.h"
 #include "percpu.h"
+#include "fpu.h"
 #include "idt.h"
 #include "pmm.h"
 #include "vmm.h"
@@ -75,6 +76,9 @@ void kmain(void)
 
 	percpu_init();
 	log_info("PERCPU: Initialized");
+
+	fpu_init();
+	log_info("FPU: Initialized");
 
 	idt_install();
 	log_info("IDT: Initialized");

@@ -221,7 +221,7 @@ wrmsr(MSR_STAR, star);
 ---
 
 ### Task 1.4: FPU/SSE State Management
-- [ ] Add to `kernel/process.h`
+- [ ] Add to `kernel/process.h` (deferred until Phase 3)
   ```c
   // FPU/SSE state (512 bytes for fxsave, 16-byte aligned)
   typedef struct {
@@ -232,14 +232,14 @@ wrmsr(MSR_STAR, star);
   fpu_state_t *fpu_state;      // NULL until first FPU use
   bool fpu_used;               // Has this process used FPU?
   ```
-- [ ] Create `arch/x86/kernel/fpu.h`
+- [x] Create `arch/x86/kernel/fpu.h`
   ```c
   void fpu_init(void);                    // Enable SSE in CR0/CR4
   void fpu_save(fpu_state_t *state);      // fxsave
   void fpu_restore(fpu_state_t *state);   // fxrstor
   void fpu_init_state(fpu_state_t *state); // Initialize clean FPU state
   ```
-- [ ] Create `arch/x86/kernel/fpu.c`
+- [x] Create `arch/x86/kernel/fpu.c`
   ```c
   void fpu_init(void) {
       uint64_t cr0, cr4;
@@ -265,10 +265,12 @@ wrmsr(MSR_STAR, star);
       __asm__ volatile("fxrstor %0" :: "m"(*state));
   }
   ```
-- [ ] Modify `kernel/process.c` - context switch
+- [ ] Modify `kernel/process.c` - context switch (deferred until Phase 3)
   - Save FPU state when switching away from process that used FPU
   - Restore FPU state when switching to process with saved FPU state
-- [ ] Call `fpu_init()` in `kmain()` after GDT setup
+- [x] Call `fpu_init()` in `kmain()` after GDT setup
+
+**Test:** CR0/CR4 bits set correctly. ✓ Verified
 
 **Implementation choice: Eager vs Lazy FPU**
 
