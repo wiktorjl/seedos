@@ -28,6 +28,8 @@
 #include "kthread.h"
 #include "process.h"
 #include "kshell.h"
+#include "vfs.h"
+#include "tty_dev.h"
 #include <stdint.h>
 #include <threads.h>
 
@@ -128,6 +130,14 @@ void kmain(void)
 	/* Init kernel threads */
 	kthread_init();
 	log_info("KTHREAD: Initialized");
+
+	/* Init virtual filesystem */
+	vfs_init();
+	log_info("VFS: Initialized");
+
+	/* Init TTY device layer */
+	tty_init();
+	log_info("TTY: Initialized");
 
 	/* Init process management */
 	process_init();

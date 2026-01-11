@@ -15,4 +15,14 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+/*
+ * POSIX-like types not provided by freestanding headers
+ */
+typedef int64_t ssize_t;    /* Signed size (for read/write return values) */
+typedef int64_t off_t;      /* File offset */
+typedef int32_t pid_t;      /* Process ID */
+typedef uint32_t mode_t;    /* File mode/permissions */
+typedef uint32_t uid_t;     /* User ID */
+typedef uint32_t gid_t;     /* Group ID */
+
 #endif /* _TYPES_H */

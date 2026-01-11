@@ -14,6 +14,7 @@
 #include "gdt.h"
 #include "percpu.h"
 #include "log.h"
+#include "tty_dev.h"
 #include <stddef.h>
 
 /*
@@ -125,7 +126,14 @@ process_t *process_create(const char *name)
         proc->fd_table[i].flags = 0;
     }
 
-    /* TODO: Set up stdin/stdout/stderr (fd 0, 1, 2) when VFS is ready */
+    /* Set up standard file descriptors */
+    proc->fd_table[0].file = tty_open(O_RDONLY);   /* stdin */
+    proc->fd_table[1].file = tty_open(O_WRONLY);   /* stdout */
+    proc->fd_table[2].file = tty_open(O_WRONLY);   /* stderr */
+
+    if (!proc->fd_table[0].file || !proc->fd_table[1].file || !proc->fd_table[2].file) {
+        log_warn("PROCESS: Failed to set up stdio for PID %llu", proc->pid);
+    }
 
     /* Add to parent's children list */
     if (proc->parent) {
@@ -180,6 +188,14 @@ void process_destroy(process_t *proc)
             break;
         }
         pp = &(*pp)->next;
+    }
+
+    /* Close all open file descriptors */
+    for (int i = 0; i < PROC_MAX_FDS; i++) {
+        if (proc->fd_table[i].file) {
+            vfs_close(proc->fd_table[i].file);
+            proc->fd_table[i].file = NULL;
+        }
     }
 
     /* Free user address space */

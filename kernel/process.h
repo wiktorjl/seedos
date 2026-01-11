@@ -24,6 +24,7 @@
 
 #include "types.h"
 #include "kthread.h"
+#include "vfs.h"
 
 /*
  * Maximum number of open file descriptors per process
@@ -52,11 +53,9 @@ typedef enum {
 
 /*
  * File descriptor entry
- *
- * Minimal for now - will be expanded when VFS is implemented.
  */
 typedef struct fd_entry {
-    void *file;         /* Pointer to vfs_file (NULL if unused) */
+    vfs_file_t *file;   /* VFS file handle (NULL if unused) */
     int flags;          /* O_CLOEXEC, etc. */
 } fd_entry_t;
 

@@ -27,6 +27,7 @@ INCLUDES := -Iinclude \
             -Iarch/x86/kernel \
             -Ikernel \
             -Imm \
+            -Ifs \
             -Idrivers/tty \
             -Idrivers/input \
             -Iinit \
@@ -39,7 +40,7 @@ CFLAGS := -g -ffreestanding -fno-stack-protector -fno-pic -mno-red-zone \
           -fno-omit-frame-pointer $(INCLUDES)
 
 # Find all source files in new structure
-C_SRCS := $(shell find arch kernel mm drivers init lib demos -name '*.c' 2>/dev/null)
+C_SRCS := $(shell find arch kernel mm fs drivers init lib demos -name '*.c' 2>/dev/null)
 ASM_SRCS := $(shell find arch kernel -name '*.S' 2>/dev/null)
 
 # Object files - flatten into build directory
@@ -48,7 +49,7 @@ ASM_OBJS := $(patsubst %.S,$(BUILD)/%.o,$(notdir $(ASM_SRCS)))
 OBJS := $(C_OBJS) $(ASM_OBJS)
 
 # VPATH for finding source files
-VPATH := arch/x86/boot:arch/x86/kernel:kernel:mm:drivers/tty:drivers/input:init:lib:demos
+VPATH := arch/x86/boot:arch/x86/kernel:kernel:mm:fs:drivers/tty:drivers/input:init:lib:demos
 
 # Default target
 all: $(ISO)

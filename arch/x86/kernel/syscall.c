@@ -12,7 +12,7 @@
 #include "percpu.h"
 #include "gdt.h"
 #include "log.h"
-#include "terminal.h"
+#include "vfs.h"
 
 /*
  * Syscall dispatch table
@@ -172,33 +172,19 @@ int64_t syscall_dispatch(syscall_frame_t *frame)
 
 /**
  * sys_read - Read from a file descriptor
- *
- * Stub: Currently only returns -EBADF (no VFS yet)
  */
 static int64_t sys_read(uint64_t fd, uint64_t buf, uint64_t count,
                         uint64_t arg4, uint64_t arg5, uint64_t arg6)
 {
-    (void)buf; (void)count;
     (void)arg4; (void)arg5; (void)arg6;
 
-    log_debug("sys_read(fd=%llu, buf=0x%llx, count=%llu)", fd, buf, count);
+    process_t *proc = process_current();
+    if (!proc) {
+        return -EBADF;
+    }
 
-    /* TODO: Implement when VFS is ready */
-    return -EBADF;
-}
-
-/**
- * sys_write - Write to a file descriptor
- *
- * Stub: Writes to terminal for fd 1 (stdout) and 2 (stderr)
- */
-static int64_t sys_write(uint64_t fd, uint64_t buf, uint64_t count,
-                         uint64_t arg4, uint64_t arg5, uint64_t arg6)
-{
-    (void)arg4; (void)arg5; (void)arg6;
-
-    /* Only stdout (1) and stderr (2) supported for now */
-    if (fd != 1 && fd != 2) {
+    /* Validate file descriptor */
+    if (fd >= PROC_MAX_FDS || proc->fd_table[fd].file == NULL) {
         return -EBADF;
     }
 
@@ -206,15 +192,34 @@ static int64_t sys_write(uint64_t fd, uint64_t buf, uint64_t count,
      * TODO: Validate user pointer with vmm_validate_user_range()
      * For now, we trust the pointer (dangerous but works for testing)
      */
-    const char *user_buf = (const char *)buf;
-    terminal_t *term = terminal_get_active();
+    vfs_file_t *file = proc->fd_table[fd].file;
+    return vfs_read(file, (void *)buf, count);
+}
 
-    /* Write each character to terminal */
-    for (uint64_t i = 0; i < count; i++) {
-        terminal_putchar(term, user_buf[i]);
+/**
+ * sys_write - Write to a file descriptor
+ */
+static int64_t sys_write(uint64_t fd, uint64_t buf, uint64_t count,
+                         uint64_t arg4, uint64_t arg5, uint64_t arg6)
+{
+    (void)arg4; (void)arg5; (void)arg6;
+
+    process_t *proc = process_current();
+    if (!proc) {
+        return -EBADF;
     }
 
-    return (int64_t)count;
+    /* Validate file descriptor */
+    if (fd >= PROC_MAX_FDS || proc->fd_table[fd].file == NULL) {
+        return -EBADF;
+    }
+
+    /*
+     * TODO: Validate user pointer with vmm_validate_user_range()
+     * For now, we trust the pointer (dangerous but works for testing)
+     */
+    vfs_file_t *file = proc->fd_table[fd].file;
+    return vfs_write(file, (const void *)buf, count);
 }
 
 /**
