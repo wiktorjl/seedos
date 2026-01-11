@@ -18,6 +18,8 @@
 #include "matrix.h"
 #include "sync.h"
 #include "apic.h"
+#include "kinit.h"
+#include "ext2.h"
 
 static char input_buffer[KSHELL_MAX_INPUT];
 static int input_len;
@@ -46,6 +48,7 @@ static void cmd_matrix(int argc, char *argv[]);
 static void cmd_spintest(int argc, char *argv[]);
 static void cmd_mutextest(int argc, char *argv[]);
 static void cmd_condtest(int argc, char *argv[]);
+static void cmd_init(int argc, char *argv[]);
 
 static const command_t commands[] = {
 	{"help",      "Show available commands",      cmd_help},
@@ -58,6 +61,7 @@ static const command_t commands[] = {
 	{"spintest",  "Test spinlock (busy-wait)",    cmd_spintest},
 	{"mutextest", "Test mutex (sleep-wait)",      cmd_mutextest},
 	{"condtest",  "Test condition variables",     cmd_condtest},
+	{"init",      "Launch /init from initrd",     cmd_init},
 	{NULL, NULL, NULL}
 };
 
@@ -324,6 +328,55 @@ static void cmd_condtest(int argc, char *argv[])
 		kthread_sleep(50);
 
 	kprintf("\nSUCCESS: Producer/Consumer completed!\n");
+}
+
+static void cmd_init(int argc, char *argv[])
+{
+	uint32_t init_ino;
+	ext2_inode_t *inode;
+	uint64_t size;
+	char header[64];
+	ssize_t n;
+
+	(void)argc;
+	(void)argv;
+
+	/* First, verify /init exists and is a valid ELF */
+	init_ino = ext2_lookup("/init");
+	if (init_ino == 0) {
+		kprintf("Error: /init not found in initrd.\n");
+		kprintf("Use 'make test TEST=<name>' to build with a test binary.\n");
+		return;
+	}
+
+	inode = ext2_read_inode(init_ino);
+	if (!inode) {
+		kprintf("Error: Failed to read /init inode.\n");
+		return;
+	}
+
+	size = ext2_get_file_size(inode);
+	if (size < 64) {
+		kprintf("Error: /init is too small (%llu bytes).\n", size);
+		kprintf("The initrd contains a placeholder, not a real binary.\n");
+		kprintf("Use 'make test TEST=<name>' to build with a test binary.\n");
+		return;
+	}
+
+	/* Read first 64 bytes to check ELF magic */
+	n = ext2_read_file(inode, 0, header, sizeof(header));
+	if (n < 4 || header[0] != 0x7f || header[1] != 'E' ||
+	    header[2] != 'L' || header[3] != 'F') {
+		kprintf("Error: /init is not a valid ELF binary.\n");
+		kprintf("Use 'make test TEST=<name>' to build with a test binary.\n");
+		return;
+	}
+
+	kprintf("Launching /init from initrd (%llu bytes)...\n", size);
+	kprintf("This will not return - entering userspace.\n\n");
+
+	/* Call start_init - this does not return */
+	start_init();
 }
 
 static int parse_command(char *input, char *argv[], int max_args)

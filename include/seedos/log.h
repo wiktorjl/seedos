@@ -23,8 +23,16 @@
 #include "config.h"
 #include "kprintf.h"
 
-#define log_panic(fmt, ...) \
-    kprintf_log(LOG_PANIC, "[ panic ] ", CONFIG_CONSOLE_COLOR_PANIC, fmt, ##__VA_ARGS__)
+/*
+ * log_panic - Print panic message and halt the system
+ *
+ * This macro prints the message then calls kpanic_halt() which
+ * disables interrupts and halts forever. Does not return.
+ */
+#define log_panic(fmt, ...) do { \
+    kprintf_log(LOG_PANIC, "[ panic ] ", CONFIG_CONSOLE_COLOR_PANIC, fmt, ##__VA_ARGS__); \
+    kpanic_halt(); \
+} while (0)
 
 #define log_error(fmt, ...) \
     kprintf_log(LOG_ERROR, "[ error ] ", CONFIG_CONSOLE_COLOR_ERROR, fmt, ##__VA_ARGS__)

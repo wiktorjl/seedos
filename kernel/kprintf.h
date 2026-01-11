@@ -68,4 +68,13 @@ int tkvprintf(terminal_t *term, const char *fmt, va_list args);
  */
 int kprintf_log(int level, const char *prefix, uint32_t color, const char *fmt, ...);
 
+/*
+ * kpanic_halt - Halt the system after a kernel panic
+ *
+ * Disables interrupts and enters an infinite halt loop.
+ * This function does not return.
+ */
+__attribute__((noreturn))
+void kpanic_halt(void);
+
 #endif /* KPRINTF_H */

@@ -373,3 +373,18 @@ int kprintf_log(int level, const char *prefix, uint32_t color,
 
 	return count;
 }
+
+/**
+ * kpanic_halt - Halt the system after a kernel panic
+ *
+ * Disables interrupts and enters an infinite halt loop.
+ * This function does not return.
+ */
+__attribute__((noreturn))
+void kpanic_halt(void)
+{
+	__asm__ volatile("cli");
+	for (;;) {
+		__asm__ volatile("hlt");
+	}
+}

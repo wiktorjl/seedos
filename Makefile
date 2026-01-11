@@ -1,4 +1,4 @@
-.PHONY: all clean run debug limine compdb initrd
+.PHONY: all clean run debug limine compdb initrd userspace test
 
 # Directories (Linux-style layout)
 BUILD    := build
@@ -88,12 +88,13 @@ $(INITRD): $(SCRIPTS)/mkinitrd.sh | $(BUILD)
 initrd: $(INITRD)
 
 # Create bootable ISO
-$(ISO): $(KERNEL) $(INITRD) arch/x86/boot/limine.conf | limine
+$(ISO): $(KERNEL) $(INITRD) arch/x86/boot/limine.conf arch/x86/boot/startup.nsh | limine
 	rm -rf $(ISO_ROOT)
 	mkdir -p $(ISO_ROOT)/boot/limine $(ISO_ROOT)/EFI/BOOT
 	cp $(KERNEL) $(ISO_ROOT)/boot/
 	cp $(INITRD) $(ISO_ROOT)/boot/
 	cp arch/x86/boot/limine.conf $(ISO_ROOT)/boot/limine/
+	cp arch/x86/boot/startup.nsh $(ISO_ROOT)/
 	cp $(LIMINE_DIR)/limine-uefi-cd.bin $(ISO_ROOT)/boot/limine/
 	cp $(LIMINE_DIR)/BOOTX64.EFI $(ISO_ROOT)/EFI/BOOT/
 	xorriso -as mkisofs -R -r -J \
@@ -112,15 +113,15 @@ limine:
 
 # Run with GDB server
 debug: $(ISO)
-	qemu-system-x86_64 -bios $(OVMF) -cdrom $(ISO) -serial stdio -s -S
+	qemu-system-x86_64 -bios $(OVMF) -cdrom $(ISO) -boot d -serial stdio -s -S
 
 # VS Code debug target
 debug-vscode: $(ISO)
-	qemu-system-x86_64 -bios $(OVMF) -cdrom $(ISO) -serial file:$(BUILD)/serial.log -s -S
+	qemu-system-x86_64 -bios $(OVMF) -cdrom $(ISO) -boot d -serial file:$(BUILD)/serial.log -s -S
 
 # Run without debugging
 run: $(ISO)
-	qemu-system-x86_64 -bios $(OVMF) -cdrom $(ISO) -serial stdio
+	qemu-system-x86_64 -bios $(OVMF) -cdrom $(ISO) -boot d -serial stdio
 
 # Remove build artifacts
 clean:
@@ -137,3 +138,45 @@ show-sources:
 	@echo "C sources: $(C_SRCS)"
 	@echo "ASM sources: $(ASM_SRCS)"
 	@echo "Objects: $(OBJS)"
+
+# Userspace test programs
+userspace:
+	$(MAKE) -C userspace
+
+# Build initrd with a specific test program as /init
+# Usage: make test-initrd TEST=00_exit
+TEST ?= 00_exit
+USERSPACE_DIR := userspace
+
+test-initrd: userspace | $(BUILD)
+	$(SCRIPTS)/mkinitrd.sh $(INITRD) 2 $(USERSPACE_DIR)/build/$(TEST)
+
+# Build kernel with auto-init enabled for userspace testing
+test-kernel: $(OBJS) | $(BUILD)
+	cc -DCONFIG_AUTO_INIT $(CFLAGS) -c init/main.c -o $(BUILD)/main.o
+	ld -nostdlib -static -T arch/x86/boot/linker.ld -o $(KERNEL) $(OBJS)
+
+# Build and run a specific test
+# Usage: make test TEST=00_exit
+test: test-kernel test-initrd | limine
+	rm -rf $(ISO_ROOT)
+	mkdir -p $(ISO_ROOT)/boot/limine $(ISO_ROOT)/EFI/BOOT
+	cp $(KERNEL) $(ISO_ROOT)/boot/
+	cp $(INITRD) $(ISO_ROOT)/boot/
+	cp arch/x86/boot/limine.conf $(ISO_ROOT)/boot/limine/
+	cp arch/x86/boot/startup.nsh $(ISO_ROOT)/
+	cp $(LIMINE_DIR)/limine-uefi-cd.bin $(ISO_ROOT)/boot/limine/
+	cp $(LIMINE_DIR)/BOOTX64.EFI $(ISO_ROOT)/EFI/BOOT/
+	xorriso -as mkisofs -R -r -J \
+		-hfsplus -apm-block-size 2048 \
+		--efi-boot boot/limine/limine-uefi-cd.bin \
+		-efi-boot-part --efi-boot-image --protective-msdos-label \
+		$(ISO_ROOT) -o $(ISO) 2>/dev/null
+	timeout --foreground 15 qemu-system-x86_64 -bios $(OVMF) -cdrom $(ISO) -boot d -display none -serial mon:stdio || true
+
+# Quick test shortcuts
+test-exit:
+	$(MAKE) test TEST=00_exit
+
+test-write:
+	$(MAKE) test TEST=01_write

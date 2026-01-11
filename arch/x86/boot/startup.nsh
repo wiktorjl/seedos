@@ -1,0 +1,2 @@
+@echo -off
+\EFI\BOOT\BOOTX64.EFI

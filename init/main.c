@@ -172,7 +172,13 @@ void kmain(void)
 		log_warn("INITRD: No module loaded (boot without initrd)");
 	}
 
+#ifdef CONFIG_AUTO_INIT
+	/* Automatically launch /init from initrd */
+	#include "kinit.h"
+	start_init();  /* Does not return */
+#else
 	/* Start the kernel shell */
 	kshell_init();
 	kshell_run();  /* Does not return */
+#endif
 }

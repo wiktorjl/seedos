@@ -1,15 +1,19 @@
 #!/bin/bash
 # mkinitrd.sh - Create ext2 initrd image
 #
-# Usage: ./scripts/mkinitrd.sh [output_file] [size_mb]
+# Usage: ./scripts/mkinitrd.sh [output_file] [size_mb] [init_binary]
 #
 # Creates a minimal ext2 filesystem image for testing.
 # Uses debugfs to avoid needing root/sudo.
+#
+# If init_binary is provided, it will be copied as /init.
+# Otherwise, a placeholder script is created.
 
 set -e
 
 OUTPUT="${1:-build/initrd.ext2}"
 SIZE_MB="${2:-2}"
+INIT_BINARY="${3:-}"
 
 echo "Creating ${SIZE_MB}MB ext2 image at ${OUTPUT}..."
 
@@ -23,11 +27,17 @@ dd if=/dev/zero of="$OUTPUT" bs=1M count="$SIZE_MB" 2>/dev/null
 TMPDIR=$(mktemp -d)
 echo "Hello from ext2 initrd!" > "$TMPDIR/hello.txt"
 
-# Create init placeholder
-cat > "$TMPDIR/init" << 'EOF'
+# Create or copy /init
+if [ -n "$INIT_BINARY" ] && [ -f "$INIT_BINARY" ]; then
+    echo "Using $INIT_BINARY as /init"
+    cp "$INIT_BINARY" "$TMPDIR/init"
+else
+    echo "Creating placeholder /init script"
+    cat > "$TMPDIR/init" << 'EOF'
 #!/bin/sh
 echo "Init placeholder"
 EOF
+fi
 
 # Use debugfs to write files (no root needed)
 /sbin/debugfs -w "$OUTPUT" << CMDS
