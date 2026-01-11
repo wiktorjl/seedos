@@ -287,8 +287,8 @@ wrmsr(MSR_STAR, star);
 
 ## Phase 2: Syscall Mechanism
 
-### Task 2.1: syscall/sysret MSR Setup
-- [ ] Create `arch/x86/kernel/syscall.h`
+### Task 2.1: syscall/sysret MSR Setup ✓
+- [x] Create `arch/x86/kernel/syscall.h`
   ```c
   #define MSR_EFER        0xC0000080
   #define MSR_STAR        0xC0000081
@@ -299,12 +299,14 @@ wrmsr(MSR_STAR, star);
 
   void syscall_init(void);
   ```
-- [ ] Create `arch/x86/kernel/syscall.c`
+- [x] Create `arch/x86/kernel/syscall.c`
   - `syscall_init()`:
     - Enable SCE bit in EFER
     - STAR = segment selectors (kernel CS/SS at bits 47:32, user at 63:48)
     - LSTAR = address of `syscall_entry`
-    - SFMASK = 0x200 (clear IF on entry)
+    - SFMASK = 0x40700 (clear IF, DF, TF, AC on entry)
+
+**Test:** MSRs configured correctly. ✓ Verified
 
 **STAR Register Layout:**
 ```

@@ -15,6 +15,7 @@
 #include "gdt.h"
 #include "percpu.h"
 #include "fpu.h"
+#include "syscall.h"
 #include "idt.h"
 #include "pmm.h"
 #include "vmm.h"
@@ -79,6 +80,9 @@ void kmain(void)
 
 	fpu_init();
 	log_info("FPU: Initialized");
+
+	syscall_init();
+	log_info("SYSCALL: Initialized");
 
 	idt_install();
 	log_info("IDT: Initialized");
