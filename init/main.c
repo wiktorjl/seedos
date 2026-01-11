@@ -26,6 +26,7 @@
 #include "keyboard.h"
 #include "sysinfo.h"
 #include "kthread.h"
+#include "process.h"
 #include "kshell.h"
 #include <stdint.h>
 #include <threads.h>
@@ -127,6 +128,10 @@ void kmain(void)
 	/* Init kernel threads */
 	kthread_init();
 	log_info("KTHREAD: Initialized");
+
+	/* Init process management */
+	process_init();
+	log_info("PROCESS: Initialized");
 
 	/* Start the kernel shell */
 	kshell_init();

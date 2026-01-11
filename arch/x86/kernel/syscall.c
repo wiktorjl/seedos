@@ -8,6 +8,7 @@
 
 #include "syscall.h"
 #include "syscall_table.h"
+#include "process.h"
 #include "percpu.h"
 #include "gdt.h"
 #include "log.h"
@@ -218,21 +219,23 @@ static int64_t sys_write(uint64_t fd, uint64_t buf, uint64_t count,
 
 /**
  * sys_exit - Terminate the calling process
- *
- * Stub: Logs and halts (no process management yet)
  */
 static int64_t sys_exit(uint64_t status, uint64_t arg2, uint64_t arg3,
                         uint64_t arg4, uint64_t arg5, uint64_t arg6)
 {
     (void)arg2; (void)arg3; (void)arg4; (void)arg5; (void)arg6;
 
-    log_info("Process exited with status %llu", status);
-
     /*
-     * TODO: Proper process termination when process management is ready.
-     * For now, just halt the CPU.
+     * If we have a current process, use proper exit.
+     * Otherwise, fall back to halt (kernel context).
      */
-    log_info("Halting CPU (no process management yet)");
+    if (process_current()) {
+        process_exit((int)status);
+        /* Does not return */
+    }
+
+    /* No process context - just halt */
+    log_info("Exit called in kernel context with status %llu - halting", status);
     for (;;) {
         __asm__ volatile("hlt");
     }
@@ -243,8 +246,6 @@ static int64_t sys_exit(uint64_t status, uint64_t arg2, uint64_t arg3,
 
 /**
  * sys_getpid - Get process ID
- *
- * Stub: Returns 1 (we're always "init" for now)
  */
 static int64_t sys_getpid(uint64_t arg1, uint64_t arg2, uint64_t arg3,
                           uint64_t arg4, uint64_t arg5, uint64_t arg6)
@@ -252,6 +253,11 @@ static int64_t sys_getpid(uint64_t arg1, uint64_t arg2, uint64_t arg3,
     (void)arg1; (void)arg2; (void)arg3;
     (void)arg4; (void)arg5; (void)arg6;
 
-    /* TODO: Return actual PID from current process struct */
-    return 1;
+    process_t *proc = process_current();
+    if (proc) {
+        return (int64_t)proc->pid;
+    }
+
+    /* No process context - return 0 (kernel) */
+    return 0;
 }
