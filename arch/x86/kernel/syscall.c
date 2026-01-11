@@ -76,3 +76,30 @@ void syscall_init(void)
     log_debug("SYSCALL: LSTAR=0x%llx", rdmsr(MSR_LSTAR));
     log_debug("SYSCALL: SFMASK=0x%llx", rdmsr(MSR_SFMASK));
 }
+
+/*
+ * Error codes (Linux-compatible)
+ */
+#define ENOSYS  38      /* Function not implemented */
+
+/**
+ * syscall_dispatch - C syscall handler
+ * @frame: Pointer to saved syscall registers on stack
+ *
+ * Called from syscall_entry.S with pointer to syscall_frame_t.
+ * Returns the syscall result (or negative errno on error).
+ *
+ * Full dispatch table will be implemented in Task 2.3.
+ */
+int64_t syscall_dispatch(syscall_frame_t *frame)
+{
+    /*
+     * Stub implementation - log and return -ENOSYS
+     * Full syscall table will be added in Task 2.3
+     */
+    log_debug("SYSCALL: nr=%llu arg1=0x%llx arg2=0x%llx arg3=0x%llx",
+              frame->nr, frame->arg1, frame->arg2, frame->arg3);
+
+    /* Return -ENOSYS (function not implemented) */
+    return -ENOSYS;
+}

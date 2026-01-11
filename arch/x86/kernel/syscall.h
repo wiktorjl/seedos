@@ -55,6 +55,22 @@
 #define RFLAGS_TF   (1 << 8)    /* Trap Flag (single-step) */
 #define RFLAGS_AC   (1 << 18)   /* Alignment Check */
 
+/*
+ * Syscall frame - saved registers from syscall entry
+ *
+ * This matches the order registers are pushed in syscall_entry.S.
+ * Passed as pointer to syscall_dispatch for clean argument access.
+ */
+typedef struct {
+    uint64_t nr;        /* Syscall number (from RAX) */
+    uint64_t arg1;      /* Arg 1 (from RDI) */
+    uint64_t arg2;      /* Arg 2 (from RSI) */
+    uint64_t arg3;      /* Arg 3 (from RDX) */
+    uint64_t arg4;      /* Arg 4 (from R10 - Linux ABI) */
+    uint64_t arg5;      /* Arg 5 (from R8) */
+    uint64_t arg6;      /* Arg 6 (from R9) */
+} syscall_frame_t;
+
 /**
  * syscall_init - Initialize syscall/sysret support
  *
@@ -62,6 +78,15 @@
  * the entry point. Must be called after GDT is initialized.
  */
 void syscall_init(void);
+
+/**
+ * syscall_dispatch - C syscall handler
+ * @frame: Pointer to saved syscall registers
+ *
+ * Called from syscall_entry.S with pointer to syscall_frame_t.
+ * Returns syscall result (or negative errno on error).
+ */
+int64_t syscall_dispatch(syscall_frame_t *frame);
 
 /*
  * syscall_entry - Assembly syscall entry point
