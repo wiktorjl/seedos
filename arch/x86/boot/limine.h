@@ -135,9 +135,68 @@ struct limine_rsdp_request {
         .response = (void *)0 \
     }
 
+/*
+ * Module (initrd/ramdisk) request
+ */
+struct limine_uuid {
+    uint32_t a;
+    uint16_t b;
+    uint16_t c;
+    uint8_t d[8];
+};
+
+struct limine_file {
+    uint64_t revision;
+    void *address;          /* Virtual address of file contents */
+    uint64_t size;          /* Size in bytes */
+    char *path;             /* Path as specified in config */
+    char *cmdline;          /* Optional command line */
+    uint32_t media_type;
+    uint32_t unused;
+    uint32_t tftp_ip;
+    uint32_t tftp_port;
+    uint32_t partition_index;
+    uint32_t mbr_disk_id;
+    struct limine_uuid gpt_disk_uuid;
+    struct limine_uuid gpt_part_uuid;
+    struct limine_uuid part_uuid;
+};
+
+struct limine_module_response {
+    uint64_t revision;
+    uint64_t module_count;
+    struct limine_file **modules;
+};
+
+struct limine_module_request {
+    uint64_t id[4];
+    uint64_t revision;
+    struct limine_module_response *response;
+    uint64_t internal_module_count;
+    struct limine_internal_module **internal_modules;
+};
+
+struct limine_internal_module {
+    const char *path;
+    const char *cmdline;
+    uint64_t flags;
+};
+
+#define LIMINE_MODULE_REQUEST \
+    __attribute__((used, section(".limine_requests"))) \
+    static volatile struct limine_module_request module_request = { \
+        .id = { LIMINE_MODULE_REQUEST_MAGIC }, \
+        .revision = 0, \
+        .response = (void *)0, \
+        .internal_module_count = 0, \
+        .internal_modules = (void *)0 \
+    }
+
 struct limine_framebuffer *limine_get_framebuffer(void);
 struct limine_memmap_response *limine_get_memmap(void);
 uint64_t limine_get_hhdm_offset(void);
 void *limine_get_rsdp(void);
+struct limine_file *limine_get_module(uint64_t index);
+uint64_t limine_get_module_count(void);
 
 #endif /* LIMINE_H */

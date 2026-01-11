@@ -1,4 +1,4 @@
-.PHONY: all clean run debug limine compdb
+.PHONY: all clean run debug limine compdb initrd
 
 # Directories (Linux-style layout)
 BUILD    := build
@@ -79,11 +79,20 @@ $(BUILD)/logo.o: $(BUILD)/logo.bin
 $(KERNEL): $(OBJS) arch/x86/boot/linker.ld
 	ld -nostdlib -static -T arch/x86/boot/linker.ld -o $@ $(OBJS)
 
+# Create initrd (ext2 filesystem)
+INITRD := $(BUILD)/initrd.ext2
+
+$(INITRD): $(SCRIPTS)/mkinitrd.sh | $(BUILD)
+	$(SCRIPTS)/mkinitrd.sh $@ 2
+
+initrd: $(INITRD)
+
 # Create bootable ISO
-$(ISO): $(KERNEL) arch/x86/boot/limine.conf | limine
+$(ISO): $(KERNEL) $(INITRD) arch/x86/boot/limine.conf | limine
 	rm -rf $(ISO_ROOT)
 	mkdir -p $(ISO_ROOT)/boot/limine $(ISO_ROOT)/EFI/BOOT
 	cp $(KERNEL) $(ISO_ROOT)/boot/
+	cp $(INITRD) $(ISO_ROOT)/boot/
 	cp arch/x86/boot/limine.conf $(ISO_ROOT)/boot/limine/
 	cp $(LIMINE_DIR)/limine-uefi-cd.bin $(ISO_ROOT)/boot/limine/
 	cp $(LIMINE_DIR)/BOOTX64.EFI $(ISO_ROOT)/EFI/BOOT/

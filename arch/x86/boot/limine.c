@@ -22,6 +22,7 @@ LIMINE_FRAMEBUFFER_REQUEST;
 LIMINE_HHDM_REQUEST;
 LIMINE_MEMMAP_REQUEST;
 LIMINE_RSDP_REQUEST;
+LIMINE_MODULE_REQUEST;
 
 /**
  * limine_get_memmap - Get memory map from bootloader
@@ -71,4 +72,31 @@ void *limine_get_rsdp(void)
     if (rsdp_request.response == NULL)
         return 0;
     return rsdp_request.response->address;
+}
+
+/**
+ * limine_get_module - Get a module (initrd) by index
+ * @index: Module index (0 for first module)
+ *
+ * Return: Pointer to module file structure, or NULL if unavailable
+ */
+struct limine_file *limine_get_module(uint64_t index)
+{
+    if (module_request.response == NULL)
+        return NULL;
+    if (index >= module_request.response->module_count)
+        return NULL;
+    return module_request.response->modules[index];
+}
+
+/**
+ * limine_get_module_count - Get number of loaded modules
+ *
+ * Return: Number of modules, or 0 if none
+ */
+uint64_t limine_get_module_count(void)
+{
+    if (module_request.response == NULL)
+        return 0;
+    return module_request.response->module_count;
 }

@@ -30,6 +30,7 @@
 #include "kshell.h"
 #include "vfs.h"
 #include "tty_dev.h"
+#include "ext2.h"
 #include <stdint.h>
 #include <threads.h>
 
@@ -142,6 +143,34 @@ void kmain(void)
 	/* Init process management */
 	process_init();
 	log_info("PROCESS: Initialized");
+
+	/* Mount initrd and test ext2 */
+	struct limine_file *initrd = limine_get_module(0);
+	if (initrd) {
+		log_info("INITRD: Found at %p, size %llu bytes",
+		         initrd->address, initrd->size);
+
+		if (ext2_init(initrd->address, initrd->size) == 0) {
+			/* Test: read /hello.txt */
+			uint32_t ino = ext2_lookup("/hello.txt");
+			if (ino) {
+				ext2_inode_t *inode = ext2_read_inode(ino);
+				if (inode) {
+					char buf[128] = {0};
+					ssize_t n = ext2_read_file(inode, 0, buf, sizeof(buf) - 1);
+					if (n > 0) {
+						/* Remove trailing newline for cleaner output */
+						if (buf[n-1] == '\n') buf[n-1] = '\0';
+						log_info("INITRD: /hello.txt says: \"%s\"", buf);
+					}
+				}
+			} else {
+				log_warn("INITRD: /hello.txt not found");
+			}
+		}
+	} else {
+		log_warn("INITRD: No module loaded (boot without initrd)");
+	}
 
 	/* Start the kernel shell */
 	kshell_init();
