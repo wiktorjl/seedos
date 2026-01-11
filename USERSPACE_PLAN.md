@@ -798,6 +798,124 @@ USER_STACK_TOP (0x800000000)
 
 ---
 
+### Task 6.5: Load and Run /init
+
+This task ties together ext2, ELF loading, and userspace entry.
+
+- [ ] Create `kernel/init.c`
+  ```c
+  #include <kernel/process.h>
+  #include <kernel/elf.h>
+  #include <fs/ext2.h>
+  #include <arch/x86/kernel/usermode.h>
+
+  // Called from kmain() after all subsystems initialized
+  void start_init(void) {
+      log_info("Loading /init from initrd...");
+
+      // 1. Get initrd module from bootloader
+      struct limine_file *module = limine_get_module(0);
+      if (!module) {
+          log_panic("No initrd module found!");
+      }
+      log_debug("initrd at %p, size %lu bytes", module->address, module->size);
+
+      // 2. Initialize ext2 on the RAM disk
+      if (ext2_init(module->address, module->size) < 0) {
+          log_panic("Failed to mount ext2 initrd");
+      }
+
+      // 3. Look up /init
+      uint32_t init_ino = ext2_lookup("/init");
+      if (init_ino == 0) {
+          log_panic("/init not found in initrd");
+      }
+
+      // 4. Read the ELF file
+      ext2_inode_t *inode = ext2_read_inode(init_ino);
+      size_t size = inode->i_size;
+      void *elf_data = kmalloc(size);
+      ext2_read_file(inode, 0, elf_data, size);
+
+      // 5. Create init process (PID 1)
+      process_t *init = process_create("init");
+      if (!init) {
+          log_panic("Failed to create init process");
+      }
+
+      // 6. Load ELF into process address space
+      uint64_t entry;
+      if (elf_load(init, elf_data, size, &entry) < 0) {
+          log_panic("Failed to load /init ELF");
+      }
+      kfree(elf_data);
+
+      // 7. Set up user stack with minimal argv/envp
+      char *argv[] = { "/init", NULL };
+      char *envp[] = { "PATH=/bin", NULL };
+      uint64_t user_rsp = setup_user_stack(init, argv, envp, entry,
+                                            init->phdr_addr, init->phnum);
+
+      // 8. Set as current process and enter userspace
+      log_info("Entering userspace at %#lx, stack %#lx", entry, user_rsp);
+      current_process_set(init);
+      user_mode_enter(entry, user_rsp);
+
+      // Never reached
+      __builtin_unreachable();
+  }
+  ```
+
+- [ ] Modify `init/main.c`
+  ```c
+  void kmain(void) {
+      // ... all existing init calls ...
+
+      // Last thing: start init process (never returns)
+      start_init();
+  }
+  ```
+
+**Loading flow diagram:**
+```
+limine.conf: MODULE_PATH=boot:///initrd.ext2
+                    │
+                    ▼
+         ┌──────────────────┐
+         │  Limine loads    │
+         │  initrd to RAM   │
+         └────────┬─────────┘
+                  │ limine_get_module(0)
+                  ▼
+         ┌──────────────────┐
+         │   ext2_init()    │  Parse superblock, block groups
+         └────────┬─────────┘
+                  │ ext2_lookup("/init")
+                  ▼
+         ┌──────────────────┐
+         │  ext2_read_file  │  Read ELF bytes into buffer
+         └────────┬─────────┘
+                  │ elf_load()
+                  ▼
+         ┌──────────────────┐
+         │  Map PT_LOAD     │  Allocate pages, copy segments
+         │  segments        │  Set up brk after last segment
+         └────────┬─────────┘
+                  │ setup_user_stack()
+                  ▼
+         ┌──────────────────┐
+         │  Build stack:    │  argc, argv[], envp[], auxv[]
+         │  Linux ABI       │
+         └────────┬─────────┘
+                  │ user_mode_enter()
+                  ▼
+         ┌──────────────────┐
+         │  iretq to Ring 3 │  RIP=entry, RSP=user_stack
+         └──────────────────┘
+```
+
+---
+
 ## Phase 6.5: Essential Syscalls for Real Programs
 
 These syscalls are required before busybox or other real programs will work.
@@ -1415,7 +1533,473 @@ These syscalls are required before busybox or other real programs will work.
 
 ---
 
+## Userspace Test Infrastructure
+
+Set up this infrastructure early (Phase 3-4) to enable iterative testing as syscalls are implemented.
+
+### Directory Structure
+```
+userspace/
+├── Makefile              # Build all test programs
+├── include/
+│   ├── syscall.h         # Inline syscall wrappers
+│   └── stddef.h          # Minimal libc types (size_t, NULL)
+├── crt/
+│   └── crt0.S            # Startup code: _start calls main
+├── tests/
+│   ├── 00_exit.c         # Phase 6: Just exit(42)
+│   ├── 01_write.c        # Phase 6: write() to stdout
+│   ├── 02_hello.c        # Phase 6: Hello world
+│   ├── 03_getpid.c       # Phase 6.5: getpid/getppid
+│   ├── 04_brk.c          # Phase 6.5: Heap allocation
+│   ├── 05_mmap.c         # Phase 6.5: Anonymous mmap
+│   ├── 06_fork.c         # Phase 7: fork() test
+│   ├── 07_fork_cow.c     # Phase 7: Verify COW works
+│   ├── 08_exec.c         # Phase 8: execve() test
+│   ├── 09_signal.c       # Phase 9: Signal handling
+│   └── 99_shell.c        # Simple shell for manual testing
+└── tools/
+    └── mkinitrd.sh       # Create ext2 initrd image
+```
+
+---
+
+### Minimal C Runtime (crt0.S)
+```asm
+# userspace/crt/crt0.S
+# Minimal startup: call main(), then exit with return value
+
+.global _start
+.section .text
+
+_start:
+    # Clear frame pointer for clean backtraces
+    xorl    %ebp, %ebp
+
+    # argc is at (%rsp), argv at 8(%rsp)
+    movq    (%rsp), %rdi        # argc
+    leaq    8(%rsp), %rsi       # argv
+
+    # Align stack to 16 bytes (ABI requirement)
+    andq    $-16, %rsp
+
+    # Call main(argc, argv)
+    call    main
+
+    # Exit with main's return value (in %eax)
+    movl    %eax, %edi
+    movl    $60, %eax           # SYS_exit
+    syscall
+
+    # Unreachable
+    ud2
+```
+
+---
+
+### Syscall Wrapper Header
+```c
+// userspace/include/syscall.h
+#ifndef _SYSCALL_H
+#define _SYSCALL_H
+
+#include <stddef.h>
+
+// Syscall numbers (Linux x86-64 ABI)
+#define SYS_read        0
+#define SYS_write       1
+#define SYS_open        2
+#define SYS_close       3
+#define SYS_mmap        9
+#define SYS_munmap      11
+#define SYS_brk         12
+#define SYS_getpid      39
+#define SYS_fork        57
+#define SYS_execve      59
+#define SYS_exit        60
+#define SYS_wait4       61
+#define SYS_kill        62
+#define SYS_uname       63
+#define SYS_getppid     110
+#define SYS_arch_prctl  158
+
+// Generic syscall macros
+static inline long syscall0(long n) {
+    long ret;
+    __asm__ volatile("syscall"
+        : "=a"(ret)
+        : "a"(n)
+        : "rcx", "r11", "memory");
+    return ret;
+}
+
+static inline long syscall1(long n, long a1) {
+    long ret;
+    __asm__ volatile("syscall"
+        : "=a"(ret)
+        : "a"(n), "D"(a1)
+        : "rcx", "r11", "memory");
+    return ret;
+}
+
+static inline long syscall2(long n, long a1, long a2) {
+    long ret;
+    __asm__ volatile("syscall"
+        : "=a"(ret)
+        : "a"(n), "D"(a1), "S"(a2)
+        : "rcx", "r11", "memory");
+    return ret;
+}
+
+static inline long syscall3(long n, long a1, long a2, long a3) {
+    long ret;
+    __asm__ volatile("syscall"
+        : "=a"(ret)
+        : "a"(n), "D"(a1), "S"(a2), "d"(a3)
+        : "rcx", "r11", "memory");
+    return ret;
+}
+
+static inline long syscall4(long n, long a1, long a2, long a3, long a4) {
+    long ret;
+    register long r10 __asm__("r10") = a4;
+    __asm__ volatile("syscall"
+        : "=a"(ret)
+        : "a"(n), "D"(a1), "S"(a2), "d"(a3), "r"(r10)
+        : "rcx", "r11", "memory");
+    return ret;
+}
+
+static inline long syscall6(long n, long a1, long a2, long a3,
+                            long a4, long a5, long a6) {
+    long ret;
+    register long r10 __asm__("r10") = a4;
+    register long r8  __asm__("r8")  = a5;
+    register long r9  __asm__("r9")  = a6;
+    __asm__ volatile("syscall"
+        : "=a"(ret)
+        : "a"(n), "D"(a1), "S"(a2), "d"(a3), "r"(r10), "r"(r8), "r"(r9)
+        : "rcx", "r11", "memory");
+    return ret;
+}
+
+// Convenience wrappers
+static inline void exit(int status) {
+    syscall1(SYS_exit, status);
+    __builtin_unreachable();
+}
+
+static inline long write(int fd, const void *buf, size_t count) {
+    return syscall3(SYS_write, fd, (long)buf, count);
+}
+
+static inline long read(int fd, void *buf, size_t count) {
+    return syscall3(SYS_read, fd, (long)buf, count);
+}
+
+static inline long getpid(void) {
+    return syscall0(SYS_getpid);
+}
+
+static inline long getppid(void) {
+    return syscall0(SYS_getppid);
+}
+
+static inline long fork(void) {
+    return syscall0(SYS_fork);
+}
+
+static inline long brk(void *addr) {
+    return syscall1(SYS_brk, (long)addr);
+}
+
+static inline void *mmap(void *addr, size_t len, int prot,
+                         int flags, int fd, long offset) {
+    return (void *)syscall6(SYS_mmap, (long)addr, len, prot, flags, fd, offset);
+}
+
+static inline long munmap(void *addr, size_t len) {
+    return syscall2(SYS_munmap, (long)addr, len);
+}
+
+static inline long wait4(int pid, int *status, int options, void *rusage) {
+    return syscall4(SYS_wait4, pid, (long)status, options, (long)rusage);
+}
+
+static inline long execve(const char *path, char *const argv[],
+                          char *const envp[]) {
+    return syscall3(SYS_execve, (long)path, (long)argv, (long)envp);
+}
+
+#endif // _SYSCALL_H
+```
+
+---
+
+### Userspace Makefile
+```makefile
+# userspace/Makefile
+
+CC = gcc
+AS = as
+LD = ld
+
+CFLAGS = -nostdlib -nostdinc -fno-builtin -fno-stack-protector \
+         -fno-pie -no-pie -static -m64 -O2 -Wall -Wextra \
+         -I include -ffreestanding -mno-red-zone
+
+ASFLAGS = --64
+
+LDFLAGS = -nostdlib -static -z max-page-size=0x1000
+
+CRT = crt/crt0.o
+
+TESTS = $(wildcard tests/*.c)
+BINS  = $(TESTS:tests/%.c=build/%)
+
+.PHONY: all clean
+
+all: build $(BINS)
+
+build:
+	mkdir -p build
+
+crt/crt0.o: crt/crt0.S
+	$(AS) $(ASFLAGS) -o $@ $<
+
+build/%: tests/%.c $(CRT)
+	$(CC) $(CFLAGS) -c -o build/$*.o $<
+	$(LD) $(LDFLAGS) -o $@ $(CRT) build/$*.o
+
+clean:
+	rm -rf build crt/*.o
+```
+
+---
+
+### Example Test Programs
+
+**00_exit.c** - Simplest possible test
+```c
+// Tests: sys_exit
+#include <syscall.h>
+
+int main(void) {
+    exit(42);
+}
+// Expected: "Process 1 exited with code 42"
+```
+
+**01_write.c** - Validates user-to-kernel copy
+```c
+// Tests: sys_write, user memory access
+#include <syscall.h>
+
+int main(void) {
+    const char msg[] = "write() works!\n";
+    write(1, msg, sizeof(msg) - 1);
+    return 0;
+}
+// Expected: "write() works!" on console
+```
+
+**04_brk.c** - Heap allocation test
+```c
+// Tests: sys_brk
+#include <syscall.h>
+
+int main(void) {
+    // Get current break
+    long current = brk(0);
+    if (current < 0) {
+        write(1, "brk(0) failed\n", 14);
+        return 1;
+    }
+
+    // Extend by 4KB
+    long new_brk = brk((void *)(current + 4096));
+    if (new_brk < current + 4096) {
+        write(1, "brk extend failed\n", 18);
+        return 2;
+    }
+
+    // Write to new memory (would fault if not mapped)
+    char *ptr = (char *)current;
+    ptr[0] = 'H';
+    ptr[1] = 'i';
+    ptr[2] = '\n';
+    write(1, ptr, 3);
+
+    write(1, "brk() works!\n", 13);
+    return 0;
+}
+// Expected: "Hi" then "brk() works!"
+```
+
+**06_fork.c** - Fork test with COW validation
+```c
+// Tests: sys_fork, sys_wait4, sys_getpid, COW
+#include <syscall.h>
+
+// Simple number-to-string for PIDs
+static void print_num(long n) {
+    char buf[20];
+    int i = 19;
+    buf[i--] = '\n';
+    if (n == 0) {
+        buf[i--] = '0';
+    } else {
+        while (n > 0) {
+            buf[i--] = '0' + (n % 10);
+            n /= 10;
+        }
+    }
+    write(1, &buf[i + 1], 19 - i);
+}
+
+int main(void) {
+    write(1, "Parent PID: ", 12);
+    print_num(getpid());
+
+    long pid = fork();
+
+    if (pid < 0) {
+        write(1, "fork() failed!\n", 15);
+        return 1;
+    }
+
+    if (pid == 0) {
+        // Child
+        write(1, "Child here, PID: ", 17);
+        print_num(getpid());
+        write(1, "Child's parent: ", 16);
+        print_num(getppid());
+        return 7;  // Child exit code
+    } else {
+        // Parent
+        write(1, "Parent forked child: ", 21);
+        print_num(pid);
+
+        int status = 0;
+        long waited = wait4(-1, &status, 0, 0);
+
+        write(1, "Reaped child: ", 14);
+        print_num(waited);
+        write(1, "Exit status: ", 13);
+        print_num((status >> 8) & 0xff);
+
+        return 0;
+    }
+}
+// Expected: Shows parent/child PIDs, child exits with 7, parent reaps
+```
+
+---
+
+### initrd Creation Script
+```bash
+#!/bin/bash
+# userspace/tools/mkinitrd.sh
+# Creates ext2 initrd with specified test program as /init
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+USERSPACE_DIR="$(dirname "$SCRIPT_DIR")"
+BUILD_DIR="$USERSPACE_DIR/build"
+OUTPUT="${1:-$USERSPACE_DIR/../build/initrd.ext2}"
+INIT_BINARY="${2:-$BUILD_DIR/00_exit}"
+
+if [ ! -f "$INIT_BINARY" ]; then
+    echo "Error: $INIT_BINARY not found. Run 'make' in userspace/ first."
+    exit 1
+fi
+
+echo "Creating initrd with $INIT_BINARY as /init..."
+
+# Create 4MB ext2 image (enough for small test programs)
+dd if=/dev/zero of="$OUTPUT" bs=1M count=4 2>/dev/null
+/sbin/mke2fs -q -F "$OUTPUT"
+
+# Mount and copy
+MOUNT_DIR=$(mktemp -d)
+sudo mount -o loop "$OUTPUT" "$MOUNT_DIR"
+sudo cp "$INIT_BINARY" "$MOUNT_DIR/init"
+sudo chmod 755 "$MOUNT_DIR/init"
+
+# Optionally copy all test binaries to /bin/
+sudo mkdir -p "$MOUNT_DIR/bin"
+for bin in "$BUILD_DIR"/*; do
+    if [ -f "$bin" ] && [ -x "$bin" ]; then
+        sudo cp "$bin" "$MOUNT_DIR/bin/"
+    fi
+done
+
+sudo umount "$MOUNT_DIR"
+rmdir "$MOUNT_DIR"
+
+echo "Created $OUTPUT with /init -> $(basename "$INIT_BINARY")"
+ls -lh "$OUTPUT"
+```
+
+---
+
+### Main Makefile Integration
+
+Add these targets to the root `Makefile`:
+
+```makefile
+# Userspace test programs
+.PHONY: userspace initrd run-test
+
+userspace:
+	$(MAKE) -C userspace
+
+initrd: userspace
+	userspace/tools/mkinitrd.sh build/initrd.ext2 userspace/build/$(TEST)
+
+# Run specific test: make run-test TEST=00_exit
+run-test: initrd
+	$(MAKE) run
+
+# Quick iteration: make test-hello
+test-%: userspace
+	userspace/tools/mkinitrd.sh build/initrd.ext2 userspace/build/$*
+	$(MAKE) run
+```
+
+**Usage:**
+```bash
+make userspace              # Build all test programs
+make test-00_exit           # Build initrd with exit test, run QEMU
+make test-06_fork           # Build initrd with fork test, run QEMU
+make run-test TEST=01_write # Alternative syntax
+```
+
+---
+
+### Test Development Workflow
+
+1. **Implement syscall in kernel** (e.g., `sys_brk` in Phase 6.5)
+2. **Write userspace test** (`userspace/tests/04_brk.c`)
+3. **Build and run**: `make test-04_brk`
+4. **Debug with serial output** - both kernel and userspace print to same console
+5. **Iterate** until test passes
+6. **Keep test** for regression checking
+
+**Debugging tips:**
+- Add `log_debug()` calls in syscall handlers
+- Use `make debug` with GDB to set breakpoints on syscall entry
+- Check return values - negative means error (errno)
+- Verify page tables: `vmm_dump_mappings()` helper
+
+---
+
 ## Verification Milestones
+
+> **Note:** The code snippets below are reference implementations. Actual test programs
+> live in `userspace/tests/` and can be built with `make test-<name>`. See the
+> Userspace Test Infrastructure section above.
 
 ### Milestone A: Ring 3 Entry (After Phase 1-2)
 Create inline assembly syscall test:
@@ -1532,6 +2116,7 @@ Additional syscalls needed for busybox:
 - [ ] `kernel/signal.h`
 - [ ] `kernel/signal.c`
 - [ ] `kernel/signal_frame.h`
+- [ ] `kernel/init.c`
 - [ ] `fs/vfs.h`
 - [ ] `fs/vfs.c`
 - [ ] `fs/ext2.h`
@@ -1541,6 +2126,24 @@ Additional syscalls needed for busybox:
 - [ ] `mm/mmap.h`
 - [ ] `mm/mmap.c`
 - [ ] `drivers/tty/tty_dev.c`
+
+### Userspace Test Infrastructure
+- [ ] `userspace/Makefile`
+- [ ] `userspace/include/syscall.h`
+- [ ] `userspace/include/stddef.h`
+- [ ] `userspace/crt/crt0.S`
+- [ ] `userspace/tests/00_exit.c`
+- [ ] `userspace/tests/01_write.c`
+- [ ] `userspace/tests/02_hello.c`
+- [ ] `userspace/tests/03_getpid.c`
+- [ ] `userspace/tests/04_brk.c`
+- [ ] `userspace/tests/05_mmap.c`
+- [ ] `userspace/tests/06_fork.c`
+- [ ] `userspace/tests/07_fork_cow.c`
+- [ ] `userspace/tests/08_exec.c`
+- [ ] `userspace/tests/09_signal.c`
+- [ ] `userspace/tests/99_shell.c`
+- [ ] `userspace/tools/mkinitrd.sh`
 
 ### Modified Files
 - [ ] `arch/x86/kernel/idt.c` - GDT selector, page fault handler
@@ -1552,4 +2155,4 @@ Additional syscalls needed for busybox:
 - [ ] `mm/vmm.h` - PTE_COW, CoW functions
 - [ ] `mm/vmm.c` - CoW implementation
 - [ ] `init/main.c` - New init calls
-- [ ] `Makefile` - Add fs/ directory
+- [ ] `Makefile` - Add fs/ directory, userspace targets (userspace, initrd, test-*)
