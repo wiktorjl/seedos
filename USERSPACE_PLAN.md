@@ -114,23 +114,23 @@ pages[phys >> 12].refcount++;
 
 ## Phase 1: Ring 3 Infrastructure
 
-### Task 1.1: Custom GDT with User Segments
-- [ ] Create `arch/x86/kernel/gdt.h`
+### Task 1.1: Custom GDT with User Segments ✓ COMPLETE
+- [x] Create `arch/x86/kernel/gdt.h`
   - GDT entry structure (`gdt_entry_t`)
   - TSS descriptor structure (`gdt_tss_entry_t`)
   - GDTR structure
   - Selector constants: `GDT_KERNEL_CODE` (0x08), `GDT_KERNEL_DATA` (0x10), `GDT_USER_DATA` (0x18), `GDT_USER_CODE` (0x20), `GDT_TSS` (0x28)
   - Note: User Data comes before User Code for SYSRET compatibility
-- [ ] Create `arch/x86/kernel/gdt.c`
+- [x] Create `arch/x86/kernel/gdt.c`
   - GDT table with 7 entries (null, kernel code/data, user code/data, TSS)
   - `gdt_init()` - build GDT, load with lgdt
   - User segments: DPL=3, access byte 0xFA (code) / 0xF2 (data)
-- [ ] Create `arch/x86/kernel/gdt.S`
+- [x] Create `arch/x86/kernel/gdt_asm.S` (renamed from gdt.S to avoid build collision)
   - `gdt_reload` - reload segment registers after lgdt
   - Far return trick to reload CS
-- [ ] Modify `arch/x86/kernel/idt.c`
+- [x] Modify `arch/x86/kernel/idt.c`
   - Replace `GDT_SELECTOR_FROM_LIMINE` with `GDT_KERNEL_CODE`
-- [ ] Modify `init/main.c`
+- [x] Modify `init/main.c`
   - Call `gdt_init()` before `idt_install()`
 
 **GDT Layout:**
@@ -171,8 +171,8 @@ wrmsr(MSR_STAR, star);
 
 ---
 
-### Task 1.2: TSS (Task State Segment)
-- [ ] Add TSS structure to `gdt.h`
+### Task 1.2: TSS (Task State Segment) ✓ COMPLETE
+- [x] Add TSS structure to `gdt.h` (named `x86_tss_t` to avoid C11 conflict)
   ```c
   typedef struct {
       uint32_t reserved0;
@@ -184,20 +184,20 @@ wrmsr(MSR_STAR, star);
       uint64_t reserved2;
       uint16_t reserved3;
       uint16_t iopb_offset;
-  } __attribute__((packed)) tss_t;
+  } __attribute__((packed)) x86_tss_t;
   ```
-- [ ] Add to `gdt.c`
-  - Global `tss_t kernel_tss`
+- [x] Add to `gdt.c`
+  - Global `static x86_tss_t tss`
   - Initialize TSS descriptor in GDT (base address split across fields)
   - `gdt_set_tss_rsp0(uint64_t rsp0)` - update rsp0 on context switch
   - Load TSS with `ltr` instruction after GDT load
 
-**Test:** `ltr` executes without #GP fault.
+**Test:** `ltr` executes without #GP fault. ✓ Verified
 
 ---
 
-### Task 1.3: Per-CPU Data Structure
-- [ ] Create `arch/x86/kernel/percpu.h`
+### Task 1.3: Per-CPU Data Structure ✓
+- [x] Create `arch/x86/kernel/percpu.h`
   ```c
   typedef struct {
       struct process *current;    // Currently running process
@@ -209,12 +209,14 @@ wrmsr(MSR_STAR, star);
   void percpu_set_kernel_stack(uint64_t rsp);
   percpu_t *percpu_get(void);
   ```
-- [ ] Create `arch/x86/kernel/percpu.c`
+- [x] Create `arch/x86/kernel/percpu.c`
   - Global `percpu_t cpu0_percpu`
   - `percpu_init()` - set `MSR_GS_BASE` (0xC0000101) and `MSR_KERNEL_GS_BASE` (0xC0000102)
   - Read/write MSR helper functions
 
 **Note:** `swapgs` instruction swaps GS_BASE with KERNEL_GS_BASE. Used at syscall entry/exit.
+
+**Test:** `percpu_init()` sets both MSRs correctly. ✓ Verified
 
 ---
 

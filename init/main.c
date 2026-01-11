@@ -13,6 +13,7 @@
 #include "terminal.h"
 #include "kprintf.h"
 #include "gdt.h"
+#include "percpu.h"
 #include "idt.h"
 #include "pmm.h"
 #include "vmm.h"
@@ -71,6 +72,9 @@ void kmain(void)
 
 	gdt_init();
 	log_info("GDT: Initialized");
+
+	percpu_init();
+	log_info("PERCPU: Initialized");
 
 	idt_install();
 	log_info("IDT: Initialized");
