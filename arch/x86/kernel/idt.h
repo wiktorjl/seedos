@@ -14,8 +14,6 @@
 #define IDT_GATE_TRAP      0x8F
 #define IDT_GATE_USER      0xEE
 
-#define GDT_SELECTOR_FROM_LIMINE 0x28
-
 typedef struct {
     uint16_t offset_low;
     uint16_t selector;

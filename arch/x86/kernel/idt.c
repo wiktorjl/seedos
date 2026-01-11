@@ -4,6 +4,7 @@
  */
 
 #include "idt.h"
+#include "gdt.h"
 #include "kprintf.h"
 #include "log.h"
 #include "apic.h"
@@ -140,7 +141,7 @@ void idt_install(void)
 
 	for (int i = 0; i < IDT_SIZE; i++) {
 		if (isr_stubs[i] != 0)
-			idt_set_gate(i, (uint64_t)isr_stubs[i], GDT_SELECTOR_FROM_LIMINE, IDT_GATE_INTERRUPT, 0);
+			idt_set_gate(i, (uint64_t)isr_stubs[i], GDT_KERNEL_CODE, IDT_GATE_INTERRUPT, 0);
 	}
 
 	idtr.limit = sizeof(idt) - 1;

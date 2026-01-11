@@ -12,6 +12,7 @@
 #include "logo.h"
 #include "terminal.h"
 #include "kprintf.h"
+#include "gdt.h"
 #include "idt.h"
 #include "pmm.h"
 #include "vmm.h"
@@ -67,6 +68,9 @@ void kmain(void)
 
 	log_info("STACK: Top: 0x%llx", cpu_get_stack_top());
 	log_info("STACK: Size: %llu bytes", (uint64_t)stack_size);
+
+	gdt_init();
+	log_info("GDT: Initialized");
 
 	idt_install();
 	log_info("IDT: Initialized");
