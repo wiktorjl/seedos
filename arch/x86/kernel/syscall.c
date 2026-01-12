@@ -62,6 +62,18 @@ static void syscall_memset(void *dst, uint8_t val, size_t n)
 #define MAP_ANON        MAP_ANONYMOUS
 
 /*
+ * wait4 options
+ */
+#define WNOHANG         0x00000001  /* Don't block if no child has exited */
+#define WUNTRACED       0x00000002  /* Also report stopped children */
+
+/*
+ * Wait status macros - encode exit status
+ * Linux encodes: bits 7:0 = signal (0 if exited normally), bits 15:8 = exit code
+ */
+#define W_EXITCODE(code)    (((code) & 0xff) << 8)
+
+/*
  * utsname structure (Linux-compatible)
  */
 struct utsname {
@@ -100,6 +112,8 @@ static int64_t sys_getppid(uint64_t arg1, uint64_t arg2, uint64_t arg3,
                            uint64_t arg4, uint64_t arg5, uint64_t arg6);
 static int64_t sys_uname(uint64_t buf, uint64_t arg2, uint64_t arg3,
                          uint64_t arg4, uint64_t arg5, uint64_t arg6);
+static int64_t sys_wait4(uint64_t pid, uint64_t wstatus, uint64_t options,
+                         uint64_t rusage, uint64_t arg5, uint64_t arg6);
 
 /*
  * Default handler for unimplemented syscalls
@@ -206,6 +220,7 @@ void syscall_table_init(void)
     syscall_table[SYS_arch_prctl] = sys_arch_prctl;
     syscall_table[SYS_getppid]    = sys_getppid;
     syscall_table[SYS_uname]      = sys_uname;
+    syscall_table[SYS_wait4]      = sys_wait4;
 
     log_debug("SYSCALL: Table initialized with %d entries", NR_SYSCALLS);
 }
@@ -630,4 +645,165 @@ static int64_t sys_uname(uint64_t buf, uint64_t arg2, uint64_t arg3,
     syscall_strncpy(u->machine, "x86_64", sizeof(u->machine));
 
     return 0;
+}
+
+/*
+ * =============================================================================
+ * wait4() Implementation
+ * =============================================================================
+ */
+
+/**
+ * find_zombie_child - Find a zombie child matching the pid specification
+ * @parent: Parent process to search children of
+ * @pid: PID specification:
+ *       -1 = any child
+ *       >0 = specific child with that PID
+ *
+ * Return: Zombie child process, or NULL if none found
+ */
+static process_t *find_zombie_child(process_t *parent, int64_t pid)
+{
+    process_t *child;
+
+    for (child = parent->children; child != NULL; child = child->sibling) {
+        /* Check if this child matches the pid specification */
+        if (pid > 0 && (int64_t)child->pid != pid) {
+            continue;  /* Looking for specific PID, this isn't it */
+        }
+
+        /* Check if this child is a zombie */
+        if (child->state == PROC_ZOMBIE) {
+            return child;
+        }
+    }
+
+    return NULL;
+}
+
+/**
+ * has_matching_children - Check if parent has any children matching pid spec
+ * @parent: Parent process
+ * @pid: PID specification (-1 = any, >0 = specific)
+ *
+ * Return: true if matching children exist, false otherwise
+ */
+static bool has_matching_children(process_t *parent, int64_t pid)
+{
+    process_t *child;
+
+    for (child = parent->children; child != NULL; child = child->sibling) {
+        if (pid == -1) {
+            return true;  /* Any child matches */
+        }
+        if (pid > 0 && (int64_t)child->pid == pid) {
+            return true;  /* Found specific child */
+        }
+    }
+
+    return false;
+}
+
+/**
+ * sys_wait4 - Wait for child process state change
+ * @pid: Which child to wait for:
+ *       -1 = any child
+ *       >0 = child with this PID
+ * @wstatus: Pointer to store wait status (can be NULL)
+ * @options: Wait options (WNOHANG, etc.)
+ * @rusage: Resource usage (not implemented, ignored)
+ *
+ * Return: PID of child on success, 0 if WNOHANG with no zombie,
+ *         negative errno on error
+ *
+ * This implements the core of waitpid()/wait4() semantics:
+ * - Find a zombie child matching the pid specification
+ * - Reap the zombie (free its resources)
+ * - Return its exit status to the parent
+ */
+static int64_t sys_wait4(uint64_t pid, uint64_t wstatus, uint64_t options,
+                         uint64_t rusage, uint64_t arg5, uint64_t arg6)
+{
+    (void)rusage;  /* Resource usage tracking not implemented */
+    (void)arg5; (void)arg6;
+
+    process_t *proc = process_current();
+    process_t *child;
+    int64_t wait_pid = (int64_t)pid;
+
+    if (!proc) {
+        return -ESRCH;
+    }
+
+    log_debug("WAIT4: PID %llu waiting for pid=%lld, options=0x%llx",
+              proc->pid, wait_pid, options);
+
+    /*
+     * Validate wstatus pointer if provided.
+     * NULL is valid - caller doesn't want status.
+     */
+    if (wstatus != 0 && !vmm_validate_user_range((void *)wstatus, sizeof(int))) {
+        return -EFAULT;
+    }
+
+    /*
+     * Main wait loop
+     */
+    for (;;) {
+        /* Look for a zombie child matching our criteria */
+        child = find_zombie_child(proc, wait_pid);
+
+        if (child) {
+            /* Found a zombie - reap it */
+            uint64_t child_pid = child->pid;
+            int status = W_EXITCODE(child->exit_code);
+
+            log_debug("WAIT4: Reaping zombie PID %llu (exit_code=%d)",
+                      child_pid, child->exit_code);
+
+            /* Store status if caller wants it */
+            if (wstatus != 0) {
+                *(int *)wstatus = status;
+            }
+
+            /* Destroy the zombie process (frees all resources) */
+            process_destroy(child);
+
+            return (int64_t)child_pid;
+        }
+
+        /* No zombie found - check if we have any matching children at all */
+        if (!has_matching_children(proc, wait_pid)) {
+            log_debug("WAIT4: No matching children for pid=%lld", wait_pid);
+            return -ECHILD;
+        }
+
+        /* WNOHANG: return immediately if no zombie */
+        if (options & WNOHANG) {
+            log_debug("WAIT4: WNOHANG set, returning 0");
+            return 0;
+        }
+
+        /*
+         * Block until a child exits.
+         * Set up our wait state and go to sleep.
+         * process_exit() will wake us when a child becomes a zombie.
+         */
+        log_debug("WAIT4: PID %llu sleeping, waiting for child", proc->pid);
+        proc->wait_pid = (int)wait_pid;
+        proc->state = PROC_SLEEPING;
+
+        /*
+         * TODO: Integrate with scheduler properly.
+         * For now, we busy-wait with hlt to save CPU cycles.
+         * This works because process_exit() sets us back to RUNNABLE
+         * and we're single-process anyway.
+         */
+        while (proc->state == PROC_SLEEPING) {
+            __asm__ volatile("sti; hlt; cli");
+        }
+
+        /* Woke up - loop back to check for zombie again */
+        log_debug("WAIT4: PID %llu woke up", proc->pid);
+    }
 }

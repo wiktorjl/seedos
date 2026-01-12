@@ -63,6 +63,17 @@ static inline long syscall3(long n, long a1, long a2, long a3)
     return ret;
 }
 
+static inline long syscall4(long n, long a1, long a2, long a3, long a4)
+{
+    long ret;
+    register long r10 __asm__("r10") = a4;
+    __asm__ volatile("syscall"
+        : "=a"(ret)
+        : "a"(n), "D"(a1), "S"(a2), "d"(a3), "r"(r10)
+        : "rcx", "r11", "memory");
+    return ret;
+}
+
 /* Convenience wrappers */
 static inline void exit(int status)
 {
@@ -142,6 +153,27 @@ struct utsname {
 static inline int uname(struct utsname *buf)
 {
     return syscall1(SYS_uname, (long)buf);
+}
+
+/* wait4 options */
+#define WNOHANG     0x00000001  /* Don't block if no child exited */
+#define WUNTRACED   0x00000002  /* Report stopped children */
+
+/* Wait status decoding macros */
+#define WIFEXITED(s)    (((s) & 0x7f) == 0)
+#define WEXITSTATUS(s)  (((s) >> 8) & 0xff)
+#define WIFSIGNALED(s)  (((s) & 0x7f) != 0 && ((s) & 0x7f) != 0x7f)
+#define WTERMSIG(s)     ((s) & 0x7f)
+
+static inline long wait4(long pid, int *wstatus, int options, void *rusage)
+{
+    return syscall4(SYS_wait4, pid, (long)wstatus, options, (long)rusage);
+}
+
+/* Simpler waitpid wrapper (common case) */
+static inline long waitpid(long pid, int *wstatus, int options)
+{
+    return wait4(pid, wstatus, options, (void *)0);
 }
 
 #endif /* _SYSCALL_H */
