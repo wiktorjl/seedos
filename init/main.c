@@ -31,6 +31,7 @@
 #include "vfs.h"
 #include "tty_dev.h"
 #include "ext2.h"
+#include "page.h"
 #include <stdint.h>
 #include <threads.h>
 
@@ -107,6 +108,10 @@ void kmain(void)
 	/* Print location and size of heap and stack */
 	log_info("HEAP: Used: %llu bytes, Free: %llu bytes",
 		 (uint64_t)kheap_get_used(), (uint64_t)kheap_get_free());
+
+	/* Initialize page reference counting for COW support */
+	page_init(pmm_get_total_pages() * PAGE_SIZE);
+	log_info("PAGE: Initialized");
 
 	acpi_init();
 	log_info("ACPI: Initialized");

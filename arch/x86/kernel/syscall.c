@@ -16,6 +16,9 @@
 #include "vmm.h"
 #include "pmm.h"
 #include "memory.h"
+#include "heap.h"
+#include "ext2.h"
+#include "page.h"
 
 /*
  * Local string helper for syscall implementations
@@ -114,6 +117,12 @@ static int64_t sys_uname(uint64_t buf, uint64_t arg2, uint64_t arg3,
                          uint64_t arg4, uint64_t arg5, uint64_t arg6);
 static int64_t sys_wait4(uint64_t pid, uint64_t wstatus, uint64_t options,
                          uint64_t rusage, uint64_t arg5, uint64_t arg6);
+static int64_t sys_fork(uint64_t arg1, uint64_t arg2, uint64_t arg3,
+                        uint64_t arg4, uint64_t arg5, uint64_t arg6);
+static int64_t sys_open(uint64_t pathname, uint64_t flags, uint64_t mode,
+                        uint64_t arg4, uint64_t arg5, uint64_t arg6);
+static int64_t sys_close(uint64_t fd, uint64_t arg2, uint64_t arg3,
+                         uint64_t arg4, uint64_t arg5, uint64_t arg6);
 
 /*
  * Default handler for unimplemented syscalls
@@ -221,6 +230,9 @@ void syscall_table_init(void)
     syscall_table[SYS_getppid]    = sys_getppid;
     syscall_table[SYS_uname]      = sys_uname;
     syscall_table[SYS_wait4]      = sys_wait4;
+    syscall_table[SYS_fork]       = sys_fork;
+    syscall_table[SYS_open]       = sys_open;
+    syscall_table[SYS_close]      = sys_close;
 
     log_debug("SYSCALL: Table initialized with %d entries", NR_SYSCALLS);
 }
@@ -806,4 +818,354 @@ static int64_t sys_wait4(uint64_t pid, uint64_t wstatus, uint64_t options,
         /* Woke up - loop back to check for zombie again */
         log_debug("WAIT4: PID %llu woke up", proc->pid);
     }
+}
+
+/*
+ * =============================================================================
+ * fork() Implementation
+ * =============================================================================
+ */
+
+/**
+ * sys_fork - Create a child process
+ *
+ * Creates a new process that is a copy of the calling process.
+ * Uses Copy-on-Write (COW) for memory efficiency.
+ *
+ * Return: Child PID to parent, 0 to child, negative errno on error
+ */
+static int64_t sys_fork(uint64_t arg1, uint64_t arg2, uint64_t arg3,
+                        uint64_t arg4, uint64_t arg5, uint64_t arg6)
+{
+    (void)arg1; (void)arg2; (void)arg3;
+    (void)arg4; (void)arg5; (void)arg6;
+
+    process_t *parent = process_current();
+    process_t *child;
+    void *kernel_stack;
+    int i;
+
+    if (!parent) {
+        return -ESRCH;
+    }
+
+    log_debug("FORK: Parent PID %llu forking", parent->pid);
+
+    /*
+     * Allocate child process control block
+     */
+    child = kmalloc(sizeof(process_t));
+    if (!child) {
+        log_error("FORK: Failed to allocate child PCB");
+        return -ENOMEM;
+    }
+
+    /* Copy parent's PCB as starting point */
+    for (size_t j = 0; j < sizeof(process_t); j++) {
+        ((uint8_t *)child)[j] = ((uint8_t *)parent)[j];
+    }
+
+    /*
+     * Allocate child's kernel stack
+     */
+    kernel_stack = kmalloc(16384);  /* KERNEL_STACK_SIZE */
+    if (!kernel_stack) {
+        log_error("FORK: Failed to allocate kernel stack");
+        kfree(child);
+        return -ENOMEM;
+    }
+    child->kernel_stack_top = (uint64_t)kernel_stack + 16384;
+
+    /*
+     * Copy address space with COW semantics
+     */
+    child->pml4_phys = vmm_copy_address_space_cow(parent->pml4_phys);
+    if (child->pml4_phys == 0) {
+        log_error("FORK: Failed to copy address space");
+        kfree(kernel_stack);
+        kfree(child);
+        return -ENOMEM;
+    }
+
+    /*
+     * Set up child identity
+     */
+    child->pid = process_allocate_pid();
+    child->state = PROC_RUNNABLE;
+    child->parent = parent;
+    child->children = NULL;  /* No children yet */
+    child->kthread = NULL;   /* Will be set when scheduled */
+    child->exit_code = 0;
+    child->wait_pid = -1;
+
+    /*
+     * Copy file descriptors - increment reference counts
+     */
+    for (i = 0; i < PROC_MAX_FDS; i++) {
+        if (parent->fd_table[i].file != NULL) {
+            vfs_file_ref(parent->fd_table[i].file);
+            /* child->fd_table already has the pointer from PCB copy */
+        }
+    }
+
+    /*
+     * Link child into parent's children list
+     */
+    child->sibling = parent->children;
+    parent->children = child;
+
+    /*
+     * Add to global process list
+     */
+    process_add(child);
+
+    log_info("FORK: Created child PID %llu from parent PID %llu (COW)",
+             child->pid, parent->pid);
+
+    /*
+     * The child's return value will be 0.
+     * This is handled by setting up the child's saved registers
+     * so that when it's scheduled, it returns 0 from syscall.
+     *
+     * For now, since we only support single-process execution,
+     * we return the child PID to the parent. The child would
+     * need to be scheduled to run and return 0.
+     *
+     * TODO: Proper scheduler integration - child should be added
+     * to run queue and eventually scheduled.
+     */
+
+    return (int64_t)child->pid;
+}
+
+/*
+ * =============================================================================
+ * File operations for ext2 files
+ * =============================================================================
+ */
+
+/* Private data for ext2 file handles */
+typedef struct {
+    uint32_t inode_num;     /* Inode number */
+    ext2_inode_t *inode;    /* Cached inode */
+    uint64_t size;          /* File size */
+} ext2_file_private_t;
+
+static ssize_t ext2_file_read(vfs_file_t *file, void *buf, size_t count)
+{
+    ext2_file_private_t *priv = (ext2_file_private_t *)file->private;
+    ssize_t bytes_read;
+
+    if (!priv || !priv->inode) {
+        return -EBADF;
+    }
+
+    /* Don't read past end of file */
+    if (file->offset >= priv->size) {
+        return 0;  /* EOF */
+    }
+    if (file->offset + count > priv->size) {
+        count = priv->size - file->offset;
+    }
+
+    bytes_read = ext2_read_file(priv->inode, file->offset, buf, count);
+    if (bytes_read > 0) {
+        file->offset += bytes_read;
+    }
+
+    return bytes_read;
+}
+
+static ssize_t ext2_file_write(vfs_file_t *file, const void *buf, size_t count)
+{
+    (void)file; (void)buf; (void)count;
+    /* ext2 is read-only */
+    return -EROFS;
+}
+
+static off_t ext2_file_lseek(vfs_file_t *file, off_t offset, int whence)
+{
+    ext2_file_private_t *priv = (ext2_file_private_t *)file->private;
+    int64_t new_offset;
+
+    if (!priv) {
+        return -EBADF;
+    }
+
+    switch (whence) {
+    case SEEK_SET:
+        new_offset = offset;
+        break;
+    case SEEK_CUR:
+        new_offset = (int64_t)file->offset + offset;
+        break;
+    case SEEK_END:
+        new_offset = (int64_t)priv->size + offset;
+        break;
+    default:
+        return -EINVAL;
+    }
+
+    if (new_offset < 0) {
+        return -EINVAL;
+    }
+
+    file->offset = (uint64_t)new_offset;
+    return (off_t)file->offset;
+}
+
+static int ext2_file_close(vfs_file_t *file)
+{
+    if (file->private) {
+        kfree(file->private);
+        file->private = NULL;
+    }
+    return 0;
+}
+
+static file_ops_t ext2_file_ops = {
+    .read = ext2_file_read,
+    .write = ext2_file_write,
+    .lseek = ext2_file_lseek,
+    .close = ext2_file_close,
+    .ioctl = NULL,
+};
+
+/*
+ * =============================================================================
+ * open() / close() Implementation
+ * =============================================================================
+ */
+
+/**
+ * sys_open - Open a file
+ * @pathname: Path to the file
+ * @flags: Open flags (O_RDONLY, O_WRONLY, O_RDWR, etc.)
+ * @mode: File mode (for O_CREAT, unused currently)
+ *
+ * Return: File descriptor on success, negative errno on error
+ */
+static int64_t sys_open(uint64_t pathname, uint64_t flags, uint64_t mode,
+                        uint64_t arg4, uint64_t arg5, uint64_t arg6)
+{
+    (void)mode; (void)arg4; (void)arg5; (void)arg6;
+
+    process_t *proc = process_current();
+    const char *path = (const char *)pathname;
+    uint32_t ino;
+    ext2_inode_t *inode;
+    vfs_file_t *file;
+    ext2_file_private_t *priv;
+    int fd;
+
+    if (!proc) {
+        return -ESRCH;
+    }
+
+    /* Validate user pointer */
+    if (!vmm_validate_user_range((void *)pathname, 1)) {
+        return -EFAULT;
+    }
+
+    log_debug("OPEN: path='%s' flags=0x%llx", path, flags);
+
+    /* Look up the file in ext2 */
+    ino = ext2_lookup(path);
+    if (ino == 0) {
+        log_debug("OPEN: File not found: %s", path);
+        return -ENOENT;
+    }
+
+    /* Read the inode */
+    inode = ext2_read_inode(ino);
+    if (!inode) {
+        return -EIO;
+    }
+
+    /* Check it's a regular file */
+    if (!ext2_is_regular_file(inode)) {
+        /* TODO: Support directories, etc. */
+        return -EISDIR;
+    }
+
+    /* Allocate file descriptor */
+    fd = process_fd_alloc(proc);
+    if (fd < 0) {
+        return -EMFILE;
+    }
+
+    /* Allocate VFS file structure */
+    file = vfs_file_alloc();
+    if (!file) {
+        process_fd_free(proc, fd);
+        return -ENOMEM;
+    }
+
+    /* Allocate private data */
+    priv = kmalloc(sizeof(ext2_file_private_t));
+    if (!priv) {
+        vfs_close(file);
+        process_fd_free(proc, fd);
+        return -ENOMEM;
+    }
+
+    priv->inode_num = ino;
+    priv->inode = inode;
+    priv->size = ext2_get_file_size(inode);
+
+    /* Set up the file structure */
+    file->type = VFS_TYPE_REG;
+    file->flags = (int)flags;
+    file->offset = 0;
+    file->ops = &ext2_file_ops;
+    file->private = priv;
+
+    /* Install in process fd table */
+    proc->fd_table[fd].file = file;
+    proc->fd_table[fd].flags = 0;
+
+    log_debug("OPEN: Opened '%s' as fd %d (ino=%u, size=%llu)",
+              path, fd, ino, priv->size);
+
+    return fd;
+}
+
+/**
+ * sys_close - Close a file descriptor
+ * @fd: File descriptor to close
+ *
+ * Return: 0 on success, negative errno on error
+ */
+static int64_t sys_close(uint64_t fd, uint64_t arg2, uint64_t arg3,
+                         uint64_t arg4, uint64_t arg5, uint64_t arg6)
+{
+    (void)arg2; (void)arg3; (void)arg4; (void)arg5; (void)arg6;
+
+    process_t *proc = process_current();
+    vfs_file_t *file;
+
+    if (!proc) {
+        return -ESRCH;
+    }
+
+    /* Validate file descriptor */
+    if (fd >= PROC_MAX_FDS) {
+        return -EBADF;
+    }
+
+    file = proc->fd_table[fd].file;
+    if (!file) {
+        return -EBADF;
+    }
+
+    log_debug("CLOSE: fd=%llu", fd);
+
+    /* Close the file (decrements refcount, frees if zero) */
+    vfs_close(file);
+
+    /* Clear the fd table entry */
+    proc->fd_table[fd].file = NULL;
+    proc->fd_table[fd].flags = 0;
+
+    return 0;
 }

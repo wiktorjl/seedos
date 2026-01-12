@@ -262,6 +262,18 @@ process_t *process_list_head(void)
 }
 
 /**
+ * process_add - Add a process to the global process list
+ * @proc: Process to add
+ */
+void process_add(process_t *proc)
+{
+    if (proc) {
+        proc->next = process_list;
+        process_list = proc;
+    }
+}
+
+/**
  * process_exit - Exit the current process
  * @status: Exit status code
  *

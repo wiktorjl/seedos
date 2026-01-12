@@ -176,4 +176,50 @@ static inline long waitpid(long pid, int *wstatus, int options)
     return wait4(pid, wstatus, options, (void *)0);
 }
 
+/*
+ * fork() - Create a child process
+ *
+ * Returns: Child PID to parent, 0 to child, negative errno on error
+ */
+static inline long fork(void)
+{
+    return syscall0(SYS_fork);
+}
+
+/*
+ * File open flags
+ */
+#define O_RDONLY    0x0000
+#define O_WRONLY    0x0001
+#define O_RDWR      0x0002
+#define O_ACCMODE   0x0003
+
+#define O_CREAT     0x0040
+#define O_EXCL      0x0080
+#define O_TRUNC     0x0200
+#define O_APPEND    0x0400
+
+/*
+ * open() - Open a file
+ * @pathname: Path to the file
+ * @flags: Open flags (O_RDONLY, O_WRONLY, O_RDWR, etc.)
+ *
+ * Returns: File descriptor on success, negative errno on error
+ */
+static inline int open(const char *pathname, int flags)
+{
+    return syscall3(SYS_open, (long)pathname, flags, 0);
+}
+
+/*
+ * close() - Close a file descriptor
+ * @fd: File descriptor to close
+ *
+ * Returns: 0 on success, negative errno on error
+ */
+static inline int close(int fd)
+{
+    return syscall1(SYS_close, fd);
+}
+
 #endif /* _SYSCALL_H */

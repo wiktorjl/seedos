@@ -23,6 +23,7 @@
 #define PTE_DIRTY	(1ULL << 6)
 #define PTE_HUGE	(1ULL << 7)
 #define PTE_GLOBAL	(1ULL << 8)
+#define PTE_COW		(1ULL << 9)  /* Software: Copy-on-Write */
 #define PTE_NX		(1ULL << 63)
 
 /* Physical address mask (bits 12-51) */
@@ -111,5 +112,36 @@ uint64_t vmm_get_kernel_pml4(void);
  * Return: physical address, or 0 if not mapped
  */
 uint64_t vmm_get_physical(uint64_t pml4_phys, uint64_t virt);
+
+/**
+ * vmm_get_pte_flags - Get PTE flags for a virtual address
+ * @pml4_phys: physical address of PML4 to query
+ * @virt: virtual address to query
+ *
+ * Return: PTE flags, or 0 if not mapped
+ */
+uint64_t vmm_get_pte_flags(uint64_t pml4_phys, uint64_t virt);
+
+/**
+ * vmm_set_pte_flags - Set PTE flags for a virtual address
+ * @pml4_phys: physical address of PML4
+ * @virt: virtual address to modify
+ * @flags: new flags to set (replaces existing flags, keeps physical address)
+ *
+ * Return: 0 on success, -1 if not mapped
+ */
+int vmm_set_pte_flags(uint64_t pml4_phys, uint64_t virt, uint64_t flags);
+
+/**
+ * vmm_copy_address_space_cow - Copy address space with Copy-on-Write
+ * @src_pml4: physical address of source PML4
+ *
+ * Creates a new address space that shares all user pages with the source
+ * using COW semantics. Both source and destination PTEs are marked read-only
+ * with COW bit set. Reference counts are incremented for shared pages.
+ *
+ * Return: physical address of new PML4, or 0 on failure
+ */
+uint64_t vmm_copy_address_space_cow(uint64_t src_pml4);
 
 #endif /* _VMM_H */

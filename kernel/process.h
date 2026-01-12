@@ -229,4 +229,12 @@ void process_fd_free(process_t *proc, int fd);
  */
 process_t *process_list_head(void);
 
+/**
+ * process_add - Add a process to the global process list
+ * @proc: Process to add
+ *
+ * Used by fork() to add the newly created child process.
+ */
+void process_add(process_t *proc);
+
 #endif /* _PROCESS_H */

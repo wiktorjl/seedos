@@ -8,6 +8,7 @@
 #include "vmm.h"
 #include "log.h"
 #include "pmm.h"
+#include "page.h"
 #include "memory.h"
 #include <stdint.h>
 
@@ -310,4 +311,198 @@ uint64_t vmm_get_physical(uint64_t pml4_phys, uint64_t virt)
 		return 0;
 
 	return pt[pt_idx] & PTE_ADDR_MASK;
+}
+
+/**
+ * vmm_get_pte_flags - Get PTE flags for a virtual address
+ */
+uint64_t vmm_get_pte_flags(uint64_t pml4_phys, uint64_t virt)
+{
+	uint64_t *pml4 = phys_to_virt(pml4_phys);
+	int pml4_idx = PML4_INDEX(virt);
+	int pdpt_idx = PDPT_INDEX(virt);
+	int pd_idx = PD_INDEX(virt);
+	int pt_idx = PT_INDEX(virt);
+	uint64_t *pdpt;
+	uint64_t *pd;
+	uint64_t *pt;
+
+	if (!(pml4[pml4_idx] & PTE_PRESENT))
+		return 0;
+	pdpt = phys_to_virt(pml4[pml4_idx] & PTE_ADDR_MASK);
+
+	if (!(pdpt[pdpt_idx] & PTE_PRESENT))
+		return 0;
+	pd = phys_to_virt(pdpt[pdpt_idx] & PTE_ADDR_MASK);
+
+	if (!(pd[pd_idx] & PTE_PRESENT))
+		return 0;
+	pt = phys_to_virt(pd[pd_idx] & PTE_ADDR_MASK);
+
+	if (!(pt[pt_idx] & PTE_PRESENT))
+		return 0;
+
+	return pt[pt_idx] & ~PTE_ADDR_MASK;
+}
+
+/**
+ * vmm_set_pte_flags - Set PTE flags for a virtual address
+ */
+int vmm_set_pte_flags(uint64_t pml4_phys, uint64_t virt, uint64_t flags)
+{
+	uint64_t *pml4 = phys_to_virt(pml4_phys);
+	int pml4_idx = PML4_INDEX(virt);
+	int pdpt_idx = PDPT_INDEX(virt);
+	int pd_idx = PD_INDEX(virt);
+	int pt_idx = PT_INDEX(virt);
+	uint64_t *pdpt;
+	uint64_t *pd;
+	uint64_t *pt;
+	uint64_t phys;
+
+	if (!(pml4[pml4_idx] & PTE_PRESENT))
+		return -1;
+	pdpt = phys_to_virt(pml4[pml4_idx] & PTE_ADDR_MASK);
+
+	if (!(pdpt[pdpt_idx] & PTE_PRESENT))
+		return -1;
+	pd = phys_to_virt(pdpt[pdpt_idx] & PTE_ADDR_MASK);
+
+	if (!(pd[pd_idx] & PTE_PRESENT))
+		return -1;
+	pt = phys_to_virt(pd[pd_idx] & PTE_ADDR_MASK);
+
+	if (!(pt[pt_idx] & PTE_PRESENT))
+		return -1;
+
+	/* Keep physical address, replace flags */
+	phys = pt[pt_idx] & PTE_ADDR_MASK;
+	pt[pt_idx] = phys | flags;
+
+	/* Invalidate TLB for this address */
+	__asm__ volatile("invlpg (%0)" :: "r"(virt) : "memory");
+
+	return 0;
+}
+
+/**
+ * vmm_copy_address_space_cow - Copy address space with Copy-on-Write
+ *
+ * Deep copies all 4 levels of page tables, but shares the actual
+ * physical pages with COW semantics.
+ */
+uint64_t vmm_copy_address_space_cow(uint64_t src_pml4_phys)
+{
+	uint64_t *src_pml4 = phys_to_virt(src_pml4_phys);
+	uint64_t dst_pml4_phys;
+	uint64_t *dst_pml4;
+
+	/* Allocate new PML4 */
+	dst_pml4_phys = alloc_page_table();
+	if (dst_pml4_phys == 0) {
+		log_error("VMM: COW copy failed to allocate PML4");
+		return 0;
+	}
+	dst_pml4 = phys_to_virt(dst_pml4_phys);
+
+	/* Copy kernel mappings (shared, not COW) */
+	for (int i = KERNEL_PML4_START; i < PAGE_TABLE_ENTRIES; i++) {
+		dst_pml4[i] = src_pml4[i];
+	}
+
+	/* Deep copy user space with COW */
+	for (int i = 0; i < PAGE_TABLE_ENTRIES_USER; i++) {
+		uint64_t *src_pdpt, *dst_pdpt;
+		uint64_t dst_pdpt_phys;
+
+		if (!(src_pml4[i] & PTE_PRESENT))
+			continue;
+
+		/* Allocate PDPT */
+		dst_pdpt_phys = alloc_page_table();
+		if (dst_pdpt_phys == 0)
+			goto fail;
+		dst_pml4[i] = dst_pdpt_phys | (src_pml4[i] & ~PTE_ADDR_MASK);
+
+		src_pdpt = phys_to_virt(src_pml4[i] & PTE_ADDR_MASK);
+		dst_pdpt = phys_to_virt(dst_pdpt_phys);
+
+		for (int j = 0; j < PAGE_TABLE_ENTRIES; j++) {
+			uint64_t *src_pd, *dst_pd;
+			uint64_t dst_pd_phys;
+
+			if (!(src_pdpt[j] & PTE_PRESENT))
+				continue;
+
+			/* Allocate PD */
+			dst_pd_phys = alloc_page_table();
+			if (dst_pd_phys == 0)
+				goto fail;
+			dst_pdpt[j] = dst_pd_phys | (src_pdpt[j] & ~PTE_ADDR_MASK);
+
+			src_pd = phys_to_virt(src_pdpt[j] & PTE_ADDR_MASK);
+			dst_pd = phys_to_virt(dst_pd_phys);
+
+			for (int k = 0; k < PAGE_TABLE_ENTRIES; k++) {
+				uint64_t *src_pt, *dst_pt;
+				uint64_t dst_pt_phys;
+
+				if (!(src_pd[k] & PTE_PRESENT))
+					continue;
+
+				/* Allocate PT */
+				dst_pt_phys = alloc_page_table();
+				if (dst_pt_phys == 0)
+					goto fail;
+				dst_pd[k] = dst_pt_phys | (src_pd[k] & ~PTE_ADDR_MASK);
+
+				src_pt = phys_to_virt(src_pd[k] & PTE_ADDR_MASK);
+				dst_pt = phys_to_virt(dst_pt_phys);
+
+				for (int l = 0; l < PAGE_TABLE_ENTRIES; l++) {
+					uint64_t pte = src_pt[l];
+					uint64_t phys_addr;
+					uint64_t new_flags;
+
+					if (!(pte & PTE_PRESENT))
+						continue;
+
+					phys_addr = pte & PTE_ADDR_MASK;
+
+					/*
+					 * COW setup:
+					 * - If page was writable, mark as COW + read-only
+					 * - Copy flags but clear writable, set COW
+					 * - Increment reference count
+					 */
+					new_flags = pte & ~PTE_ADDR_MASK;
+					if (new_flags & PTE_WRITABLE) {
+						new_flags &= ~PTE_WRITABLE;
+						new_flags |= PTE_COW;
+					}
+
+					/* Update source PTE to COW as well */
+					src_pt[l] = phys_addr | new_flags;
+
+					/* Set destination PTE */
+					dst_pt[l] = phys_addr | new_flags;
+
+					/* Increment page reference count */
+					page_ref(phys_addr);
+				}
+			}
+		}
+	}
+
+	/* Flush TLB for source address space */
+	__asm__ volatile("mov %%cr3, %%rax; mov %%rax, %%cr3" ::: "rax", "memory");
+
+	log_debug("VMM: COW copied address space 0x%llx -> 0x%llx",
+	          src_pml4_phys, dst_pml4_phys);
+	return dst_pml4_phys;
+
+fail:
+	/* On failure, free partially allocated tables */
+	vmm_free_user_address_space(dst_pml4_phys);
+	return 0;
 }
