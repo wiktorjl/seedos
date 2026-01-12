@@ -95,6 +95,7 @@ $(ISO): $(KERNEL) $(INITRD) arch/x86/boot/limine.conf arch/x86/boot/startup.nsh 
 	cp $(INITRD) $(ISO_ROOT)/boot/
 	cp arch/x86/boot/limine.conf $(ISO_ROOT)/boot/limine/
 	cp arch/x86/boot/startup.nsh $(ISO_ROOT)/
+	cp arch/x86/boot/startup.nsh $(ISO_ROOT)/EFI/BOOT/
 	cp $(LIMINE_DIR)/limine-uefi-cd.bin $(ISO_ROOT)/boot/limine/
 	cp $(LIMINE_DIR)/BOOTX64.EFI $(ISO_ROOT)/EFI/BOOT/
 	xorriso -as mkisofs -R -r -J \
@@ -165,6 +166,7 @@ test: test-kernel test-initrd | limine
 	cp $(INITRD) $(ISO_ROOT)/boot/
 	cp arch/x86/boot/limine.conf $(ISO_ROOT)/boot/limine/
 	cp arch/x86/boot/startup.nsh $(ISO_ROOT)/
+	cp arch/x86/boot/startup.nsh $(ISO_ROOT)/EFI/BOOT/
 	cp $(LIMINE_DIR)/limine-uefi-cd.bin $(ISO_ROOT)/boot/limine/
 	cp $(LIMINE_DIR)/BOOTX64.EFI $(ISO_ROOT)/EFI/BOOT/
 	xorriso -as mkisofs -R -r -J \

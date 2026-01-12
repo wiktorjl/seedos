@@ -85,4 +85,63 @@ static inline long getpid(void)
     return syscall0(SYS_getpid);
 }
 
+static inline long getppid(void)
+{
+    return syscall0(SYS_getppid);
+}
+
+static inline long brk(void *addr)
+{
+    return syscall1(SYS_brk, (long)addr);
+}
+
+/* syscall6 for mmap */
+__attribute__((always_inline))
+static inline long syscall6(long n, long a1, long a2, long a3, long a4, long a5, long a6)
+{
+    long ret;
+    register long r10 __asm__("r10") = a4;
+    register long r8 __asm__("r8") = a5;
+    register long r9 __asm__("r9") = a6;
+    __asm__ volatile("syscall"
+        : "=a"(ret)
+        : "a"(n), "D"(a1), "S"(a2), "d"(a3), "r"(r10), "r"(r8), "r"(r9)
+        : "rcx", "r11", "memory");
+    return ret;
+}
+
+/* mmap flags */
+#define PROT_NONE       0x0
+#define PROT_READ       0x1
+#define PROT_WRITE      0x2
+#define PROT_EXEC       0x4
+#define MAP_SHARED      0x01
+#define MAP_PRIVATE     0x02
+#define MAP_ANONYMOUS   0x20
+
+__attribute__((always_inline))
+static inline void *mmap(void *addr, size_t len, int prot, int flags, int fd, long offset)
+{
+    return (void *)syscall6(SYS_mmap, (long)addr, len, prot, flags, fd, offset);
+}
+
+static inline int munmap(void *addr, size_t len)
+{
+    return syscall2(SYS_munmap, (long)addr, len);
+}
+
+/* utsname structure */
+struct utsname {
+    char sysname[65];
+    char nodename[65];
+    char release[65];
+    char version[65];
+    char machine[65];
+};
+
+static inline int uname(struct utsname *buf)
+{
+    return syscall1(SYS_uname, (long)buf);
+}
+
 #endif /* _SYSCALL_H */

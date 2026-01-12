@@ -69,10 +69,20 @@ syscall_entry:
     cli
 
     /*
-     * Step 5: Clean up syscall frame
+     * Step 5: Restore registers from syscall frame
+     *
      * Return value is in RAX - leave it there for userspace.
+     * But we must restore the other registers that userspace
+     * might be relying on (Linux syscall ABI preserves all
+     * registers except RAX, RCX, R11).
      */
-    addq $56, %rsp                      /* Pop syscall_frame_t (7 * 8 bytes) */
+    popq %rdi                           /* skip syscall nr (in %rdi temp) */
+    popq %rdi                           /* arg1 */
+    popq %rsi                           /* arg2 */
+    popq %rdx                           /* arg3 */
+    popq %r10                           /* arg4 */
+    popq %r8                            /* arg5 */
+    popq %r9                            /* arg6 */
 
     /*
      * Step 6: Restore sysret registers and return

@@ -52,7 +52,7 @@ rm -rf "$TMPDIR"
 # Show filesystem info
 echo ""
 echo "Filesystem contents:"
-/sbin/debugfs -R "ls -l /" "$OUTPUT" 2>/dev/null
+PAGER=cat /sbin/debugfs -R "ls -l /" "$OUTPUT" 2>/dev/null
 
 echo ""
 echo "Created $OUTPUT ($(du -h "$OUTPUT" | cut -f1))"
