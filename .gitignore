@@ -7,3 +7,4 @@ initrd_extra/
 **/esp
 *.bin
 *.psfu
+compile_commands.json
