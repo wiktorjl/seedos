@@ -72,4 +72,13 @@ char keyboard_read(void);
  */
 int keyboard_has_input(void);
 
+/**
+ * keyboard_inject - Push a character into the keyboard input buffer
+ * @c: ASCII character (or KEY_* code) to deliver as if typed
+ *
+ * Used by alternate input sources (e.g. serial console) to feed bytes
+ * into the same ring consumed by keyboard_read()/keyboard_getchar().
+ */
+void keyboard_inject(char c);
+
 #endif /* _KEYBOARD_H */

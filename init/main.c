@@ -24,6 +24,7 @@
 #include "apic.h"
 #include "ioapic.h"
 #include "keyboard.h"
+#include "serial.h"
 #include "sysinfo.h"
 #include "kthread.h"
 #include "process.h"
@@ -129,6 +130,8 @@ void kmain(void)
 
 	keyboard_init();
 	log_info("KEYBOARD: Initialized");
+
+	serial_irq_init();
 
 	/* Enable interrupts after all hardware is initialized */
 	cpu_enable_interrupts();

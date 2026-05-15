@@ -16,7 +16,7 @@ SeedOS boots via UEFI, launches a userspace shell, and can run standalone C prog
 - Local APIC + I/O APIC (no legacy 8259 PIC)
 - ACPI table parsing (RSDP, RSDT, XSDT, MADT)
 - PS/2 keyboard with interrupt-driven input
-- Serial port (COM1) for debug output
+- Serial port (COM1) for debug output and interactive shell input (IRQ-driven RX)
 - Framebuffer graphics with 8x16 bitmap font
 
 **Memory Management**

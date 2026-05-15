@@ -10,8 +10,24 @@
 
 /**
  * serial_init - Initialize COM1 serial port at 115200 8N1
+ *
+ * Brings the UART up for output only. Safe to call before the IDT
+ * and IOAPIC are ready (used for early-boot logging).
  */
 void serial_init(void);
+
+/**
+ * serial_irq_init - Enable receive-side serial input
+ *
+ * Registers the COM1 IRQ handler, routes IRQ 4 through the I/O APIC,
+ * and enables the UART's receive-data-available interrupt. Incoming
+ * bytes are translated (CR -> LF, DEL -> BS, ANSI escapes filtered)
+ * and injected into the keyboard input ring so kshell reads them.
+ *
+ * Must be called after ioapic_init() and keyboard_init(), and before
+ * cpu_enable_interrupts().
+ */
+void serial_irq_init(void);
 
 /**
  * serial_putchar - Write a character to the serial port

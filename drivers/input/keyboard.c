@@ -190,3 +190,8 @@ int keyboard_has_input(void)
 {
     return buffer_head != buffer_tail;
 }
+
+void keyboard_inject(char c)
+{
+    buffer_put(c);
+}
