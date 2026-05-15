@@ -1,7 +1,27 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/*
+ * Common ISR stub and per-vector entry points.
+ *
+ * Each per-vector stub pushes an error code (real or dummy) plus the
+ * vector number, then jumps to isr_common. isr_common saves the GPRs,
+ * conditionally swaps to the kernel GS base when the trap originated
+ * in CPL=3, clears the direction flag per the SysV ABI, and dispatches
+ * to the C handler.
+ *
+ * Stack layout at the point we test CS (after the 15 GPR pushes):
+ *   0(%rsp)   r15
+ *   ...
+ *   112(%rsp) rax
+ *   120(%rsp) int_no   (pushed by stub)
+ *   128(%rsp) error_code (pushed by CPU or stub)
+ *   136(%rsp) rip      (pushed by CPU)
+ *   144(%rsp) cs       (pushed by CPU - low 2 bits = CPL)
+ */
+
 .section .text
 
 isr_common:
-    
+
     /* Save all general-purpose registers */
     pushq %rax
     pushq %rbx
@@ -19,11 +39,30 @@ isr_common:
     pushq %r14
     pushq %r15
 
-    /* First argument (rdi) = pointer to interrupt_frame (current stack pointer) */
+    /*
+     * If we trapped from user mode (CPL=3 in saved CS), swap to the
+     * kernel GS base. Skip when CPL=0 - the kernel GS is already
+     * active and a second swapgs would corrupt it.
+     */
+    testb $3, 144(%rsp)
+    jz 1f
+    swapgs
+1:
+
+    /* SysV ABI requires DF=0 on entry to C; CPU does not clear it for us. */
+    cld
+
+    /* First argument (rdi) = pointer to interrupt_frame (current rsp) */
     movq %rsp, %rdi
-    
+
     /* Call C handler */
     call interrupt_handler
+
+    /* Mirror the entry-time swapgs based on the CS we are returning to. */
+    testb $3, 144(%rsp)
+    jz 2f
+    swapgs
+2:
 
     /* Restore all general-purpose registers */
     popq %r15

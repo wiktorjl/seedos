@@ -17,6 +17,9 @@
 #include "tty_dev.h"
 #include <stddef.h>
 
+/* IA32_FS_BASE - kept in sync with arch/x86/kernel/syscall.c */
+#define MSR_FS_BASE     0xC0000100
+
 /*
  * Kernel stack size for each process (16KB)
  */
@@ -357,6 +360,15 @@ void process_switch(process_t *next)
     if (!prev || next->pml4_phys != prev->pml4_phys) {
         vmm_switch_address_space(next->pml4_phys);
     }
+
+    /*
+     * Restore per-process segment bases. FS_BASE is loaded directly
+     * (used by user-mode TLS); the user's GS base is staged in
+     * KERNEL_GS_BASE so that the swapgs on the next sysret/iretq
+     * brings it into the active GS_BASE.
+     */
+    wrmsr(MSR_FS_BASE, next->fs_base);
+    wrmsr(MSR_KERNEL_GS_BASE, next->gs_base);
 
     /* Update current process */
     current_proc = next;

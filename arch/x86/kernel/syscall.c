@@ -40,12 +40,54 @@ static void syscall_memset(void *dst, uint8_t val, size_t n)
 }
 
 /*
+ * Copy a NUL-terminated string from user space into @dst.
+ *
+ * Validates that every byte read stays inside the user half. We don't
+ * have an exception-based copy_from_user with a fixup table yet, so an
+ * unmapped page inside the user half will still page-fault the kernel
+ * - this guards only against out-of-range pointers, not unmapped ones.
+ *
+ * Return: length excluding NUL on success, negative errno otherwise.
+ */
+static int64_t copy_string_from_user(char *dst, const void *src, size_t max)
+{
+    uint64_t addr = (uint64_t)src;
+    size_t safe_max;
+    const char *user = src;
+
+    if (max == 0)
+        return -EINVAL;
+    if (!vmm_validate_user_range(src, 1))
+        return -EFAULT;
+
+    /* The user half is [0, USER_SPACE_TOP); cap the walk there. */
+    safe_max = (size_t)(USER_SPACE_TOP - addr);
+    if (safe_max > max)
+        safe_max = max;
+
+    for (size_t i = 0; i < safe_max; i++) {
+        dst[i] = user[i];
+        if (dst[i] == '\0')
+            return (int64_t)i;
+    }
+
+    /* If we hit USER_SPACE_TOP before max, the string ran off user space. */
+    if (safe_max < max)
+        return -EFAULT;
+
+    return -ENAMETOOLONG;
+}
+
+/*
  * arch_prctl codes
  */
 #define ARCH_SET_GS     0x1001
 #define ARCH_SET_FS     0x1002
 #define ARCH_GET_FS     0x1003
 #define ARCH_GET_GS     0x1004
+
+/* IA32_FS_BASE - loaded directly into FS_BASE (no swapgs involved). */
+#define MSR_FS_BASE     0xC0000100
 
 /*
  * mmap protection flags
@@ -249,6 +291,24 @@ int64_t syscall_dispatch(syscall_frame_t *frame)
 {
     uint64_t nr = frame->nr;
     syscall_fn_t handler;
+    process_t *proc = process_current();
+
+    /*
+     * Snapshot the caller's user-mode RIP/RFLAGS/RSP into the PCB so
+     * syscalls like fork() can build a child sysret context without
+     * groping the kernel stack themselves.
+     *
+     * syscall_entry.S pushes rcx (user RIP) and r11 (user RFLAGS)
+     * before the syscall_frame_t, so they sit immediately above it
+     * on the kernel stack. The user RSP was already stashed in the
+     * percpu slot by the entry stub.
+     */
+    if (proc) {
+        uint64_t *qw = (uint64_t *)frame;
+        proc->user_rflags = qw[7];
+        proc->user_rip    = qw[8];
+        proc->user_rsp    = percpu_get()->user_rsp;
+    }
 
     /* Validate syscall number */
     if (nr >= NR_SYSCALLS) {
@@ -291,10 +351,13 @@ static int64_t sys_read(uint64_t fd, uint64_t buf, uint64_t count,
         return -EBADF;
     }
 
-    /*
-     * TODO: Validate user pointer with vmm_validate_user_range()
-     * For now, we trust the pointer (dangerous but works for testing)
-     */
+    /* A zero-length read is a no-op; skip pointer validation. */
+    if (count == 0)
+        return 0;
+
+    if (!vmm_validate_user_range((void *)buf, count))
+        return -EFAULT;
+
     vfs_file_t *file = proc->fd_table[fd].file;
     return vfs_read(file, (void *)buf, count);
 }
@@ -317,10 +380,12 @@ static int64_t sys_write(uint64_t fd, uint64_t buf, uint64_t count,
         return -EBADF;
     }
 
-    /*
-     * TODO: Validate user pointer with vmm_validate_user_range()
-     * For now, we trust the pointer (dangerous but works for testing)
-     */
+    if (count == 0)
+        return 0;
+
+    if (!vmm_validate_user_range((void *)buf, count))
+        return -EFAULT;
+
     vfs_file_t *file = proc->fd_table[fd].file;
     return vfs_write(file, (const void *)buf, count);
 }
@@ -585,8 +650,7 @@ static int64_t sys_arch_prctl(uint64_t code, uint64_t addr, uint64_t arg3,
     switch (code) {
     case ARCH_SET_FS:
         proc->fs_base = addr;
-        /* Set FS base immediately - MSR 0xC0000100 is IA32_FS_BASE */
-        wrmsr(0xC0000100, addr);
+        wrmsr(MSR_FS_BASE, addr);
         return 0;
 
     case ARCH_GET_FS:
@@ -598,7 +662,14 @@ static int64_t sys_arch_prctl(uint64_t code, uint64_t addr, uint64_t arg3,
 
     case ARCH_SET_GS:
         proc->gs_base = addr;
-        /* Note: GS base is tricky because kernel uses it. Store in process. */
+        /*
+         * In kernel mode, IA32_KERNEL_GS_BASE holds the value that
+         * swapgs will swap into the active GS_BASE on the way back
+         * to user mode. Stash @addr there so the next sysret picks
+         * it up. The process_switch path restores this on every
+         * subsequent context switch to keep it per-process.
+         */
+        wrmsr(MSR_KERNEL_GS_BASE, addr);
         return 0;
 
     case ARCH_GET_GS:
@@ -827,6 +898,50 @@ static int64_t sys_wait4(uint64_t pid, uint64_t wstatus, uint64_t options,
  */
 
 /**
+ * fork_child_user_return - First-run trampoline for a freshly forked child.
+ *
+ * Runs as a kthread entry. The kthread's own stack is only live for the
+ * few instructions that follow: once we install @child as the current
+ * process and load the user RSP, the kthread stack becomes unreachable.
+ * Future syscalls from this child land on child->kernel_stack_top via
+ * TSS.rsp0 / the percpu kernel_rsp set below.
+ */
+static void fork_child_user_return(void *arg)
+{
+    process_t *child = (process_t *)arg;
+
+    /* Make the child the running process. */
+    process_set_current(child);
+    gdt_set_tss_rsp0(child->kernel_stack_top);
+    percpu_set_kernel_stack(child->kernel_stack_top);
+    vmm_switch_address_space(child->pml4_phys);
+
+    /* Restore per-process segment bases for user mode. */
+    wrmsr(MSR_FS_BASE, child->fs_base);
+    wrmsr(MSR_KERNEL_GS_BASE, child->gs_base);
+
+    /*
+     * Return to user mode with rax=0. sysretq loads RIP from RCX,
+     * RFLAGS from R11, then swaps CS/SS to the user selectors. swapgs
+     * brings the user GS base (staged above) live before we leave.
+     */
+    __asm__ volatile (
+        "movq %0, %%rcx\n\t"
+        "movq %1, %%r11\n\t"
+        "movq %2, %%rsp\n\t"
+        "xorl %%eax, %%eax\n\t"
+        "swapgs\n\t"
+        "sysretq"
+        :
+        : "r"(child->user_rip),
+          "r"(child->user_rflags),
+          "r"(child->user_rsp)
+        : "rcx", "r11", "memory"
+    );
+    __builtin_unreachable();
+}
+
+/**
  * sys_fork - Create a child process
  *
  * Creates a new process that is a copy of the calling process.
@@ -919,21 +1034,20 @@ static int64_t sys_fork(uint64_t arg1, uint64_t arg2, uint64_t arg3,
      */
     process_add(child);
 
+    /*
+     * Create the kthread that will return the child to user mode with
+     * rax=0. The child PCB already has user_rip/user_rsp/user_rflags
+     * snapshotted by syscall_dispatch() before this handler ran (and
+     * memcpy'd into the child above).
+     */
+    if (kthread_create("fork-child", fork_child_user_return, child) == 0) {
+        log_error("FORK: Failed to create child kthread");
+        process_destroy(child);
+        return -ENOMEM;
+    }
+
     log_info("FORK: Created child PID %llu from parent PID %llu (COW)",
              child->pid, parent->pid);
-
-    /*
-     * The child's return value will be 0.
-     * This is handled by setting up the child's saved registers
-     * so that when it's scheduled, it returns 0 from syscall.
-     *
-     * For now, since we only support single-process execution,
-     * we return the child PID to the parent. The child would
-     * need to be scheduled to run and return 0.
-     *
-     * TODO: Proper scheduler integration - child should be added
-     * to run queue and eventually scheduled.
-     */
 
     return (int64_t)child->pid;
 }
@@ -1051,7 +1165,8 @@ static int64_t sys_open(uint64_t pathname, uint64_t flags, uint64_t mode,
     (void)mode; (void)arg4; (void)arg5; (void)arg6;
 
     process_t *proc = process_current();
-    const char *path = (const char *)pathname;
+    char path[PATH_MAX];
+    int64_t path_len;
     uint32_t ino;
     ext2_inode_t *inode;
     vfs_file_t *file;
@@ -1062,10 +1177,10 @@ static int64_t sys_open(uint64_t pathname, uint64_t flags, uint64_t mode,
         return -ESRCH;
     }
 
-    /* Validate user pointer */
-    if (!vmm_validate_user_range((void *)pathname, 1)) {
-        return -EFAULT;
-    }
+    /* Copy path from user space into a bounded kernel buffer. */
+    path_len = copy_string_from_user(path, (const void *)pathname, sizeof(path));
+    if (path_len < 0)
+        return path_len;
 
     log_debug("OPEN: path='%s' flags=0x%llx", path, flags);
 

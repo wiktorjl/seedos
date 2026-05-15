@@ -158,6 +158,15 @@ void idt_install(void)
 			idt_set_gate(i, (uint64_t)isr_stubs[i], GDT_KERNEL_CODE, IDT_GATE_INTERRUPT, 0);
 	}
 
+	/*
+	 * Route critical exceptions through dedicated IST stacks so they
+	 * remain serviceable when the regular kernel stack is corrupt or
+	 * exhausted. IST indices match the slots populated in gdt.c.
+	 */
+	idt_set_gate(2,  (uint64_t)isr_2,  GDT_KERNEL_CODE, IDT_GATE_INTERRUPT, 1); /* NMI  */
+	idt_set_gate(8,  (uint64_t)isr_8,  GDT_KERNEL_CODE, IDT_GATE_INTERRUPT, 2); /* #DF  */
+	idt_set_gate(18, (uint64_t)isr_18, GDT_KERNEL_CODE, IDT_GATE_INTERRUPT, 3); /* #MCE */
+
 	idtr.limit = sizeof(idt) - 1;
 	idtr.base  = (uint64_t)&idt;
 

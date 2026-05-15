@@ -30,6 +30,18 @@ static gdtr_t gdtr;
 /* Task State Segment */
 static x86_tss_t tss __attribute__((aligned(16)));
 
+/*
+ * Dedicated IST stacks for high-priority exceptions.
+ *
+ * NMI, #DF, and #MCE can fire at arbitrary times (including on a
+ * corrupt kernel stack); routing them through the TSS Interrupt Stack
+ * Table guarantees a known-good stack and avoids triple-faults.
+ */
+#define IST_STACK_SIZE 8192
+static uint8_t ist_nmi_stack[IST_STACK_SIZE] __attribute__((aligned(16)));
+static uint8_t ist_df_stack[IST_STACK_SIZE]  __attribute__((aligned(16)));
+static uint8_t ist_mce_stack[IST_STACK_SIZE] __attribute__((aligned(16)));
+
 /**
  * gdt_set_entry - Configure a standard GDT entry
  * @index: GDT slot number
@@ -91,6 +103,11 @@ static void tss_init(void)
      * This means all I/O port access from Ring 3 will cause #GP.
      */
     tss.iopb_offset = sizeof(x86_tss_t);
+
+    /* Wire IST entries to the dedicated stacks (stack grows down). */
+    tss.ist1 = (uint64_t)&ist_nmi_stack[IST_STACK_SIZE];
+    tss.ist2 = (uint64_t)&ist_df_stack[IST_STACK_SIZE];
+    tss.ist3 = (uint64_t)&ist_mce_stack[IST_STACK_SIZE];
 }
 
 /**
