@@ -9,6 +9,7 @@
 
 #include "gdt.h"
 #include "log.h"
+#include "vmm.h"
 
 /* Assembly function to reload segment registers */
 extern void gdt_reload(void);
@@ -37,17 +38,32 @@ static x86_tss_t tss __attribute__((aligned(16)));
  * corrupt kernel stack); routing them through the TSS Interrupt Stack
  * Table guarantees a known-good stack and avoids triple-faults.
  *
+ * Layout per stack (one PAGE_SIZE guard at the bottom):
+ *
+ *   +------------+ <- top = base + IST_STACK_TOTAL  (TSS points here)
+ *   | usable     |    Stack grows down from here.
+ *   | 8 KB       |
+ *   +------------+ <- base + IST_GUARD_SIZE
+ *   | guard page |    Unmapped by gdt_install_ist_guards() after VMM
+ *   | 4 KB       |    init. Overflow into it triggers #PF, which is
+ *   +------------+ <- base                          delivered on RSP0.
+ *
  * KPTI note: these stacks live in kernel-only BSS. If a separate user
  * CR3 is ever added (Meltdown mitigation), the IST stacks must remain
  * mapped in the user PML4 or NMI/#DF/#MCE entry from user mode will
- * itself fault. No guard pages today - stack overflow silently
- * corrupts adjacent BSS; 8KB is enough for the panic-only handlers
- * we currently run, but anything heavier needs guards.
+ * itself fault.
  */
-#define IST_STACK_SIZE 8192
-static uint8_t ist_nmi_stack[IST_STACK_SIZE] __attribute__((aligned(16)));
-static uint8_t ist_df_stack[IST_STACK_SIZE]  __attribute__((aligned(16)));
-static uint8_t ist_mce_stack[IST_STACK_SIZE] __attribute__((aligned(16)));
+#define IST_PAGE_SIZE    4096
+#define IST_USABLE_SIZE  8192
+#define IST_GUARD_SIZE   IST_PAGE_SIZE
+#define IST_STACK_TOTAL  (IST_USABLE_SIZE + IST_GUARD_SIZE)
+
+static uint8_t ist_nmi_stack[IST_STACK_TOTAL]
+	__attribute__((aligned(IST_PAGE_SIZE)));
+static uint8_t ist_df_stack[IST_STACK_TOTAL]
+	__attribute__((aligned(IST_PAGE_SIZE)));
+static uint8_t ist_mce_stack[IST_STACK_TOTAL]
+	__attribute__((aligned(IST_PAGE_SIZE)));
 
 /**
  * gdt_set_entry - Configure a standard GDT entry
@@ -111,10 +127,47 @@ static void tss_init(void)
      */
     tss.iopb_offset = sizeof(x86_tss_t);
 
-    /* Wire IST entries to the dedicated stacks (stack grows down). */
-    tss.ist1 = (uint64_t)&ist_nmi_stack[IST_STACK_SIZE];
-    tss.ist2 = (uint64_t)&ist_df_stack[IST_STACK_SIZE];
-    tss.ist3 = (uint64_t)&ist_mce_stack[IST_STACK_SIZE];
+    /*
+     * Wire IST entries to the dedicated stacks. The TSS holds the
+     * "top" address; CPU pre-decrements RSP on each push, so the
+     * first byte written is at (top - 8). We point at the very end
+     * of the allocation; gdt_install_ist_guards() later unmaps the
+     * bottom IST_GUARD_SIZE bytes to turn overflow into a #PF.
+     */
+    tss.ist1 = (uint64_t)&ist_nmi_stack[IST_STACK_TOTAL];
+    tss.ist2 = (uint64_t)&ist_df_stack[IST_STACK_TOTAL];
+    tss.ist3 = (uint64_t)&ist_mce_stack[IST_STACK_TOTAL];
+}
+
+/**
+ * gdt_install_ist_guards - Unmap the guard page below each IST stack.
+ *
+ * Called after vmm_init has captured the kernel PML4. An overflowing
+ * IST handler will then take a #PF on the guard page (delivered on
+ * the regular kernel stack via vector 14's IST=0) instead of silently
+ * corrupting adjacent BSS.
+ *
+ * Soft-fails if the kernel image was mapped with 1 GiB/2 MiB pages -
+ * vmm_unmap_page now refuses to split huge pages, and we log a warn
+ * rather than panic. Limine's default mapping is 4 KiB pages, so this
+ * should succeed on the standard boot path.
+ */
+void gdt_install_ist_guards(void)
+{
+    uint64_t kpml4 = vmm_get_kernel_pml4();
+    struct { const char *name; uint8_t *base; } stacks[] = {
+        { "NMI",  ist_nmi_stack },
+        { "#DF",  ist_df_stack  },
+        { "#MCE", ist_mce_stack },
+    };
+
+    for (size_t i = 0; i < sizeof(stacks) / sizeof(stacks[0]); i++) {
+        if (vmm_unmap_page(kpml4, (uint64_t)stacks[i].base) < 0) {
+            log_warn("GDT: %s IST guard not installed "
+                     "(huge page or unmapped)", stacks[i].name);
+        }
+    }
+    log_info("GDT: IST guard pages installed");
 }
 
 /**

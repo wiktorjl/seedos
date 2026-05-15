@@ -1,5 +1,22 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * NMI nesting counters - read from C via extern declarations in idt.h.
+ * Bumped by the dedicated isr_2 entry below.
+ *
+ *   nmi_depth        - 0 when no NMI is in flight, 1 when handling.
+ *                      Going above 1 means re-entry happened (the outer
+ *                      handler's CPU-pushed iret frame at IST1 top has
+ *                      been overwritten by the new NMI's frame).
+ *   nmi_lost_count   - count of re-entries observed (diagnostic).
+ */
+.section .data
+.global nmi_depth
+.global nmi_lost_count
+.align 8
+nmi_depth:      .quad 0
+nmi_lost_count: .quad 0
+
+/*
  * Common ISR stub and per-vector entry points.
  *
  * Each per-vector stub pushes an error code (real or dummy) plus the
@@ -118,7 +135,7 @@ isr_\num:
 
 ISR_NOERR 0    /* Divide Error */
 ISR_NOERR 1    /* Debug */
-ISR_NOERR 2    /* NMI */
+/* ISR_NOERR 2 - NMI handled by dedicated isr_2 below. */
 ISR_NOERR 3    /* Breakpoint */
 ISR_NOERR 4    /* Overflow */
 ISR_NOERR 5    /* Bound Range Exceeded */
@@ -169,3 +186,97 @@ ISR_NOERR 47   /* IRQ 15 */
 
 /* Spurious interrupt vector */
 ISR_NOERR 255  /* Spurious interrupt */
+
+/*
+ * NMI (vector 2) - dedicated entry with re-entry detection.
+ *
+ * The CPU delivers every NMI on IST1 (per idt.c) at the *top* of that
+ * stack. NMIs are masked from the moment of delivery until IRET, so
+ * the only way a second NMI can arrive while we're still in the first
+ * handler is if our handler IRETs internally (e.g. from a nested
+ * exception). The current handler is panic-only and never does that,
+ * so re-entry should be unreachable - but if some future change ever
+ * triggers it, the inner NMI will stomp on the outer's CPU-pushed
+ * iret frame, and the outer's eventual IRET would jump to garbage.
+ *
+ * This stub bumps nmi_depth on entry and decrements on exit. If depth
+ * goes above 1 we record it in nmi_lost_count for diagnostics. We
+ * still IRET (the inner's own frame is intact) rather than panicking
+ * here, because panic from NMI context with corrupted outer state is
+ * worse than letting the outer continue and observe the counter.
+ *
+ * Full nested-NMI safety (Linux's copy-frame dance) is intentionally
+ * deferred until SeedOS gains an actual NMI workload.
+ */
+.global isr_2
+isr_2:
+    pushq $0                /* dummy error code */
+    pushq $2                /* vector number */
+
+    /* Save all general-purpose registers (same layout as isr_common). */
+    pushq %rax
+    pushq %rbx
+    pushq %rcx
+    pushq %rdx
+    pushq %rsi
+    pushq %rdi
+    pushq %rbp
+    pushq %r8
+    pushq %r9
+    pushq %r10
+    pushq %r11
+    pushq %r12
+    pushq %r13
+    pushq %r14
+    pushq %r15
+
+    /* Conditional swapgs based on saved CS (same as isr_common). */
+    testb $3, 144(%rsp)
+    jz 1f
+    swapgs
+1:
+    cld
+
+    /* Bump depth; re-entry if it was already nonzero. */
+    incq nmi_depth(%rip)
+    cmpq $1, nmi_depth(%rip)
+    jne .Lnmi_reentry
+
+    /* First-level NMI: run the C handler. */
+    movq %rsp, %rdi
+    call interrupt_handler
+
+.Lnmi_exit:
+    decq nmi_depth(%rip)
+
+    /* Mirror the entry-time swapgs. */
+    testb $3, 144(%rsp)
+    jz 2f
+    swapgs
+2:
+    popq %r15
+    popq %r14
+    popq %r13
+    popq %r12
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
+    popq %rbp
+    popq %rdi
+    popq %rsi
+    popq %rdx
+    popq %rcx
+    popq %rbx
+    popq %rax
+
+    addq $16, %rsp          /* drop err+vec */
+    iretq
+
+.Lnmi_reentry:
+    /* Inner NMI: outer's iret frame at IST1 top has been stomped.
+     * Record the event and iret from our own (still-intact) frame.
+     * The outer's eventual IRET into garbage is unavoidable from
+     * here without the full Linux copy-frame mechanism. */
+    incq nmi_lost_count(%rip)
+    jmp .Lnmi_exit

@@ -286,9 +286,16 @@ int vmm_unmap_page(uint64_t pml4_phys, uint64_t virt)
 
 	if (!(pdpt[pdpt_idx] & PTE_PRESENT))
 		return -1;
+	/* Refuse to walk into a 1 GiB huge page - treating its PFN as a PD
+	 * would corrupt user data. Splitting is not implemented. */
+	if (pdpt[pdpt_idx] & PTE_HUGE)
+		return -1;
 	pd = phys_to_virt(pdpt[pdpt_idx] & PTE_ADDR_MASK);
 
 	if (!(pd[pd_idx] & PTE_PRESENT))
+		return -1;
+	/* Same caution at the 2 MiB level. */
+	if (pd[pd_idx] & PTE_HUGE)
 		return -1;
 	pt = phys_to_virt(pd[pd_idx] & PTE_ADDR_MASK);
 

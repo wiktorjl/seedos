@@ -182,4 +182,12 @@ void gdt_set_tss_rsp0(uint64_t rsp0);
  */
 x86_tss_t *gdt_get_tss(void);
 
+/**
+ * gdt_install_ist_guards - Unmap the guard page below each IST stack.
+ *
+ * Must be called after vmm_init. Turns IST stack overflow into a #PF
+ * on the regular kernel stack instead of silent BSS corruption.
+ */
+void gdt_install_ist_guards(void);
+
 #endif /* _GDT_H */

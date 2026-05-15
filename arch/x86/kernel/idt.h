@@ -60,4 +60,15 @@ typedef void (*irq_handler_t)(interrupt_frame_t *frame);
  */
 void idt_register_irq(int irq, irq_handler_t handler);
 
+/*
+ * NMI nesting diagnostics, maintained by the dedicated isr_2 stub.
+ *
+ *   nmi_depth      - 1 while an NMI is being handled, 0 otherwise.
+ *   nmi_lost_count - number of nested-NMI events observed (the inner
+ *                    NMI's CPU-pushed frame overwrites the outer's at
+ *                    IST1 top; the outer's iret is then unrecoverable).
+ */
+extern uint64_t nmi_depth;
+extern uint64_t nmi_lost_count;
+
 #endif /* _IDT_H */

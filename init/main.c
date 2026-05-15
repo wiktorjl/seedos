@@ -102,6 +102,11 @@ void kmain(void)
 	log_info("VMM: Page size: %llu bytes", PAGE_SIZE);
 	log_info("VMM: Initialized");
 
+	/* Now that the VMM is up, install guard pages below the IST stacks
+	 * so an NMI/#DF/#MCE handler overflowing its stack faults instead
+	 * of silently corrupting adjacent BSS. */
+	gdt_install_ist_guards();
+
 	kheap_init();
 	log_info("HEAP: Initialized");
 
