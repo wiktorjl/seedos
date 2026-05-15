@@ -96,6 +96,15 @@ kthread_t *kthread_get_kthread(uint64_t kthread_id)
 	return NULL;
 }
 
+static void kthread_reaper_task(void *arg)
+{
+	(void)arg;
+	for (;;) {
+		kthread_sleep(100);
+		kthread_reap();
+	}
+}
+
 /**
  * kthread_init - Initialize the threading subsystem
  */
@@ -113,6 +122,8 @@ void kthread_init(void)
 
 	log_debug("Wrapped initial execution in a kthread: %s",
 		  current_kthread->name);
+
+	kthread_create("kreaper", kthread_reaper_task, NULL);
 }
 
 void kthread_trampoline(void)

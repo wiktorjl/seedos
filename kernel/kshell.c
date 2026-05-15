@@ -20,6 +20,7 @@
 #include "apic.h"
 #include "kinit.h"
 #include "ext2.h"
+#include "io.h"
 
 static char input_buffer[KSHELL_MAX_INPUT];
 static int input_len;
@@ -131,7 +132,30 @@ static void cmd_reboot(int argc, char *argv[])
 {
 	(void)argc;
 	(void)argv;
-	kprintf("Reboot not implemented yet\n");
+
+	kprintf("Rebooting...\n");
+
+	__asm__ volatile("cli");
+
+	/* Try PCI reset control register (works on most modern chipsets
+	 * including QEMU's q35/i440fx): bit 1 = system reset, bit 2 = hard. */
+	outb(0xCF9, 0x06);
+
+	/* Fall back to the 8042 keyboard controller "pulse output line"
+	 * command (0xFE), which on PCs is wired to the CPU's RESET pin. */
+	for (int i = 0; i < 1000; i++) {
+		uint8_t status = inb(0x64);
+		if ((status & 0x02) == 0)
+			break;
+	}
+	outb(0x64, 0xFE);
+
+	/* Last resort: triple-fault by loading a null IDT and firing an int. */
+	struct { uint16_t limit; uint64_t base; } __attribute__((packed)) null_idt = { 0, 0 };
+	__asm__ volatile("lidt %0; int $0x03" : : "m"(null_idt));
+
+	for (;;)
+		__asm__ volatile("hlt");
 }
 
 static void cmd_matrix(int argc, char *argv[])

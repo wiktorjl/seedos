@@ -8,8 +8,9 @@
  * Thread IDs are monotonic and never reused. When a thread exits and is
  * reaped, its ID remains permanently retired.
  *
- * Threads that exit are marked THREAD_EXITED but their memory is not freed
- * automatically. Call kthread_reap() periodically to reclaim resources.
+ * Threads that exit are marked THREAD_EXITED; a dedicated reaper thread
+ * ("kreaper") wakes periodically and reclaims their resources, so callers
+ * do not need to invoke kthread_reap() themselves.
  *
  * kthread_sleep() has 10ms granularity (APIC timer at 100Hz). Requested
  * sleep times are rounded up to the next 10ms boundary.
