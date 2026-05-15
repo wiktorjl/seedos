@@ -36,6 +36,13 @@ static x86_tss_t tss __attribute__((aligned(16)));
  * NMI, #DF, and #MCE can fire at arbitrary times (including on a
  * corrupt kernel stack); routing them through the TSS Interrupt Stack
  * Table guarantees a known-good stack and avoids triple-faults.
+ *
+ * KPTI note: these stacks live in kernel-only BSS. If a separate user
+ * CR3 is ever added (Meltdown mitigation), the IST stacks must remain
+ * mapped in the user PML4 or NMI/#DF/#MCE entry from user mode will
+ * itself fault. No guard pages today - stack overflow silently
+ * corrupts adjacent BSS; 8KB is enough for the panic-only handlers
+ * we currently run, but anything heavier needs guards.
  */
 #define IST_STACK_SIZE 8192
 static uint8_t ist_nmi_stack[IST_STACK_SIZE] __attribute__((aligned(16)));

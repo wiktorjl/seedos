@@ -40,6 +40,44 @@ static void syscall_memset(void *dst, uint8_t val, size_t n)
 }
 
 /*
+ * canonical_addr - true iff @a is a canonical x86-64 virtual address
+ *
+ * Bits 63:48 must sign-extend bit 47. Non-canonical addresses passed
+ * to wrmsr (FS_BASE / KERNEL_GS_BASE) or to sysretq (RCX / RSP) raise
+ * #GP, and that #GP is delivered in kernel mode with user state - the
+ * classic CVE-2012-0217 escalation primitive. Always validate before
+ * letting user-supplied values reach those instructions.
+ */
+static inline bool canonical_addr(uint64_t a)
+{
+    return ((int64_t)(a << 16) >> 16) == (int64_t)a;
+}
+
+/*
+ * Bits user is allowed to control in RFLAGS on return to CPL=3.
+ *
+ * Allowed: arithmetic flags (CF/PF/AF/ZF/SF/OF), IF, DF.
+ * Forced:  IF=1, reserved bit 1.
+ *
+ * Cleared (despite sysretq's own mask passing them through):
+ *   IOPL  - leaving IOPL=3 would grant unrestricted I/O port access
+ *   NT    - nested-task; only relevant to legacy task switching
+ *   RF    - resume flag; intersects with our (absent) debug-exception path
+ *   VM    - V8086 mode; long mode kernel rejects it but be explicit
+ *   AC    - alignment-check; not wired through #AC handling
+ *   TF    - trap flag; would single-step into the kernel on next syscall
+ *   ID    - cpuid availability bit; not user-meaningful
+ *   VIF/VIP - virtual interrupts; not implemented
+ */
+#define USER_RFLAGS_ALLOWED 0x0000000000000ED5ULL
+#define USER_RFLAGS_REQUIRED 0x0000000000000202ULL
+
+static inline uint64_t sanitize_user_rflags(uint64_t rf)
+{
+    return (rf & USER_RFLAGS_ALLOWED) | USER_RFLAGS_REQUIRED;
+}
+
+/*
  * Copy a NUL-terminated string from user space into @dst.
  *
  * Validates that every byte read stays inside the user half. We don't
@@ -302,10 +340,17 @@ int64_t syscall_dispatch(syscall_frame_t *frame)
      * before the syscall_frame_t, so they sit immediately above it
      * on the kernel stack. The user RSP was already stashed in the
      * percpu slot by the entry stub.
+     *
+     * RFLAGS is sanitized at save time so every downstream consumer
+     * (e.g. fork's sysret trampoline) gets the safe value. The syscall
+     * return path in syscall_entry.S sanitizes the live R11 separately.
+     *
+     * These fields are only valid for entries from CPL=3 via syscall;
+     * they must not be inspected from IRQ handlers or any other path.
      */
     if (proc) {
         uint64_t *qw = (uint64_t *)frame;
-        proc->user_rflags = qw[7];
+        proc->user_rflags = sanitize_user_rflags(qw[7]);
         proc->user_rip    = qw[8];
         proc->user_rsp    = percpu_get()->user_rsp;
     }
@@ -355,7 +400,8 @@ static int64_t sys_read(uint64_t fd, uint64_t buf, uint64_t count,
     if (count == 0)
         return 0;
 
-    if (!vmm_validate_user_range((void *)buf, count))
+    /* Pages must be present *and* writable by user (vfs_read writes there). */
+    if (!vmm_user_range_writable(proc->pml4_phys, (void *)buf, count))
         return -EFAULT;
 
     vfs_file_t *file = proc->fd_table[fd].file;
@@ -383,7 +429,8 @@ static int64_t sys_write(uint64_t fd, uint64_t buf, uint64_t count,
     if (count == 0)
         return 0;
 
-    if (!vmm_validate_user_range((void *)buf, count))
+    /* Pages must be present and user-readable. */
+    if (!vmm_user_range_readable(proc->pml4_phys, (void *)buf, count))
         return -EFAULT;
 
     vfs_file_t *file = proc->fd_table[fd].file;
@@ -649,18 +696,24 @@ static int64_t sys_arch_prctl(uint64_t code, uint64_t addr, uint64_t arg3,
 
     switch (code) {
     case ARCH_SET_FS:
+        if (!canonical_addr(addr))
+            return -EINVAL;
         proc->fs_base = addr;
         wrmsr(MSR_FS_BASE, addr);
         return 0;
 
     case ARCH_GET_FS:
-        if (!vmm_validate_user_range((void *)addr, sizeof(uint64_t))) {
+        if (!vmm_validate_user_range((void *)addr, sizeof(uint64_t)))
             return -EFAULT;
-        }
+        if (!vmm_user_range_writable(proc->pml4_phys, (void *)addr,
+                                     sizeof(uint64_t)))
+            return -EFAULT;
         *(uint64_t *)addr = proc->fs_base;
         return 0;
 
     case ARCH_SET_GS:
+        if (!canonical_addr(addr))
+            return -EINVAL;
         proc->gs_base = addr;
         /*
          * In kernel mode, IA32_KERNEL_GS_BASE holds the value that
@@ -673,9 +726,11 @@ static int64_t sys_arch_prctl(uint64_t code, uint64_t addr, uint64_t arg3,
         return 0;
 
     case ARCH_GET_GS:
-        if (!vmm_validate_user_range((void *)addr, sizeof(uint64_t))) {
+        if (!vmm_validate_user_range((void *)addr, sizeof(uint64_t)))
             return -EFAULT;
-        }
+        if (!vmm_user_range_writable(proc->pml4_phys, (void *)addr,
+                                     sizeof(uint64_t)))
+            return -EFAULT;
         *(uint64_t *)addr = proc->gs_base;
         return 0;
 
@@ -714,9 +769,13 @@ static int64_t sys_uname(uint64_t buf, uint64_t arg2, uint64_t arg3,
 {
     (void)arg2; (void)arg3; (void)arg4; (void)arg5; (void)arg6;
 
-    if (!vmm_validate_user_range((void *)buf, sizeof(struct utsname))) {
+    process_t *proc = process_current();
+    if (!proc)
+        return -ESRCH;
+
+    if (!vmm_user_range_writable(proc->pml4_phys, (void *)buf,
+                                 sizeof(struct utsname)))
         return -EFAULT;
-    }
 
     struct utsname *u = (struct utsname *)buf;
 
@@ -825,7 +884,9 @@ static int64_t sys_wait4(uint64_t pid, uint64_t wstatus, uint64_t options,
      * Validate wstatus pointer if provided.
      * NULL is valid - caller doesn't want status.
      */
-    if (wstatus != 0 && !vmm_validate_user_range((void *)wstatus, sizeof(int))) {
+    if (wstatus != 0 &&
+        !vmm_user_range_writable(proc->pml4_phys, (void *)wstatus,
+                                 sizeof(int))) {
         return -EFAULT;
     }
 
@@ -900,43 +961,94 @@ static int64_t sys_wait4(uint64_t pid, uint64_t wstatus, uint64_t options,
 /**
  * fork_child_user_return - First-run trampoline for a freshly forked child.
  *
- * Runs as a kthread entry. The kthread's own stack is only live for the
- * few instructions that follow: once we install @child as the current
- * process and load the user RSP, the kthread stack becomes unreachable.
- * Future syscalls from this child land on child->kernel_stack_top via
- * TSS.rsp0 / the percpu kernel_rsp set below.
+ * Runs as a kthread entry. The kthread's stack is only live until the
+ * sysretq below; afterwards future syscalls from the child land on
+ * child->kernel_stack_top via TSS.rsp0 / percpu.kernel_rsp.
+ *
+ * Refuses to sysret a child whose user_rip/user_rsp is non-canonical
+ * (CVE-2012-0217 class): such a sysretq would deliver #GP in kernel
+ * mode with user state still live.
  */
 static void fork_child_user_return(void *arg)
 {
     process_t *child = (process_t *)arg;
-
-    /* Make the child the running process. */
-    process_set_current(child);
-    gdt_set_tss_rsp0(child->kernel_stack_top);
-    percpu_set_kernel_stack(child->kernel_stack_top);
-    vmm_switch_address_space(child->pml4_phys);
-
-    /* Restore per-process segment bases for user mode. */
-    wrmsr(MSR_FS_BASE, child->fs_base);
-    wrmsr(MSR_KERNEL_GS_BASE, child->gs_base);
+    kthread_t *self  = kthread_current();
 
     /*
-     * Return to user mode with rax=0. sysretq loads RIP from RCX,
-     * RFLAGS from R11, then swaps CS/SS to the user selectors. swapgs
-     * brings the user GS base (staged above) live before we leave.
+     * From here through sysretq we must not be preempted: an IRQ that
+     * lands after swapgs but before sysretq would run isr_common, see
+     * the kernel CS and skip its own swapgs, then access %gs:... with
+     * the user GS base live. Disable interrupts up front; sysretq
+     * atomically restores RFLAGS (and thus IF) from R11.
      */
+    __asm__ volatile("cli" ::: "memory");
+
+    /* If user state is unsafe, never sysret - kill the child and yield. */
+    if (!canonical_addr(child->user_rip) ||
+        !canonical_addr(child->user_rsp)) {
+        log_error("FORK: child PID %llu has non-canonical user state "
+                  "(rip=0x%llx rsp=0x%llx); aborting",
+                  child->pid, child->user_rip, child->user_rsp);
+        if (self)
+            self->state = THREAD_EXITED;
+        child->kthread = NULL;
+        process_destroy(child);
+        __asm__ volatile("sti" ::: "memory");
+        for (;;)
+            kthread_yield();
+    }
+
+    /* Install the child as the running process. */
+    process_set_current(child);          /* updates percpu.kernel_rsp too */
+    gdt_set_tss_rsp0(child->kernel_stack_top);
+    vmm_switch_address_space(child->pml4_phys);
+
+    /* Stage per-process segment bases for the swapgs+sysretq below. */
+    wrmsr(MSR_FS_BASE,        canonical_addr(child->fs_base) ? child->fs_base : 0);
+    wrmsr(MSR_KERNEL_GS_BASE, canonical_addr(child->gs_base) ? child->gs_base : 0);
+
+    /*
+     * Detach ourselves from the kthread list before sysret. The stack
+     * we're standing on becomes unreachable - the next kthread_reap()
+     * frees it. Clearing child->kthread prevents process_destroy from
+     * walking back to a kthread we're about to abandon.
+     */
+    if (self)
+        self->state = THREAD_EXITED;
+    child->kthread = NULL;
+
+    /*
+     * Return to user mode. Inputs are pinned to r8/r9/r10 so the rest
+     * of the GPRs can be zeroed without clobbering anything live.
+     *
+     * sysretq: RIP=RCX, RFLAGS=(R11 & 0x3C7FD7)|0x2, CS=user, SS=user.
+     */
+    register uint64_t rip_in    __asm__("r8")  = child->user_rip;
+    register uint64_t rflags_in __asm__("r9")  = child->user_rflags;
+    register uint64_t rsp_in    __asm__("r10") = child->user_rsp;
+
     __asm__ volatile (
-        "movq %0, %%rcx\n\t"
-        "movq %1, %%r11\n\t"
-        "movq %2, %%rsp\n\t"
-        "xorl %%eax, %%eax\n\t"
+        "movq %0, %%rcx\n\t"          /* RCX  = user RIP    */
+        "movq %1, %%r11\n\t"          /* R11  = user RFLAGS */
+        "movq %2, %%rsp\n\t"          /* RSP  = user RSP    */
+        "xorl %%eax, %%eax\n\t"       /* rax = 0 (fork returns 0 in child) */
+        "xorl %%edx, %%edx\n\t"
+        "xorl %%esi, %%esi\n\t"
+        "xorl %%edi, %%edi\n\t"
+        "xorl %%ebp, %%ebp\n\t"
+        "xorl %%ebx, %%ebx\n\t"
+        "xorl %%r8d, %%r8d\n\t"
+        "xorl %%r9d, %%r9d\n\t"
+        "xorl %%r10d, %%r10d\n\t"
+        "xorl %%r12d, %%r12d\n\t"
+        "xorl %%r13d, %%r13d\n\t"
+        "xorl %%r14d, %%r14d\n\t"
+        "xorl %%r15d, %%r15d\n\t"
         "swapgs\n\t"
         "sysretq"
         :
-        : "r"(child->user_rip),
-          "r"(child->user_rflags),
-          "r"(child->user_rsp)
-        : "rcx", "r11", "memory"
+        : "r"(rip_in), "r"(rflags_in), "r"(rsp_in)
+        : "memory"
     );
     __builtin_unreachable();
 }
@@ -1038,13 +1150,17 @@ static int64_t sys_fork(uint64_t arg1, uint64_t arg2, uint64_t arg3,
      * Create the kthread that will return the child to user mode with
      * rax=0. The child PCB already has user_rip/user_rsp/user_rflags
      * snapshotted by syscall_dispatch() before this handler ran (and
-     * memcpy'd into the child above).
+     * memcpy'd into the child above). We record the kthread pointer
+     * so process_destroy can tear it down if the child never sysrets.
      */
-    if (kthread_create("fork-child", fork_child_user_return, child) == 0) {
+    uint64_t child_tid = kthread_create("fork-child",
+                                        fork_child_user_return, child);
+    if (child_tid == 0) {
         log_error("FORK: Failed to create child kthread");
         process_destroy(child);
         return -ENOMEM;
     }
+    child->kthread = kthread_get_kthread(child_tid);
 
     log_info("FORK: Created child PID %llu from parent PID %llu (COW)",
              child->pid, parent->pid);

@@ -53,6 +53,24 @@
 bool vmm_validate_user_range(const void *ptr, size_t len);
 
 /**
+ * vmm_user_range_readable - Check that every page in [ptr, ptr+len) is
+ * present and accessible from user mode in @pml4_phys.
+ *
+ * Use before kernel code dereferences a user pointer to avoid taking a
+ * kernel page-fault on an unmapped-but-in-range user page. TOCTOU
+ * caveat: a concurrent unmap could invalidate the result; with no
+ * preemption inside syscalls and a single CPU this is safe today.
+ */
+bool vmm_user_range_readable(uint64_t pml4_phys, const void *ptr, size_t len);
+
+/**
+ * vmm_user_range_writable - Like _readable, but also requires each
+ * page be either WRITABLE or COW (a subsequent write fault will be
+ * handled by the COW path).
+ */
+bool vmm_user_range_writable(uint64_t pml4_phys, const void *ptr, size_t len);
+
+/**
  * vmm_free_user_address_space - Free all user-space mappings
  * @pml4_phys: physical address of PML4 to free
  */

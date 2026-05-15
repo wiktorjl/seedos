@@ -20,6 +20,12 @@
 /* IA32_FS_BASE - kept in sync with arch/x86/kernel/syscall.c */
 #define MSR_FS_BASE     0xC0000100
 
+/* True iff @a is a canonical x86-64 virtual address (bit 47 sign-extended). */
+static inline bool canonical_addr(uint64_t a)
+{
+    return ((int64_t)(a << 16) >> 16) == (int64_t)a;
+}
+
 /*
  * Kernel stack size for each process (16KB)
  */
@@ -201,6 +207,17 @@ void process_destroy(process_t *proc)
         }
     }
 
+    /*
+     * If a kthread still backs this process (e.g. forked child that
+     * never sysretted), mark it exited so kthread_reap() reclaims it
+     * instead of letting the scheduler re-invoke a trampoline that
+     * dereferences the PCB we're about to free.
+     */
+    if (proc->kthread) {
+        proc->kthread->state = THREAD_EXITED;
+        proc->kthread = NULL;
+    }
+
     /* Free user address space */
     if (proc->pml4_phys) {
         vmm_free_user_address_space(proc->pml4_phys);
@@ -364,11 +381,23 @@ void process_switch(process_t *next)
     /*
      * Restore per-process segment bases. FS_BASE is loaded directly
      * (used by user-mode TLS); the user's GS base is staged in
-     * KERNEL_GS_BASE so that the swapgs on the next sysret/iretq
-     * brings it into the active GS_BASE.
+     * KERNEL_GS_BASE so the swapgs on the next sysret/iretq brings
+     * it into the active GS_BASE.
+     *
+     * Non-canonical values would #GP inside wrmsr - defensive only,
+     * arch_prctl already rejects them at set time.
+     *
+     * NOTE: this assumes a user-mode transition immediately follows
+     * the switch (the staged KERNEL_GS_BASE will land in user GS via
+     * swapgs). If process_switch is ever called between two kernel
+     * threads with no intervening user return, the next bare swapgs
+     * in kernel code would expose that staged value - re-stage the
+     * percpu pointer before any such swapgs.
      */
-    wrmsr(MSR_FS_BASE, next->fs_base);
-    wrmsr(MSR_KERNEL_GS_BASE, next->gs_base);
+    wrmsr(MSR_FS_BASE,
+          canonical_addr(next->fs_base) ? next->fs_base : 0);
+    wrmsr(MSR_KERNEL_GS_BASE,
+          canonical_addr(next->gs_base) ? next->gs_base : 0);
 
     /* Update current process */
     current_proc = next;

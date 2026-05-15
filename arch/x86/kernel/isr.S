@@ -16,6 +16,16 @@
  *   128(%rsp) error_code (pushed by CPU or stub)
  *   136(%rsp) rip      (pushed by CPU)
  *   144(%rsp) cs       (pushed by CPU - low 2 bits = CPL)
+ *
+ * Caveats (deferred):
+ *   - NMI nesting: vector 2 uses IST1 (per idt.c), but a second NMI
+ *     arriving before the first IRETs reuses the same IST stack and
+ *     clobbers the outer frame. Robust handling needs Linux-style
+ *     "NMI executing" state-machine; today an NMI storm is unsafe.
+ *   - Paranoid GS: the CS-RPL swapgs test here is not safe for NMI
+ *     entries that interrupt the tiny swapgs windows in syscall_entry.S
+ *     or fork_child_user_return - both windows run with IF=0 so they
+ *     can't be hit by maskable IRQs, but NMI can still land there.
  */
 
 .section .text

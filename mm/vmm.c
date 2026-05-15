@@ -58,6 +58,46 @@ bool vmm_validate_user_range(const void *ptr, size_t len)
 	return true;
 }
 
+/*
+ * Internal helper: check each page in [start, start+len) satisfies the
+ * required mask of PTE flags (besides PRESENT|USER).
+ */
+static bool user_range_check(uint64_t pml4_phys, const void *ptr,
+                             size_t len, uint64_t require, uint64_t alt)
+{
+	uint64_t start = (uint64_t)ptr;
+	uint64_t end;
+
+	if (!vmm_validate_user_range(ptr, len))
+		return false;
+
+	end = start + len;
+	for (uint64_t va = start & ~(VMM_PAGE_SIZE - 1ULL);
+	     va < end;
+	     va += VMM_PAGE_SIZE) {
+		uint64_t flags = vmm_get_pte_flags(pml4_phys, va);
+
+		if (!(flags & PTE_PRESENT))
+			return false;
+		if (!(flags & PTE_USER))
+			return false;
+		if (require && !(flags & require) && !(alt && (flags & alt)))
+			return false;
+	}
+	return true;
+}
+
+bool vmm_user_range_readable(uint64_t pml4_phys, const void *ptr, size_t len)
+{
+	return user_range_check(pml4_phys, ptr, len, 0, 0);
+}
+
+bool vmm_user_range_writable(uint64_t pml4_phys, const void *ptr, size_t len)
+{
+	/* Writable or COW; a write to a COW page is recoverable. */
+	return user_range_check(pml4_phys, ptr, len, PTE_WRITABLE, PTE_COW);
+}
+
 /**
  * vmm_free_user_address_space - Free all user-space mappings
  * @pml4_phys: physical address of PML4 to free

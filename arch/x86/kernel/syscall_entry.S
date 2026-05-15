@@ -27,6 +27,17 @@
 #define PERCPU_KERNEL_RSP   0x08
 #define PERCPU_USER_RSP     0x10
 
+/*
+ * RFLAGS sanitization on return to user (must match syscall.c).
+ * Allowed: arithmetic flags (CF/PF/AF/ZF/SF/OF) + IF + DF.
+ * Forced:  IF=1, reserved bit 1.
+ *
+ * sysretq itself preserves IOPL/NT/AC/ID from R11 - we mask those off
+ * here so a malicious user can't keep IOPL=3 across a syscall.
+ */
+#define USER_RFLAGS_ALLOWED  0x0ED5
+#define USER_RFLAGS_REQUIRED 0x0202
+
 .section .text
 
 .global syscall_entry
@@ -86,8 +97,17 @@ syscall_entry:
 
     /*
      * Step 6: Restore sysret registers and return
+     *
+     * Sanitize R11 (user RFLAGS) so the user can't keep IOPL/NT/AC
+     * across the syscall boundary, and force IF=1 + reserved-1.
+     *
+     * The cli at step 4 keeps interrupts disabled through swapgs;
+     * sysretq atomically restores RFLAGS from R11 (so IF=1 again
+     * in user mode).
      */
     popq %r11                           /* User RFLAGS */
+    andq $USER_RFLAGS_ALLOWED, %r11
+    orq  $USER_RFLAGS_REQUIRED, %r11
     popq %rcx                           /* User RIP */
 
     movq %gs:PERCPU_USER_RSP, %rsp      /* Restore user RSP */
