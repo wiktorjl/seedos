@@ -1,6 +1,6 @@
-# Chapter 6 — Interrupts & Exceptions: The IDT and ISRs
+# Chapter 10 — The IDT & Exception Handlers
 
-> Part II — Boot & Architecture · Status: ✅ drafted
+> Part I — Foundation · Status: ✅ drafted
 
 > **Reference notes:** [`arch-x86.md`](https://github.com/wiktorjl/seedos/blob/master/docs/reference/arch-x86.md)
 
@@ -12,7 +12,8 @@ the mechanism behind multitasking, device I/O, and crash handling, so they are
 worth understanding deeply. This chapter introduces the concept, gives you a
 programmer's mental model for it, and then walks the SeedOS machinery: the table
 that routes interrupts, the assembly that saves the CPU's state, and the single C
-function that dispatches everything.
+function that dispatches everything. (The crash path it triggers — panic and
+backtrace — is Chapter 11.)
 
 ## Source files
 
@@ -52,7 +53,7 @@ vector 0 instead.
 | Vectors | Purpose |
 |---------|---------|
 | 0–31 | CPU **exceptions** (divide error, page fault, #GP, …) |
-| 32–47 | Hardware **IRQs**, delivered via the I/O APIC (Chapter 7) |
+| 32–47 | Hardware **IRQs**, delivered via the I/O APIC (Chapter 17) |
 | 255 | The **spurious** interrupt (a "never mind" from the APIC) |
 
 Vector 32 is the timer; 33 is the keyboard.
@@ -73,9 +74,10 @@ on, the hardware indexes it automatically.
 **For example,** entry 14 points at the page-fault handler, so any unmapped
 memory access transfers control there; entry 32 points at the timer handler.
 
-**In SeedOS.** An IDT entry (`idt_entry_t`) packs a handler address, a code
-selector (the `0x08` from Chapter 5), and a type byte. `idt_install()` fills all
-256 entries from an array of assembly stubs and loads the table with `lidt`:
+**In SeedOS.** An IDT entry (`idt_entry_t`) packs a handler address, the kernel
+code selector (the GDT segment set up in Chapter 21), and a type byte.
+`idt_install()` fills all 256 entries from an array of assembly stubs and loads
+the table with `lidt`:
 
 ```c
 for (int i = 0; i < IDT_SIZE; i++)
@@ -83,8 +85,9 @@ for (int i = 0; i < IDT_SIZE; i++)
         idt_set_gate(i, (uint64_t)isr_stubs[i], GDT_KERNEL_CODE, IDT_GATE_INTERRUPT, 0);
 ```
 
-Three vectors are then overridden to run on the dedicated IST stacks from
-Chapter 5 — the critical exceptions that must survive a corrupt kernel stack:
+Three vectors are then overridden to run on dedicated **interrupt stacks** (the
+IST, configured with the CPU's tables in Chapter 21) — the critical exceptions
+that must survive a corrupt kernel stack:
 
 ```c
 idt_set_gate(2,  (uint64_t)isr_2,  GDT_KERNEL_CODE, IDT_GATE_INTERRUPT, 1); /* NMI  → IST1 */
@@ -92,7 +95,7 @@ idt_set_gate(8,  (uint64_t)isr_8,  GDT_KERNEL_CODE, IDT_GATE_INTERRUPT, 2); /* #
 idt_set_gate(18, (uint64_t)isr_18, GDT_KERNEL_CODE, IDT_GATE_INTERRUPT, 3); /* #MCE → IST3 */
 ```
 
-The IST indices (1, 2, 3) match the slots filled in `gdt.c` — the two files must
+The IST indices (1, 2, 3) match the slots filled in the GDT setup — the two must
 agree.
 
 ## 3. Saving the CPU's state
@@ -158,7 +161,7 @@ typedef struct {
 ```
 
 A handler receives a pointer to this and can read *or modify* any saved register —
-which is exactly how the scheduler preempts a thread (Chapter 13).
+which is exactly how the scheduler preempts a thread (Chapter 19).
 
 ## 4. One dispatcher, and registering handlers
 
@@ -186,7 +189,7 @@ void interrupt_handler(interrupt_frame_t *frame)
     if (int_no < 32) {
         if (int_no == 14) { handle_page_fault(frame); return; }  /* page fault */
         log_panic("EXCEPTION: %s ...", exception_names[int_no]);   /* else fatal */
-        /* … dump registers, backtrace, halt … */
+        /* … dump registers, backtrace, halt — see Chapter 11 … */
     }
     if (int_no == 255) return;                  /* spurious: ignore */
     if (irq_handlers[int_no] != 0)
@@ -198,32 +201,15 @@ void interrupt_handler(interrupt_frame_t *frame)
 
 Drivers claim a vector with `idt_register_irq(vector, handler)`. **A registered
 handler owns its EOI** — it must call `apic_eoi()` itself (the timer handler does;
-Chapter 7). Only *unclaimed* vectors get an automatic ack here.
+Chapter 16). Only *unclaimed* vectors get an automatic ack here.
 
 One exception is special: vector 14, the **page fault**, is not always a bug —
 SeedOS uses page faults to implement copy-on-write `fork`, so it gets its own
-handler. That mechanism is Chapter 20's subject; here it's enough to see that a
-fault can be a *feature*.
+handler. That mechanism is Chapter 26's subject; here it's enough to see that a
+fault can be a *feature*. The fatal path — what happens to all the *other*
+exceptions — is Chapter 11.
 
-## 5. Backtraces
-
-When an exception really is fatal, the panic path walks the stack via frame
-pointers to print a call trace:
-
-```c
-for (int i = 1; i < 10 && rbp != 0; i++) {
-    if (!is_valid_kernel_addr(rbp)) break;
-    uint64_t *frame = (uint64_t *)rbp;
-    log_debug("  [%d] 0x%016llx", i, frame[1] - 1);  /* return address */
-    rbp = frame[0];                                   /* previous frame */
-}
-```
-
-This works because of two earlier decisions: the kernel is compiled
-`-fno-omit-frame-pointer` (Chapter 2) so `RBP` chains the frames, and `_start`
-zeroed `RBP` (Chapter 4) so the walk has a clean terminator.
-
-## 6. A note on NMI nesting
+## 5. A note on NMI nesting
 
 Vector 2 (the *non-maskable interrupt*) has a hand-written stub instead of going
 through `isr_common`, because an NMI can strike at literally any instruction —
@@ -236,11 +222,11 @@ is documented in the code, not hidden.
 
 ## Reference & cross-links
 
-- **Previous:** [Chapter 5 — x86-64 CPU Setup](05-cpu-setup.md) (the code selector
-  and IST stacks this chapter references).
-- **Next:** [Chapter 7 — Hardware Discovery: ACPI, LAPIC & I/O APIC](07-acpi-apic.md)
-  is where IRQ vectors 32–47 actually come from.
-- **Page faults as a feature (copy-on-write):**
-  [Chapter 20 — `fork()` and Copy-on-Write](20-fork-cow.md).
-- **The timer IRQ that drives preemption:**
-  [Chapter 13 — Kernel Threads & the Scheduler](13-threads-scheduler.md).
+- **Previous:** [Chapter 9 — The Terminal Abstraction & `kprintf`](09-terminal-kprintf.md).
+- **Next:** [Chapter 11 — A Panic Handler with Backtrace](11-panic-backtrace.md)
+  is the crash path this chapter's dispatcher triggers.
+- **Where IRQ vectors 32–47 come from:**
+  [Chapter 16 — The Local APIC Timer](16-lapic-timer.md) and
+  [Chapter 17 — The I/O APIC & PS/2 Keyboard](17-ioapic-keyboard.md).
+- **Page faults as a feature (copy-on-write):** [Chapter 26 — `fork` & `exec`](26-fork-exec.md).
+- **The CPU tables (GDT/IST) these gates reference:** [Chapter 21 — User Mode](21-user-mode.md).

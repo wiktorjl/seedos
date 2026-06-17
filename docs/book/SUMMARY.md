@@ -2,65 +2,66 @@
 
 [Introduction](README.md)
 
-A complete, top-to-bottom account of how SeedOS works and how it is built.
-Each **Part** is a narrative arc; each **Chapter** mixes explanation with
-reference material and points at the real source files.
+A ground-up guide to building a modern x86-64 operating system. The book is a
+**build path**: it starts at the firmware that runs the instant you power on,
+and works upward — boot, memory, hardware, processes, user space, storage —
+explaining each OS concept from first principles before mapping it to real code.
 
 > Status legend: ✅ drafted · 🚧 outline only · ⬜ not started
 
-# Part I — Foundations
+# Part 0 — Understanding the Boot Environment
 
-1. [Introduction & Design Philosophy](chapters/01-introduction.md) — ✅
-2. [Building & Running SeedOS](chapters/02-building-and-running.md) — ✅
-3. [A Tour of the Source Tree](chapters/03-source-tree.md) — ✅
+1. [UEFI: The Firmware Beneath Everything](chapters/01-uefi-firmware.md) — ✅
+2. [Hello, Bare Metal: Your First EFI Application](chapters/02-efi-hello-world.md) — ✅
+3. [vmlinuz Is Just a PE Executable](chapters/03-vmlinuz-pe.md) — 🚧
+4. [From UEFI to Limine: What We Delegate](chapters/04-uefi-to-limine.md) — 🚧
 
-# Part II — Boot & Architecture
+# Part I — Foundation
 
-4. [The Boot Process: Limine to `kmain`](chapters/04-boot-process.md) — ✅
-5. [x86-64 CPU Setup: GDT, Long Mode, FPU](chapters/05-cpu-setup.md) — ✅
-6. [Interrupts & Exceptions: The IDT and ISRs](chapters/06-interrupts.md) — ✅
-7. [Hardware Discovery: ACPI, LAPIC & I/O APIC](chapters/07-acpi-apic.md) — ✅
+5. [Minimal Boot via Limine](chapters/05-limine-boot.md) — ✅
+6. [Displaying Text on the Framebuffer](chapters/06-framebuffer.md) — 🚧
+7. [The Toolchain: Cross-Compiler, Build, GDB & QEMU](chapters/07-toolchain.md) — ✅
+8. [Serial Output for Debugging](chapters/08-serial.md) — 🚧
+9. [The Terminal Abstraction & `kprintf`](chapters/09-terminal-kprintf.md) — 🚧
+10. [The IDT & Exception Handlers](chapters/10-idt-exceptions.md) — ✅
+11. [A Panic Handler with Backtrace](chapters/11-panic-backtrace.md) — ✅
 
-# Part III — Memory Management
+# Part II — Memory Management
 
-8. [Physical Memory: The PMM](chapters/08-physical-memory.md) — 🚧
-9. [Virtual Memory & 4-Level Paging](chapters/09-virtual-memory.md) — 🚧
-10. [The Kernel Heap: `kmalloc`/`kfree`](chapters/10-kernel-heap.md) — 🚧
+12. [The Physical Memory Manager](chapters/12-pmm.md) — 🚧
+13. [Virtual Memory & Higher-Half Ownership](chapters/13-vmm.md) — 🚧
+14. [The Kernel Heap: `kmalloc`/`kfree`](chapters/14-heap.md) — 🚧
 
-# Part IV — Kernel Core
+# Part III — Hardware Discovery
 
-11. [Console, Serial & the Terminal Layer](chapters/11-tty.md) — 🚧
-12. [Formatted Output & Logging](chapters/12-printf-logging.md) — 🚧
-13. [Kernel Threads & the Scheduler](chapters/13-threads-scheduler.md) — 🚧
-14. [Synchronization Primitives](chapters/14-synchronization.md) — 🚧
-15. [Input: The PS/2 Keyboard](chapters/15-keyboard.md) — 🚧
-16. [The Kernel Shell](chapters/16-kshell.md) — 🚧
+15. [ACPI Table Parsing (RSDP, MADT)](chapters/15-acpi.md) — ✅
+16. [The Local APIC Timer](chapters/16-lapic-timer.md) — ✅
+17. [The I/O APIC & PS/2 Keyboard](chapters/17-ioapic-keyboard.md) — ✅
 
-# Part V — Processes & Userspace
+# Part IV — Processes & Scheduling
 
-17. [User Mode & Privilege Separation](chapters/17-user-mode.md) — 🚧
-18. [The Syscall Interface](chapters/18-syscalls.md) — 🚧
-19. [The Process Model](chapters/19-processes.md) — 🚧
-20. [`fork()` and Copy-on-Write](chapters/20-fork-cow.md) — 🚧
-21. [ELF Loading & `exec`](chapters/21-elf-exec.md) — 🚧
-22. [Per-CPU Data](chapters/22-percpu.md) — 🚧
+18. [Kernel Threads & Context Switching](chapters/18-threads-context-switch.md) — 🚧
+19. [The Scheduler & Preemption](chapters/19-scheduler-preemption.md) — 🚧
+20. [Synchronization Primitives](chapters/20-synchronization.md) — 🚧
 
-# Part VI — Filesystem
+# Part V — User Space
 
-23. [The VFS Layer](chapters/23-vfs.md) — 🚧
-24. [ext2 & the RAM Disk](chapters/24-ext2.md) — 🚧
-25. [File Descriptors & I/O](chapters/25-file-descriptors.md) — 🚧
+21. [User Mode: Rings, the GDT & the TSS](chapters/21-user-mode.md) — ✅
+22. [System Calls: `syscall`/`sysret` & the Linux ABI](chapters/22-syscalls.md) — 🚧
+23. [The VFS & File Descriptors](chapters/23-vfs-fds.md) — 🚧
+24. [Early Userspace: Loading Programs from a Module](chapters/24-early-userspace.md) — 🚧
+25. [The ELF Loader](chapters/25-elf-loader.md) — 🚧
+26. [`fork` & `exec`](chapters/26-fork-exec.md) — 🚧
+27. [Signals](chapters/27-signals.md) — ⬜
 
-# Part VII — Userland
+# Part VI — Storage & Filesystem
 
-26. [The C Runtime & Userspace ABI](chapters/26-c-runtime.md) — 🚧
-27. [Userspace Programs & Tests](chapters/27-userspace-programs.md) — 🚧
-28. [Toward BusyBox](chapters/28-toward-busybox.md) — 🚧
+28. [PCI Enumeration](chapters/28-pci.md) — ⬜
+29. [The virtio-blk Driver](chapters/29-virtio-blk.md) — ⬜
+30. [The ext2 Filesystem (Read-Only)](chapters/30-ext2.md) — 🚧
 
-# Appendices
+## Appendices
 
 - [A. Memory Map Reference](appendices/a-memory-map.md) — ⬜
 - [B. Syscall Table](appendices/b-syscall-table.md) — ⬜
-- [C. Demos & Utilities (logo, matrix, sysinfo)](appendices/c-demos-utilities.md) — ⬜
-- [D. Known Issues & Future Work](appendices/d-known-issues.md) — ⬜
 - [E. Glossary](appendices/e-glossary.md) — ⬜
