@@ -11,7 +11,6 @@ on:
   push:
     branches:
       - master
-      - claude/wonderful-shannon-eqlcmf
     paths:
       - 'docs/book/**'
       - '.github/workflows/book.yml'
