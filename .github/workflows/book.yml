@@ -2,6 +2,11 @@ name: Publish the SeedOS Book
 
 # Builds the mdBook in docs/book/ and deploys it to GitHub Pages.
 # Live site: https://wiktorjl.github.io/seedos/
+#
+# One-time setup: a repo admin must enable Pages once at
+# Settings -> Pages -> Source: "GitHub Actions". The workflow's GITHUB_TOKEN
+# can deploy to Pages but is not permitted to create the Pages site itself.
+# After that, every push that touches the paths below republishes the book.
 on:
   push:
     branches:
