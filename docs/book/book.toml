@@ -1,0 +1,20 @@
+[book]
+title = "The SeedOS Book"
+description = "A complete guide to a modern x86-64 kernel, built from scratch."
+authors = ["SeedOS contributors"]
+src = "."
+language = "en"
+
+[build]
+build-dir = "rendered"
+create-missing = false
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+site-url = "/seedos/"
+git-repository-url = "https://github.com/wiktorjl/seedos"
+git-repository-icon = "fa-github"
+
+[output.html.search]
+enable = true

@@ -8,3 +8,6 @@ initrd_extra/
 *.bin
 *.psfu
 compile_commands.json
+
+# Rendered mdBook output (docs/book)
+docs/book/rendered/

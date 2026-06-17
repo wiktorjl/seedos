@@ -15,7 +15,7 @@ reference for one subsystem.
 
 ## How to read it
 
-- Start with **[the Table of Contents](SUMMARY.md)**.
+- Start with **[the Table of Contents](https://github.com/wiktorjl/seedos/blob/master/docs/book/SUMMARY.md)**.
 - New to the codebase? Read Parts I–II in order.
 - Looking for one subsystem? Jump straight to its chapter; each begins with the
   source files it covers.
@@ -39,7 +39,7 @@ reference for one subsystem.
 
 ## Contributing to the book
 
-1. Pick a 🚧 or ⬜ chapter from [`SUMMARY.md`](SUMMARY.md).
+1. Pick a 🚧 or ⬜ chapter from [`SUMMARY.md`](https://github.com/wiktorjl/seedos/blob/master/docs/book/SUMMARY.md).
 2. Fill in the outline; pull accurate detail from the cited source files.
 3. When a chapter fully covers a `docs/reference/` file, fold that file in and
    remove it, updating the link.
