@@ -16,10 +16,10 @@ reference material and points at the real source files.
 
 # Part II — Boot & Architecture
 
-4. [The Boot Process: Limine to `kmain`](chapters/04-boot-process.md) — 🚧
-5. [x86-64 CPU Setup: GDT, Long Mode, FPU](chapters/05-cpu-setup.md) — 🚧
-6. [Interrupts & Exceptions: The IDT and ISRs](chapters/06-interrupts.md) — 🚧
-7. [Hardware Discovery: ACPI, LAPIC & I/O APIC](chapters/07-acpi-apic.md) — 🚧
+4. [The Boot Process: Limine to `kmain`](chapters/04-boot-process.md) — ✅
+5. [x86-64 CPU Setup: GDT, Long Mode, FPU](chapters/05-cpu-setup.md) — ✅
+6. [Interrupts & Exceptions: The IDT and ISRs](chapters/06-interrupts.md) — ✅
+7. [Hardware Discovery: ACPI, LAPIC & I/O APIC](chapters/07-acpi-apic.md) — ✅
 
 # Part III — Memory Management
 
