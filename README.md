@@ -85,6 +85,15 @@ seedos/
 └── build/          # Build output
 ```
 
+## Documentation
+
+Full documentation lives in [`docs/`](docs/):
+
+- 📖 **[The SeedOS Book](docs/book/README.md)** — complete narrative guide to how
+  the OS works and is built ([table of contents](docs/book/SUMMARY.md)).
+- 📑 **[Reference notes](docs/reference/)** — terse per-subsystem references.
+- 🧭 **[Plans](docs/plans/)** — design & bring-up docs (userspace, BusyBox, fork).
+
 ## Not Yet Implemented
 
 - Multi-CPU/SMP support

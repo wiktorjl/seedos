@@ -4,8 +4,8 @@ Plan to evolve SeedOS to the point where a statically-linked BusyBox
 multi-call binary can serve as `/init` and run an interactive shell with
 basic utilities. **Scope: multitasking + filesystem only. No networking.**
 
-This plan extends [`USERSPACE_PLAN.md`](USERSPACE_PLAN.md) and
-[`FORK_COMPLETION.md`](FORK_COMPLETION.md); it picks up from where those
+This plan extends [`userspace.md`](userspace.md) and
+[`fork-completion.md`](fork-completion.md); it picks up from where those
 leave off and tracks the work remaining to reach a working shell.
 
 ---
