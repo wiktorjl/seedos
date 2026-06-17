@@ -6,124 +6,169 @@
 
 ## What this chapter covers
 
-The previous chapter built the machinery to *receive* interrupts; this one builds
-the machinery to *route* them. SeedOS uses the modern interrupt hardware — the
-Local APIC and the I/O APIC — and it discovers where that hardware lives by
-parsing ACPI tables. This chapter walks the ACPI parse from the RSDP down to the
-MADT, brings up the Local APIC and calibrates its timer against the legacy PIT,
-and configures the I/O APIC to deliver device IRQs as the vectors from Chapter 6.
+Chapter 6 built the machinery to *receive* interrupts; this one builds the
+machinery to *discover the hardware* and *route* interrupts to the CPU. We'll see
+how the kernel learns what the machine contains by reading firmware tables
+(ACPI), how software talks to a hardware device at all (memory-mapped vs. port
+I/O), how the modern interrupt controllers (the Local APIC and I/O APIC) deliver
+IRQs, and how the periodic timer — the heartbeat behind multitasking — is set up
+and calibrated. As before: concept, intuition, example, then the SeedOS code.
 
 ## Source files
 
-- `arch/x86/kernel/acpi.c`, `acpi.h` — RSDP/RSDT/XSDT/MADT parsing
-- `arch/x86/kernel/apic.c`, `apic.h` — Local APIC and the periodic timer
-- `arch/x86/kernel/ioapic.c`, `ioapic.h` — I/O APIC IRQ routing
+- `arch/x86/kernel/acpi.c`, `acpi.h` — reading firmware tables (RSDP→XSDT→MADT)
+- `arch/x86/kernel/apic.c`, `apic.h` — the Local APIC and the periodic timer
+- `arch/x86/kernel/ioapic.c`, `ioapic.h` — routing device IRQs
 - `arch/x86/include/asm/io.h` — `inb`/`outb` port I/O primitives
 
-## 1. The discovery problem
+## 1. Hardware discovery with ACPI
 
-The Local APIC and I/O APIC are memory-mapped devices, but their physical
-addresses — and the number of CPUs, and any IRQ remappings the firmware applies —
-are not fixed. The kernel learns them from **ACPI**, the firmware-provided tables
-that describe the platform. There is one wrinkle from Chapter 4: under Limine
-base revision 3, ACPI memory is **not** in the HHDM, so the parser cannot simply
-dereference the physical RSDP pointer — it must map each table into kernel space
-first. `acpi_map_region()` does that, handing out pages from a fixed virtual
-window at `0xFFFFFFFE00000000` and preserving the original page offset:
+**The concept.** The kernel cannot assume where the interrupt hardware lives or
+how many CPUs exist — those vary by machine. The firmware describes the platform
+in a set of **ACPI tables**: a small in-memory database, reached by following a
+chain of pointers from a root structure (the **RSDP**) to a root table
+(**RSDT/XSDT**) to specific tables. The one SeedOS wants is the **MADT**, which
+lists the CPUs and the APICs.
 
-```c
-#define ACPI_VIRT_BASE  0xFFFFFFFE00000000ULL
-/* map [phys, phys+size) and return the virtual address with offset preserved */
-```
+> 🐍 **From Python — the intuition.** Think of ACPI as a manifest the firmware
+> leaves in memory — like a `config.json` describing the machine. You don't
+> hard-code the hardware layout; you *parse* it. The catch is that it's a binary
+> format with checksums and a pointer chain, not text, so "parsing" means walking
+> structs and validating bytes.
 
-This is also why `acpi_init()` runs *after* `vmm_init()` in `kmain()`: it needs
-working page tables to map anything.
+**For example,** to find the interrupt controllers you start at the RSDP, follow
+it to the root table, scan that table's entries for the one tagged `"APIC"` (the
+MADT), and read the Local APIC and I/O APIC addresses out of it.
 
-## 2. Parsing ACPI: RSDP → RSDT/XSDT → MADT
-
-`acpi_init()` follows the standard chain of pointers, validating a checksum at
-every hop:
-
-1. **RSDP.** Take the physical RSDP from Limine, map it, verify the `"RSD PTR "`
-   signature and the 20-byte ACPI-1.0 checksum.
-2. **Root table.** If the RSDP revision is ≥ 2 (ACPI 2.0+), follow the 64-bit
-   **XSDT**; otherwise the 32-bit **RSDT**. Map the header to learn the table's
-   length, map the whole thing, and checksum it.
-3. **MADT.** Scan the root table's entries for the one with signature `"APIC"` —
-   the Multiple APIC Description Table — and checksum it too.
+**In SeedOS.** `acpi_init()` does exactly that, checksumming at each hop. There's
+one wrinkle from Chapter 4: under Limine revision 3, ACPI memory is *not* in the
+direct map, so the parser must map each table into the kernel's address space
+before reading it — which is why `acpi_init()` runs *after* `vmm_init()`:
 
 ```c
 madt_t *madt = (madt_t *)find_table(root_sdt, "APIC", use_xsdt);
 if (madt == NULL) { log_error("ACPI: MADT not found"); return -1; }
+parse_madt(madt);
 ```
 
-`find_table()` is the same routine for both root types, differing only in pointer
-width (`uint32_t` vs `uint64_t`). Every failure along the way logs and returns
-`-1`, so a malformed table degrades gracefully rather than faulting.
+`parse_madt()` records what the interrupt subsystem needs into one `acpi_info_t`:
+each CPU's APIC ID, the Local APIC address, the I/O APIC address, and any
+**interrupt source overrides** — firmware-specified remaps of legacy IRQ numbers,
+needed to route IRQs correctly on real machines.
 
-## 3. What the MADT yields
+## 2. Talking to a device: MMIO and port I/O
 
-The MADT is a header followed by variable-length entries. `parse_madt()` walks
-them and records what the interrupt subsystem needs into a single `acpi_info_t`:
+**The concept.** How does software "talk to" a chip? Two mechanisms:
 
-| MADT entry type | What SeedOS extracts |
-|-----------------|----------------------|
-| 0 — Local APIC | each enabled CPU's APIC ID (into `cpu_apic_ids[]`, `cpu_count`) |
-| 1 — I/O APIC | its physical address, ID, and GSI base |
-| 2 — Interrupt Source Override | ISA-IRQ → GSI remaps + polarity/trigger (into `overrides[]`) |
-| 4 — Local APIC NMI | logged |
-| 5 — Local APIC Address Override | a 64-bit override of the LAPIC address |
+- **Memory-mapped I/O (MMIO):** the device's control registers appear at certain
+  physical addresses. Reading or writing those addresses *is* talking to the
+  device — the access has hardware side effects.
+- **Port I/O:** a separate address space reached only by the special `in`/`out`
+  instructions, a legacy x86 mechanism still used by a few old devices.
+
+> 🐍 **From Python — the intuition.** MMIO is like a memory address that's secretly
+> a device: `reg[EOI] = 0` doesn't just store a zero, it *commands the chip*.
+> Assignment has side effects. (And these addresses must be mapped *uncached* —
+> the CPU must not cache a device register, or it would "read" a stale value
+> instead of asking the hardware.)
+
+**For example,** acknowledging an interrupt is a single MMIO write to the Local
+APIC's "EOI" register; reprogramming the legacy timer is a few `outb`s to its
+port.
+
+**In SeedOS.** The Local APIC is accessed through a mapped MMIO window, with a
+tiny read/write helper; the legacy PIT and PIC use port I/O from
+`asm/io.h`:
 
 ```c
-acpi_info.local_apic_address = madt->local_apic_address;
-acpi_info.has_pic = madt->flags & 1;   /* bit 0: dual 8259 PICs present */
+static inline void lapic_write(uint32_t reg, uint32_t value) {
+    lapic_base[reg / 4] = value;             /* MMIO: writing the chip   */
+    (void)lapic_base[LAPIC_ID / 4];          /* read back as a barrier   */
+}
 ```
 
-The result is fetched elsewhere via `acpi_get_info()`. Crucially, the **interrupt
-source overrides** captured here are what let the I/O APIC route IRQs correctly on
-machines where, for instance, the timer's ISA IRQ 0 is wired to a different GSI.
-
-## 4. The Local APIC and its timer
-
-`apic_init()` (run after `acpi_init()`) brings up the per-CPU Local APIC. First it
-maps the LAPIC's MMIO registers **uncached** — caching device registers would be
-a correctness bug:
+The mapping is created with a "no-cache" flag, exactly for the reason in the
+intuition box:
 
 ```c
-uint64_t lapic_virt = 0xFFFFFFFD00000000ULL;
 vmm_map_page(pml4, lapic_virt, lapic_phys, PTE_PRESENT | PTE_WRITABLE | PTE_NOCACHE);
 ```
 
-Then it disables the legacy 8259 PIC (remapping it out of the way to vectors
-32–47 and masking every line, so a stray PIC interrupt can't masquerade as an
-exception), and enables the LAPIC by writing its Spurious Vector Register with
-the enable bit and the spurious vector 255:
+## 3. The interrupt controllers: LAPIC and I/O APIC
+
+**The concept.** Modern x86 splits interrupt handling across two chips:
+
+- The **Local APIC (LAPIC)** is *per-CPU*. It is the CPU's interrupt inbox: it
+  delivers local sources (like the timer), and it has the "EOI" register that
+  acknowledges each interrupt.
+- The **I/O APIC** is a *shared* switchboard. It takes external device interrupt
+  lines and routes each one to a chosen CPU as a chosen vector number.
+
+> 🐍 **From Python — the intuition.** The I/O APIC is a programmable router: a
+> table mapping "device line *N*" → "(deliver vector *V* to CPU *C*)." The LAPIC
+> is each CPU's local mailbox plus the *ack* button you press when you've handled
+> a message. SeedOS deliberately disables the ancient 8259 PIC so these two are
+> the only game in town.
+
+**For example,** to make the keyboard work, you tell the I/O APIC "route device
+line 1 to vector 33 on this CPU," then unmask that line. From then on, a keypress
+arrives as interrupt vector 33 — which the IDT (Chapter 6) sends to the keyboard
+handler.
+
+**In SeedOS.** `apic_init()` maps the LAPIC, disables the legacy PIC, and enables
+the LAPIC by writing its spurious-vector register; `ioapic_init()` maps the I/O
+APIC and masks every line until a driver opts in. Routing applies any ACPI
+override, then writes a 64-bit redirection entry:
 
 ```c
-lapic_write(LAPIC_SVR, LAPIC_SVR_ENABLE | IRQ_SPURIOUS);
+uint32_t gsi = irq_to_gsi(irq, &polarity, &trigger);   /* honor ACPI overrides */
+uint64_t entry = vector
+               | IOAPIC_DELIVERY_FIXED
+               | IOAPIC_DESTMODE_PHYSICAL
+               | polarity | trigger
+               | IOAPIC_DEST(apic_id);                 /* destination CPU      */
+ioapic_write_redir(gsi, entry);
 ```
 
-**Calibrating the timer.** The LAPIC timer counts at an unknown frequency, so
-SeedOS measures it against a known clock — the legacy PIT. It runs the LAPIC timer
-from its maximum count, busy-waits 10 ms on the PIT, and sees how far the LAPIC
-counted:
+`apic_eoi()` — the "ack button" — is a single MMIO write to the LAPIC's EOI
+register.
+
+## 4. The timer: a heartbeat, and calibrating it
+
+**The concept.** A **periodic timer interrupt** is what lets an OS take control
+back from a running program. Without it, a program stuck in a loop would own the
+CPU forever. With a timer firing, say, every 10 ms, the kernel regains control 100
+times a second and can switch to another task — this is the foundation of
+**preemptive multitasking**. One snag: the LAPIC timer counts at a frequency the
+kernel doesn't know in advance, so it must **calibrate** — measure the unknown
+clock against a known one.
+
+> 🐍 **From Python — the intuition.** The timer tick is the kernel's
+> `setInterval`: a callback that fires on a fixed schedule no matter what else is
+> running. It's *the* reason a single CPU can appear to run many programs at once
+> (Chapter 13). Calibration is just "I have a stopwatch of unknown speed; let me
+> time it against a clock I trust, then do the arithmetic."
+
+**For example,** SeedOS runs the LAPIC timer from its maximum count, waits a known
+10 ms using the legacy PIT as the trusted clock, reads how far the LAPIC counted
+down, and scales that to the target rate:
 
 ```c
-lapic_write(LAPIC_TIMER_ICR, 0xFFFFFFFF);   /* start from max          */
-pit_sleep_ms(10);                            /* wait a known 10 ms      */
+lapic_write(LAPIC_TIMER_ICR, 0xFFFFFFFF);    /* start the unknown clock at max */
+pit_sleep_ms(10);                             /* wait a trusted 10 ms           */
 uint32_t elapsed = 0xFFFFFFFF - lapic_read(LAPIC_TIMER_CCR);
-uint32_t ticks_per_period = (elapsed * 100) / TIMER_FREQUENCY_HZ;   /* 100 Hz */
+uint32_t ticks_per_period = (elapsed * 100) / TIMER_FREQUENCY_HZ;   /* → 100 Hz */
 ```
 
-It then registers a handler on vector 32 and programs the timer in **periodic**
-mode to fire at `TIMER_FREQUENCY_HZ` (100 Hz → one tick every 10 ms). That tick
-is the heartbeat of the whole system:
+**In SeedOS.** It then programs the timer in *periodic* mode on vector 32 at 100
+Hz. The handler is the system's heartbeat — and notice it acknowledges the
+interrupt *before* it may switch away and never return here:
 
 ```c
 void apic_timer_handler(void)
 {
     tick_count++;
-    console_update_cursor(tick_count);   /* blink the cursor   */
+    console_update_cursor(tick_count);   /* blink the cursor    */
     apic_eoi();                          /* ack BEFORE switching */
     if (kthread_current() != NULL) {
         kthread_wake_sleepers();
@@ -134,72 +179,30 @@ void apic_timer_handler(void)
 }
 ```
 
-Note the ordering: the handler signals End-Of-Interrupt *before* it may switch
-contexts, because a context switch might not return here for a long time.
-`apic_eoi()` itself is a single write to the LAPIC `EOI` register.
+## 5. The kernel's MMIO map
 
-## 5. The I/O APIC: routing device IRQs
-
-Where the Local APIC is per-CPU, the **I/O APIC** is the chip that takes external
-device interrupt lines and delivers them to a CPU as a chosen vector.
-`ioapic_init()` maps its registers (again uncached, at `0xFFFFFFFD00001000`),
-reads how many redirection entries it has, and **masks them all** so nothing fires
-until a driver opts in.
-
-Routing happens through `ioapic_route_irq()`, which first translates the ISA IRQ
-to a Global System Interrupt — applying any ACPI override from Section 3 — then
-writes a 64-bit redirection entry:
-
-```c
-uint32_t gsi = irq_to_gsi(irq, &polarity, &trigger);   /* honors ACPI overrides */
-uint64_t entry = vector
-               | IOAPIC_DELIVERY_FIXED
-               | IOAPIC_DESTMODE_PHYSICAL
-               | polarity | trigger
-               | IOAPIC_DEST(apic_id);                 /* destination APIC ID  */
-ioapic_write_redir(gsi, entry);
-```
-
-`ioapic_mask_irq()` / `ioapic_unmask_irq()` toggle a single line's mask bit. The
-I/O APIC's registers are themselves reached indirectly: you write a register index
-to `IOAPIC_REGSEL` and read/write the value through `IOAPIC_WIN`, and each 64-bit
-redirection entry spans two of those windows. Devices like the keyboard
-(Chapter 15) call `ioapic_route_irq()` and `ioapic_unmask_irq()` to bring their
-line online — the timer does *not*, because it is delivered by the Local APIC
-directly, not through the I/O APIC.
-
-## 6. Port I/O
-
-A few legacy devices here — the PIT used for calibration and the 8259 PIC being
-disabled — are programmed with old-style port I/O rather than MMIO. Those `in`/
-`out` instructions are wrapped in `arch/x86/include/asm/io.h` as `inb()`/`outb()`
-and used by `apic.c` (and later the keyboard and serial drivers).
-
-## 7. The kernel's MMIO map
-
-Between this chapter and Chapter 4, the kernel has staked out several fixed
-virtual windows above the kernel image for device and table mappings. Collecting
-them in one place:
+Between this chapter and Chapter 4, the kernel has claimed several fixed virtual
+windows above its image for device and table mappings:
 
 | Virtual base | Maps |
 |--------------|------|
-| `0xFFFF800000000000` | HHDM — all of physical RAM (Chapter 9) |
+| `0xFFFF800000000000` | the direct map — all of physical RAM (Chapter 9) |
 | `0xFFFFFFFF80000000` | the kernel image (Chapter 4) |
 | `0xFFFFFFFD00000000` | Local APIC registers (uncached) |
 | `0xFFFFFFFD00001000` | I/O APIC registers (uncached) |
 | `0xFFFFFFFE00000000` | ACPI tables (mapped on demand) |
 
 Appendix A collects the full memory map. With ACPI parsed and both APICs
-configured, `kmain()` can finally call `cpu_enable_interrupts()` — every vector
-now has somewhere to go.
+configured, `kmain()` can finally run `cpu_enable_interrupts()` — every vector now
+has somewhere to go, and the timer's heartbeat begins.
 
 ## Reference & cross-links
 
 - **Previous:** [Chapter 6 — Interrupts & Exceptions](06-interrupts.md) (the
   vectors this chapter's hardware delivers).
 - **Next:** [Chapter 8 — Physical Memory: The PMM](08-physical-memory.md) begins
-  Part III.
-- **The `vmm_map_page` / `PTE_NOCACHE` mappings used here:**
+  Part III, the memory subsystem.
+- **The `vmm_map_page` / uncached mappings used here:**
   [Chapter 9 — Virtual Memory & 4-Level Paging](09-virtual-memory.md).
 - **The timer tick driving preemption and sleeping threads:**
   [Chapter 13 — Kernel Threads & the Scheduler](13-threads-scheduler.md).
