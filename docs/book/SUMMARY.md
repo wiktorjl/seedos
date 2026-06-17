@@ -10,9 +10,9 @@ reference material and points at the real source files.
 
 # Part I — Foundations
 
-1. [Introduction & Design Philosophy](chapters/01-introduction.md) — 🚧
-2. [Building & Running SeedOS](chapters/02-building-and-running.md) — 🚧
-3. [A Tour of the Source Tree](chapters/03-source-tree.md) — 🚧
+1. [Introduction & Design Philosophy](chapters/01-introduction.md) — ✅
+2. [Building & Running SeedOS](chapters/02-building-and-running.md) — ✅
+3. [A Tour of the Source Tree](chapters/03-source-tree.md) — ✅
 
 # Part II — Boot & Architecture
 
